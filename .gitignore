@@ -1,3 +1,5 @@
 ffplay.exe
 ffmpeg.exe
 ffprobe.exe
+output_*/
+
