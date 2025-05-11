@@ -19,12 +19,16 @@ This application creates videos with subtitles from text and images.
    ```
    pip install -r requirements.txt
    ```
-3. Run the application:
+3. Install  FFMPEG:
+   ```
+   https://github.com/BtbN/FFmpeg-Builds/releases
+   ```
+4. Run the application:
    ```
    python main.py
    ```
-It still not deverlop
-### Option 2: Run the Executable
+
+### Option 2: Run the Executable It still not deverlop
 
 1. Download the latest release from the releases page
 2. Extract the ZIP file
