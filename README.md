@@ -21,9 +21,9 @@ This application creates videos with subtitles from text and images.
    ```
 3. Run the application:
    ```
-   python main_ui.py
+   python main.py
    ```
-
+It still not deverlop
 ### Option 2: Run the Executable
 
 1. Download the latest release from the releases page
