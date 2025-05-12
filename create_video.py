@@ -12,8 +12,16 @@ def downloadImage(title, content, websiteUrl, folder_name="images"):
     print(f"downloadImage called with folder_name: {folder_name}")
     os.makedirs(folder_name, exist_ok=True)
     
+    # Add proper headers to mimic a browser request
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': websiteUrl
+    }
+    
     try:
-        response = requests.get(websiteUrl, timeout=10)
+        response = requests.get(websiteUrl, headers=headers, timeout=10)
         response.raise_for_status()
         
         from bs4 import BeautifulSoup
@@ -28,7 +36,8 @@ def downloadImage(title, content, websiteUrl, folder_name="images"):
             img_path = os.path.join(folder_name, f"{i}.jpg")
             try:
                 print(f"Downloading image from: {img_url}")
-                img_response = requests.get(img_url, timeout=10)
+                # Use the same headers for image requests
+                img_response = requests.get(img_url, headers=headers, timeout=10)
                 img_response.raise_for_status()
                 with open(img_path, "wb") as f:
                     f.write(img_response.content)

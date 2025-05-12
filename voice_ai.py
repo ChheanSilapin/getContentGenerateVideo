@@ -3,7 +3,7 @@ import re
 import emoji
 import os
 
-def generateAudio(text, voice_actor=None, speed=1, output_file="voice.mp3"):  
+def generateAudio(text, voice_actor=None, speed=0.8, output_file="voice.mp3"):  
     """
     Generate audio from text using local TTS engine
     Parameters:
