@@ -2,4 +2,34 @@ ffplay.exe
 ffmpeg.exe
 ffprobe.exe
 output_*/
+output_
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.env
+.venv/
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS specific files
+.DS_Store
+Thumbs.db
 

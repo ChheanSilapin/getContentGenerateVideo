@@ -4,3 +4,6 @@ beautifulsoup4==4.12.2
 moviepy==2.0.0.dev2
 pillow==10.1.0
 emoji==2.8.0
+tk==0.1.0
+
+

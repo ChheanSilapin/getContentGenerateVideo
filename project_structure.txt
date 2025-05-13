@@ -1,0 +1,20 @@
+video_generator/
+├── main.py                 # Entry point
+├── config.py               # Configuration settings
+├── models/
+│   ├── __init__.py
+│   └── video_generator.py  # VideoGeneratorModel class
+├── ui/
+│   ├── __init__.py
+│   ├── gui.py              # Main GUI class
+│   ├── image_selector.py   # Image selection component
+│   └── text_redirector.py  # Console output redirection
+├── services/
+│   ├── __init__.py
+│   ├── audio_service.py    # Audio generation wrapper
+│   ├── image_service.py    # Image processing wrapper
+│   ├── subtitle_service.py # Subtitle generation wrapper
+│   └── video_service.py    # Video creation wrapper
+└── utils/
+    ├── __init__.py
+    └── helpers.py          # Common utility functions

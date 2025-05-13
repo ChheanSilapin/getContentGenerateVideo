@@ -5,7 +5,7 @@ This application creates videos with subtitles from text and images.
 ## Features
 
 - Generate speech from text
-- Download images from a website
+- Download images from a website or use local images from your computer
 - Create a slideshow video with the images
 - Generate subtitles for the video
 - Merge the video and subtitles into a final output
@@ -28,7 +28,7 @@ This application creates videos with subtitles from text and images.
    python main.py
    ```
 
-### Option 2: Run the Executable It still not deverlop
+### Option 2: Run the Executable (It still not deverlop)
 
 1. Download the latest release from the releases page
 2. Extract the ZIP file
@@ -37,11 +37,11 @@ This application creates videos with subtitles from text and images.
 ## Usage
 
 1. Enter the text you want to convert to speech
-2. Enter a website URL to get content and images
-3. (Optional) Choose a custom output directory
-4. Click "Generate Video"
-5. Wait for the process to complete
-6. The output directory will open automatically when finished
+2. Choose your image source:
+   - Option 1: Enter a website URL to get content and images
+   - Option 2: Select a local folder containing images
+3. Wait for the process to complete
+4. The output directory will contain your generated video with subtitles
 
 ## Troubleshooting
 
