@@ -2,7 +2,6 @@ ffplay.exe
 ffmpeg.exe
 ffprobe.exe
 output_*/
-output_
 
 # Virtual Environment
 venv/
