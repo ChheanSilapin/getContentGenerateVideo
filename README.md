@@ -17,7 +17,7 @@ This application creates videos with subtitles from text and images.
 1. Install Python 3.10 or later
 2. Clone this repository:
    ```
-   git clone https://github.com/yourusername/video-generator.git
+   git clone https://github.com/ChheanSilapin/getContentGenerateVideo
    cd video-generator
    ```
 3. Create a virtual environment:
