@@ -129,6 +129,15 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     image_clips = [] 
     target_width, target_height = 720, 1280  # Target dimensions for vertical video
     
+    # Add a monkey patch for PIL.Image.ANTIALIAS
+    try:
+        from PIL import Image
+        if not hasattr(Image, 'ANTIALIAS'):
+            # For Pillow >= 9.0.0
+            Image.ANTIALIAS = Image.LANCZOS
+    except Exception as e:
+        print(f"Failed to patch PIL.Image.ANTIALIAS: {e}")
+    
     for filename in sorted(os.listdir(folderName)):
         if filename.endswith((".jpg", ".jpeg", ".png")):
             img_path = os.path.join(folderName, filename)
