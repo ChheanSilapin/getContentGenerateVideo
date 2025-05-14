@@ -11,5 +11,7 @@ Style: Loud,Arial,36,&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-Dialogue: 0,0:00:0.00,0:00:3.30,Default,,0,0,0,,Concept image of two national flags merging with
-Dialogue: 0,0:00:3.30,0:00:6.60,Default,,0,0,0,,dramatic light background political merger 2030
+Dialogue: 0,0:00:0.00,0:00:3.42,Default,,0,0,0,,How MatiFamily Officiel Uses Humor to Bring Families
+Dialogue: 0,0:00:3.42,0:00:6.84,Default,,0,0,0,,Together.MatiFamily Officiel reminds us that family is
+Dialogue: 0,0:00:6.84,0:00:10.27,Default,,0,0,0,,strongest when we laugh together. Their pranks and
+Dialogue: 0,0:00:10.27,0:00:13.69,Default,,0,0,0,,challenges bring real moments of joy to audiences.

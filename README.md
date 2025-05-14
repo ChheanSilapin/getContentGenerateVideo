@@ -40,7 +40,10 @@ This application creates videos with subtitles from text and images.
 6. Install FFMPEG:
    - Download from: https://github.com/BtbN/FFmpeg-Builds/releases
    - Extract the files and place ffmpeg.exe, ffplay.exe, and ffprobe.exe in the root directory of the project
-
+7. Run Poject:
+   ```
+   python main.py
+   ```
 ### Option 2: Run the Executable (Not yet available)
 
 1. Download the latest release from the releases page

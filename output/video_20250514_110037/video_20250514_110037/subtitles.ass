@@ -1,0 +1,21 @@
+[Script Info]
+Title: Generated Subtitle
+ScriptType: v4.00+
+PlayResX: 720
+PlayResY: 1280
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1
+Style: Loud,Arial,36,&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:0.00,0:00:4.06,Default,,0,0,0,,Although America s greatest muscle cars were built
+Dialogue: 0,0:00:4.06,0:00:8.12,Default,,0,0,0,,during the 1960s, Oldsmobile boldly experimented with
+Dialogue: 0,0:00:8.12,0:00:12.18,Default,,0,0,0,,the idea of putting a big engine in a small car when it
+Dialogue: 0,0:00:12.18,0:00:16.25,Default,,0,0,0,,released the 88 for 1949. On paper, the recipe was
+Dialogue: 0,0:00:16.25,0:00:20.31,Default,,0,0,0,,simple: it put the 135bhp Rocket V8 it designed for the
+Dialogue: 0,0:00:20.31,0:00:24.37,Default,,0,0,0,,98 into the smaller, lighter 76 body. Its 12.2sec
+Dialogue: 0,0:00:24.37,0:00:28.43,Default,,0,0,0,,0-60mph time sounds slow in 2020 but it was extremely
+Dialogue: 0,0:00:28.43,0:00:32.49,Default,,0,0,0,,impressive at the time.

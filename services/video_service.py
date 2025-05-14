@@ -1,5 +1,5 @@
 """
-Video Service - Handles video creation and processing functionality
+Video Service - Handles video creation and processing
 """
 import os
 import sys
@@ -11,45 +11,60 @@ from create_video import createSideShowWithFFmpeg
 from Final_Video import merge_video_subtitle
 from config import DEFAULT_FRAME_RATE, DEFAULT_ZOOM_FACTOR
 
-def create_slideshow(folderName, title, content, audioFile, outputVideo):
+def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False):
     """
-    Create a slideshow video from images and audio
+    Create a slideshow video from images
     
     Args:
-        folderName: Folder containing images
-        title: Title of the slideshow
-        content: Content description
-        audioFile: Path to the audio file
-        outputVideo: Path to save the output video
+        images_folder: Folder containing images
+        title: Video title
+        content: Video content
+        audio_file: Path to audio file
+        output_file: Path to save the video
+        use_gpu: Whether to use GPU for processing
         
     Returns:
         bool: True if successful, False otherwise
     """
     try:
-        createSideShowWithFFmpeg(
-            folderName=folderName,
+        # Set environment variable for GPU/CPU selection
+        if use_gpu:
+            print("Using GPU for video processing")
+            os.environ["CUDA_VISIBLE_DEVICES"] = "0"  # Use the first GPU
+        else:
+            print("Using CPU for video processing")
+            os.environ["CUDA_VISIBLE_DEVICES"] = ""  # Disable GPU
+        
+        result = createSideShowWithFFmpeg(
+            folderName=images_folder,
             title=title,
             content=content,
-            audioFile=audioFile,
-            outputVideo=outputVideo,
+            audioFile=audio_file,
+            outputVideo=output_file,
             zoomFactor=DEFAULT_ZOOM_FACTOR,
             frameRarte=DEFAULT_FRAME_RATE
         )
-        return True
+        return result is not None
     except Exception as e:
         print(f"Error creating slideshow: {e}")
         return False
 
 def merge_video_with_subtitles(video_path, subtitle_path, output_file):
     """
-    Merge video and subtitles into a final output video
+    Merge video with subtitles
     
     Args:
-        video_path: Path to the video file
-        subtitle_path: Path to the subtitle file
-        output_file: Path to save the output video
+        video_path: Path to video file
+        subtitle_path: Path to subtitle file
+        output_file: Path to save the merged video
         
     Returns:
-        str: Path to the merged video or None on failure
+        str: Path to merged video or None on failure
     """
-    return merge_video_subtitle(video_path, subtitle_path, output_file=output_file)
+    try:
+        return merge_video_subtitle(video_path, subtitle_path, output_file)
+    except Exception as e:
+        print(f"Error merging video with subtitles: {e}")
+        return None
+
+

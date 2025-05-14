@@ -129,6 +129,17 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     image_clips = [] 
     target_width, target_height = 720, 1280  # Target dimensions for vertical video
     
+    # Check if GPU is enabled
+    use_gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "") != ""
+    if use_gpu:
+        try:
+            # Try to import moviepy with GPU support
+            from moviepy.video.io.VideoFileClip import VideoFileClip
+            print("MoviePy GPU acceleration enabled")
+        except ImportError:
+            print("MoviePy GPU acceleration not available, falling back to CPU")
+            use_gpu = False
+    
     for filename in sorted(os.listdir(folderName)):
         if filename.endswith((".jpg", ".jpeg", ".png")):
             img_path = os.path.join(folderName, filename)
@@ -166,8 +177,19 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
                 # Use the smaller ratio to ensure the entire image fits
                 scale_factor = min(width_ratio, height_ratio) * 0.9  # 90% of max size for a small margin
                 
-                # Resize the image while maintaining aspect ratio
-                resized_img = img.resize(scale_factor)
+                # Resize the image
+                new_width = int(img_width * scale_factor)
+                new_height = int(img_height * scale_factor)
+                
+                # Use the resize method with proper parameters
+                try:
+                    resized_img = img.resize((new_width, new_height))
+                except Exception as resize_error:
+                    print(f"Error resizing with resize method: {resize_error}")
+                    # Alternative approach using fx.resize
+                    from moviepy.video.fx.resize import resize
+                    resized_img = resize(img, width=new_width, height=new_height)
+                
                 print(f"Resized to: {resized_img.size[0]}x{resized_img.size[1]}")
                 
                 # Set duration and position the image in the center
@@ -212,8 +234,13 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     # Set audio to video
     video = video.set_audio(audio)
     
-    # Write the final video file
+    # Write the final video file with GPU acceleration if available
     print(f"Writing video to {outputVideo}")
-    video.write_videofile(outputVideo, fps=frameRarte)
+    if use_gpu:
+        # Use hardware acceleration if available
+        video.write_videofile(outputVideo, fps=frameRarte, codec='h264_nvenc')
+    else:
+        # Use standard encoding
+        video.write_videofile(outputVideo, fps=frameRarte)
     
     return outputVideo

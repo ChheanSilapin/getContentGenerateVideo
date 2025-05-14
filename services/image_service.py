@@ -1,117 +1,114 @@
 """
-Image Service - Handles image processing functionality
+Image Service - Handles image acquisition and processing
 """
 import os
 import sys
 import shutil
-import urllib.parse
+from pathlib import Path
 
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from utils.helpers import get_title_content
 from create_video import downloadImage
-from config import SUPPORTED_IMAGE_EXTENSIONS
 
-def download_images(website_url, images_dir, stop_event=None):
+def download_images(url, output_folder):
     """
-    Download images from a website URL
+    Download images from a website
     
     Args:
-        website_url: URL to download images from
-        images_dir: Directory to save images to
-        stop_event: Threading event to signal process termination
+        url: Website URL
+        output_folder: Folder to save images
         
     Returns:
-        tuple: (folder_name, title, content) or (None, None, None) on failure
-    """
-    if stop_event and stop_event.is_set():
-        print("Process stopped by user.")
-        return None, None, None
-        
-    title, content = get_title_content(website_url)
-    print(f"Retrieved title: {title[:50]}...")
-    print(f"Content length: {len(content)} characters")
-    
-    # Check if the URL is a direct image file
-    parsed_url = urllib.parse.urlparse(website_url)
-    path = parsed_url.path.lower()
-    
-    if path.endswith(SUPPORTED_IMAGE_EXTENSIONS):
-        # For direct image URLs, don't create placeholder images
-        folderName = downloadImage(title, content, website_url, folder_name=images_dir, placeholder_count=0)
-    else:
-        # For regular websites, use default behavior
-        folderName = downloadImage(title, content, website_url, folder_name=images_dir)
-        
-    print(f"Images downloaded to: {folderName}")
-    return folderName, title, content
-
-def copy_selected_images(selected_images=None, images_dir="images", source_folder=None):
-    """
-    Copy selected images to the images directory
-    
-    Args:
-        selected_images: List of paths to selected images
-        images_dir: Directory to save images to
-        source_folder: Folder containing images to copy
-        
-    Returns:
-        str: Path to the images directory or None on failure
+        bool: True if successful, False otherwise
     """
     try:
-        # Create the images directory if it doesn't exist
-        os.makedirs(images_dir, exist_ok=True)
+        # Get title and content from URL
+        from utils.helpers import get_title_content
+        title, content = get_title_content(url)
         
-        image_count = 0
+        # Check if the URL is a direct image file
+        import urllib.parse
+        parsed_url = urllib.parse.urlparse(url)
+        path = parsed_url.path.lower()
         
-        if selected_images:
-            # Copy specific selected images
-            for i, src_path in enumerate(selected_images):
-                if os.path.isfile(src_path):
-                    # Rename to ensure sequential numbering
-                    dst_path = os.path.join(images_dir, f"{i}.jpg")
-                    try:
-                        shutil.copy2(src_path, dst_path)
-                        print(f"Copied {os.path.basename(src_path)} to {dst_path}")
-                        image_count += 1
-                    except Exception as e:
-                        print(f"Error copying {src_path}: {e}")
-        elif source_folder:
-            # Copy all images from source folder
-            for filename in os.listdir(source_folder):
-                if filename.lower().endswith(SUPPORTED_IMAGE_EXTENSIONS):
-                    src_path = os.path.join(source_folder, filename)
-                    if os.path.isfile(src_path):  # Make sure it's a file, not a directory
-                        # Rename to ensure sequential numbering
-                        dst_path = os.path.join(images_dir, f"{image_count}.jpg")
-                        try:
-                            shutil.copy2(src_path, dst_path)
-                            print(f"Copied {filename} to {dst_path}")
-                            image_count += 1
-                        except Exception as e:
-                            print(f"Error copying {src_path}: {e}")
+        # For direct image URLs, don't create placeholder images
+        placeholder_count = 0 if path.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')) else 4
         
-        if image_count == 0:
-            print("No images were copied. Creating placeholder images.")
-            # Create placeholder images
-            try:
-                import requests
-                for i in range(3):
-                    img_path = os.path.join(images_dir, f"{i}.jpg")
-                    response = requests.get("https://dummyimage.com/640x360/eee/aaa", timeout=10)
-                    response.raise_for_status()
-                    with open(img_path, "wb") as f:
-                        f.write(response.content)
-                    print(f"Created placeholder image {i}")
-                    image_count += 1
-            except Exception as e:
-                print(f"Error creating placeholder images: {e}")
-                return None
-        
-        print(f"Total images copied: {image_count}")
-        return images_dir
-        
+        # Call downloadImage with all required parameters
+        result = downloadImage(title, content, url, output_folder, placeholder_count)
+        return result is not None
     except Exception as e:
-        print(f"Error copying images: {e}")
-        return None
+        print(f"Error downloading images: {e}")
+        return False
+
+def copy_selected_images(selected_images, output_folder):
+    """
+    Copy selected images to the output folder
+    
+    Args:
+        selected_images: List of image paths
+        output_folder: Folder to copy images to
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        
+        for i, img_path in enumerate(selected_images):
+            # Get file extension
+            _, ext = os.path.splitext(img_path)
+            
+            # Create destination path with sequential numbering
+            dest_path = os.path.join(output_folder, f"{i:03d}{ext}")
+            
+            # Copy the file
+            shutil.copy2(img_path, dest_path)
+            print(f"Copied {img_path} to {dest_path}")
+            
+        return True
+    except Exception as e:
+        print(f"Error copying selected images: {e}")
+        return False
+
+def copy_images_from_folder(source_folder, output_folder):
+    """
+    Copy all images from source folder to output folder
+    
+    Args:
+        source_folder: Source folder containing images
+        output_folder: Folder to copy images to
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        
+        # Get all image files
+        image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
+        image_files = [f for f in os.listdir(source_folder) 
+                      if os.path.isfile(os.path.join(source_folder, f)) 
+                      and f.lower().endswith(image_extensions)]
+        
+        if not image_files:
+            print(f"No image files found in {source_folder}")
+            return False
+            
+        # Copy each image with sequential numbering
+        for i, filename in enumerate(sorted(image_files)):
+            src_path = os.path.join(source_folder, filename)
+            _, ext = os.path.splitext(filename)
+            dest_path = os.path.join(output_folder, f"{i:03d}{ext}")
+            
+            shutil.copy2(src_path, dest_path)
+            print(f"Copied {src_path} to {dest_path}")
+            
+        return True
+    except Exception as e:
+        print(f"Error copying images from folder: {e}")
+        return False
+
+
+

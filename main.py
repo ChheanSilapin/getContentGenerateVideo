@@ -3,9 +3,11 @@
 Video Generator - Main Entry Point
 Creates videos with subtitles from text and images
 """
+import moviepy_patch
+import tkinter as tk
+from tkinter import filedialog
 import os
 import sys
-import tkinter as tk
 import threading
 from ui.gui import VideoGeneratorGUI
 
