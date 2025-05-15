@@ -1,3 +1,3 @@
 """
-Services package for the Video Generator application
+Services package for video generator
 """

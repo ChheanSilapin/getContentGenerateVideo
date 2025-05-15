@@ -14,4 +14,4 @@ if not hasattr(Image, 'ANTIALIAS'):
         # Fallback for other versions
         Image.ANTIALIAS = Image.LANCZOS
 
-print("MoviePy patch applied: Added ANTIALIAS constant to PIL.Image")
+# MoviePy patch applied: Added ANTIALIAS constant to PIL.Image
