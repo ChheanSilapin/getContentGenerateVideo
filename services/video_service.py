@@ -3,25 +3,10 @@ Video service for creating videos
 """
 import os
 import sys
-import shutil
 import subprocess
 
-# Add the parent directory to the path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import from create_video.py
-try:
-    from create_video import createSideShowWithFFmpeg
-except ImportError:
-    print("Error importing createSideShowWithFFmpeg from create_video.py")
-
 # Import config
-try:
-    from config import DEFAULT_FRAME_RATE, DEFAULT_ZOOM_FACTOR
-except ImportError:
-    # Default values if config.py is not available
-    DEFAULT_FRAME_RATE = 25
-    DEFAULT_ZOOM_FACTOR = 0.5
+from config import DEFAULT_FRAME_RATE, DEFAULT_ZOOM_FACTOR
 
 def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True):
     """
@@ -42,6 +27,9 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
         bool: True if successful, False otherwise
     """
     try:
+        # Import the createSideShowWithFFmpeg function
+        from create_video import createSideShowWithFFmpeg
+        
         # Set environment variable for GPU/CPU selection
         if use_gpu:
             print("Using GPU for video processing")
@@ -87,12 +75,9 @@ def merge_video_with_subtitles(video_path, subtitle_path, output_file):
         str: Path to merged video or None on failure
     """
     try:
+        # Import the merge_video_subtitle function
+        from Final_Video import merge_video_subtitle
         return merge_video_subtitle(video_path, subtitle_path, output_file)
     except Exception as e:
         print(f"Error merging video with subtitles: {e}")
         return None
-
-
-
-
-

@@ -11,9 +11,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.audio_service import generate_audio
 from services.image_service import download_images, copy_selected_images
-from services.video_service import create_slideshow
+from services.video_service import create_slideshow, merge_video_with_subtitles
 from services.subtitle_service import generate_subtitles
-from Final_Video import merge_video_subtitle
 # Define get_title_content function directly to avoid import issues
 def get_title_content(text):
     """
@@ -74,7 +73,7 @@ class VideoGeneratorModel:
             print("Process stopped by user.")
             self.update_progress(0, "Process stopped by user")
             return None, None, None
-        
+
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -117,7 +116,7 @@ class VideoGeneratorModel:
                 print("ERROR: No images selected from website.")
                 self.update_progress(0, "No images selected from website")
                 return None, None, None
-            
+
             print(f"Using {len(self.selected_images)} selected images from website")
             self.update_progress(35, f"Copying {len(self.selected_images)} selected images")
             if not copy_selected_images(self.selected_images, images_dir):
@@ -173,11 +172,11 @@ class VideoGeneratorModel:
 
         # Pass the processing option and effect settings to the create_slideshow function
         if not create_slideshow(
-            images_dir, 
-            title, 
-            content, 
-            audio_file, 
-            video_file, 
+            images_dir,
+            title,
+            content,
+            audio_file,
+            video_file,
             use_gpu=(self.processing_option == "gpu"),
             use_effects=use_effects,
             zoom_effect=zoom_effect,
@@ -231,7 +230,7 @@ class VideoGeneratorModel:
         self.update_progress(95, "Finalizing video...")
         final_output = os.path.join(output_dir, "final_output.mp4")
 
-        result = merge_video_subtitle(videoPath, subtitlePath, final_output)
+        result = merge_video_with_subtitles(videoPath, subtitlePath, final_output)
 
         if result:
             print(f"Video generated successfully: {result}")

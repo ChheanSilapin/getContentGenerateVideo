@@ -51,7 +51,7 @@ def generate_audio(text, output_file):
             else:  # Linux
                 # Try using espeak
                 subprocess.run(["espeak", "-w", output_file, text], check=True)
-                
+            
             # Check if the file was created
             if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
                 print(f"Audio generated successfully using system TTS: {output_file}")
@@ -59,8 +59,6 @@ def generate_audio(text, output_file):
             else:
                 print(f"Audio file not created or empty: {output_file}")
                 return False
-                
     except Exception as e:
         print(f"Error generating audio: {e}")
         return False
-

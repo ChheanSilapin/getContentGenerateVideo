@@ -4,16 +4,19 @@ Image service for downloading and processing images
 import os
 import sys
 import shutil
-import urllib.parse
 import requests
 from bs4 import BeautifulSoup
+import urllib.parse
+
+# Import config
+from config import SUPPORTED_IMAGE_EXTENSIONS
 
 def download_images(website_url, output_folder):
     """
-    Download images from a website
+    Download images from a website URL
     
     Args:
-        website_url: URL of the website
+        website_url: URL to download images from
         output_folder: Folder to save images
         
     Returns:
@@ -32,7 +35,7 @@ def download_images(website_url, output_folder):
         # Check if the URL is a direct image file
         parsed_url = urllib.parse.urlparse(website_url)
         path = parsed_url.path.lower()
-        if path.endswith(('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')):
+        if path.endswith(SUPPORTED_IMAGE_EXTENSIONS):
             print("Direct image URL detected, downloading as first image")
             img_path = os.path.join(output_folder, "0.jpg")
             try:
@@ -89,45 +92,94 @@ def download_images(website_url, output_folder):
         print(f"Error downloading images: {e}")
         return False
 
-def copy_images_from_folder(source_folder, output_folder):
+def download_images_for_preview(website_url, output_folder, limit=10):
     """
-    Copy images from a local folder
+    Download images from a website URL for preview
     
     Args:
-        source_folder: Source folder containing images
+        website_url: URL to download images from
         output_folder: Folder to save images
+        limit: Maximum number of images to download
         
     Returns:
-        bool: True if successful, False otherwise
+        list: List of image paths
     """
     try:
         # Create output folder if it doesn't exist
         if not os.path.exists(output_folder):
             os.makedirs(output_folder, exist_ok=True)
         
-        # Get all image files
-        image_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
-        image_files = [f for f in os.listdir(source_folder) if f.lower().endswith(image_extensions)]
+        # Set up headers for the request
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
         
-        if not image_files:
-            print(f"No image files found in {source_folder}")
-            return False
+        image_paths = []
         
-        # Copy images
-        for i, image_file in enumerate(image_files):
-            source_path = os.path.join(source_folder, image_file)
-            output_path = os.path.join(output_folder, f"{i}.jpg")
-            
+        # Check if the URL is a direct image file
+        parsed_url = urllib.parse.urlparse(website_url)
+        path = parsed_url.path.lower()
+        if path.endswith(SUPPORTED_IMAGE_EXTENSIONS):
+            print("Direct image URL detected, downloading as first image")
+            img_path = os.path.join(output_folder, "0.jpg")
             try:
-                shutil.copy2(source_path, output_path)
-                print(f"Copied image {i+1}: {source_path} -> {output_path}")
+                img_response = requests.get(website_url, headers=headers, timeout=10)
+                img_response.raise_for_status()
+                with open(img_path, "wb") as f:
+                    f.write(img_response.content)
+                print(f"Downloaded direct image to {img_path}")
+                image_paths.append(img_path)
+                return image_paths
             except Exception as e:
-                print(f"Failed to copy image {i}: {e}")
+                print(f"Failed to download direct image: {e}")
+                return []
         
-        return True
+        # Get the webpage content
+        print(f"Downloading webpage: {website_url}")
+        response = requests.get(website_url, headers=headers, timeout=10)
+        response.raise_for_status()
+        
+        # Parse the HTML
+        soup = BeautifulSoup(response.text, "html.parser")
+        
+        # Find all image tags
+        img_tags = soup.find_all("img")
+        
+        # Extract image URLs
+        img_urls = []
+        for img in img_tags:
+            img_url = img.get("src")
+            if img_url:
+                # Convert relative URLs to absolute URLs
+                if not img_url.startswith(("http://", "https://")):
+                    img_url = urllib.parse.urljoin(website_url, img_url)
+                img_urls.append(img_url)
+        
+        # Limit the number of images
+        img_urls = img_urls[:limit]
+        
+        if not img_urls:
+            print("No images found on the webpage")
+            return []
+        
+        # Download images
+        for i, img_url in enumerate(img_urls):
+            img_path = os.path.join(output_folder, f"{i}.jpg")
+            try:
+                print(f"Downloading image from: {img_url}")
+                img_response = requests.get(img_url, headers=headers, timeout=10)
+                img_response.raise_for_status()
+                with open(img_path, "wb") as f:
+                    f.write(img_response.content)
+                print(f"Downloaded image {i+1} to {img_path}")
+                image_paths.append(img_path)
+            except Exception as e:
+                print(f"Failed to download image {i}: {e}")
+        
+        return image_paths
     except Exception as e:
-        print(f"Error copying images: {e}")
-        return False
+        print(f"Error downloading images: {e}")
+        return []
 
 def copy_selected_images(image_paths, output_folder):
     """
@@ -163,6 +215,3 @@ def copy_selected_images(image_paths, output_folder):
     except Exception as e:
         print(f"Error copying selected images: {e}")
         return False
-
-
-

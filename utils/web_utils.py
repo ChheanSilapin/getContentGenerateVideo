@@ -1,10 +1,21 @@
+"""
+Web utility functions for the Video Generator application
+"""
 import requests
 from bs4 import BeautifulSoup
 import os
 import urllib.parse
 
-def getTitleContent(url):
-    """Get the title and content from a website URL"""
+def get_title_content_from_url(url):
+    """
+    Get the title and content from a website URL
+    
+    Args:
+        url: Website URL
+        
+    Returns:
+        tuple: (title, content)
+    """
     try:
         # Check if the URL is a direct image file
         parsed_url = urllib.parse.urlparse(url)
