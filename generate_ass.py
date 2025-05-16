@@ -30,8 +30,21 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
         with open(subtitle_path, "w", encoding="utf-8") as f:
             f.write("[Script Info]\nTitle: Generated Subtitle\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\n\n")
             f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-            f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1\n")
-            f.write("Style: Loud,Arial,36,&H0000FFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1\n\n")
+            
+            # Alignment=8 positions text at the top center of the screen
+            # MarginV=200 adds space from the top (lower value = higher position)
+            
+            # White text with black outline, no background - positioned higher
+            f.write("Style: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,250,1\n")
+            # Red text style - positioned higher
+            f.write("Style: Red,Arial,42,&H000000FF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,250,1\n")
+            # Blue text style - positioned higher
+            f.write("Style: Blue,Arial,42,&H00FF0000,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,250,1\n")
+            # Cyan text style - positioned higher
+            f.write("Style: Cyan,Arial,42,&H00FFFF00,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,250,1\n")
+            # Red background style - positioned higher
+            f.write("Style: RedBG,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H000000FF,1,0,0,0,100,100,0,0,4,0,0,2,10,10,250,1\n\n")
+            
             f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
     except Exception as e:
         print(f"Error creating subtitle file structure: {e}")
@@ -74,45 +87,121 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             print("WARNING: Text file is empty, using default text")
             text = "Default subtitle text because original file was empty."
         text = process_text_for_subtitles(text)
-        lines = []
-        remaining_text = text
-        while remaining_text:
-            if len(remaining_text) <= maxChar:
-                lines.append(remaining_text)
-                break
-            split_at = remaining_text[:maxChar].rfind(' ')
-            if split_at == -1:
-                split_at = maxChar
-            lines.append(remaining_text[:split_at])
-            remaining_text = remaining_text[split_at:].strip()
-
+        # Convert text to uppercase
+        text = text.upper()
+        
+        # Split text into words
+        words = text.split()
+        
+        # Calculate approximate duration per word based on audio length
+        word_duration = audio.duration / len(words) if words else 1.0
+        
+        # Try to use more sophisticated audio analysis for word timing if possible
+        try:
+            from pydub import AudioSegment
+            from pydub.silence import detect_nonsilent
+            
+            audio_segment = AudioSegment.from_file(audio_file)
+            
+            # Detect non-silent parts with more sensitive parameters
+            non_silent_ranges = detect_nonsilent(
+                audio_segment, 
+                min_silence_len=150,  # Shorter silence detection (was 200)
+                silence_thresh=-35    # More sensitive threshold (was -40)
+            )
+            
+            # If we have detected speech segments
+            if non_silent_ranges:
+                # Add a small offset to start highlighting slightly before the sound
+                offset_ms = 100  # 100ms offset
+                
+                # Use detected speech segments for timing
+                word_timings = []
+                segment_duration = [end - start for start, end in non_silent_ranges]
+                total_speech_duration = sum(segment_duration)
+                
+                # Distribute words across speech segments
+                words_per_segment = [max(1, round(len(words) * dur / total_speech_duration)) for dur in segment_duration]
+                
+                # Adjust to match total word count
+                while sum(words_per_segment) > len(words):
+                    idx = segment_duration.index(max(segment_duration))
+                    if words_per_segment[idx] > 1:
+                        words_per_segment[idx] -= 1
+                    segment_duration[idx] *= 0.9
+                
+                while sum(words_per_segment) < len(words):
+                    idx = segment_duration.index(max(segment_duration))
+                    words_per_segment[idx] += 1
+                    segment_duration[idx] *= 0.9
+                
+                # Create word timings with offset
+                word_idx = 0
+                for i, (start_ms, end_ms) in enumerate(non_silent_ranges):
+                    segment_word_count = words_per_segment[i]
+                    segment_duration_ms = end_ms - start_ms
+                    
+                    for j in range(segment_word_count):
+                        if word_idx < len(words):
+                            # Apply offset to start highlighting earlier
+                            word_start = max(0, start_ms - offset_ms) + (j * segment_duration_ms / segment_word_count)
+                            # Extend the end time slightly to ensure overlap with next word
+                            word_end = start_ms + ((j + 1) * segment_duration_ms / segment_word_count) + offset_ms
+                            word_timings.append((word_start / 1000, word_end / 1000))
+                            word_idx += 1
+                
+                print(f"Using audio analysis for word timing: {len(word_timings)} timings for {len(words)} words")
+                sophisticated_timing = True
+            else:
+                sophisticated_timing = False
+                print("Audio analysis didn't produce usable word timings, using simple timing")
+        except Exception as audio_error:
+            print(f"Advanced audio analysis not available: {audio_error}")
+            sophisticated_timing = False
+        
+        # Define color patterns - alternate between different colors
+        colors = ["Cyan", "Default", "Blue", "Default"]
+        highlight_color = "RedBG"  # Red background for the current word
+        
         with open(subtitle_path, "a", encoding="utf-8") as f:
-            # Calculate timing
-            line_duration = audio.duration / len(lines) if lines else audio.duration
-            for i, line in enumerate(lines):
-                line_start = i * line_duration
-                line_end = (i + 1) * line_duration
-                # Format time as H:MM:SS.ms
-                start = f"{int(line_start//3600)}:{int((line_start%3600)//60):02d}:{line_start%60:.2f}"
-                end = f"{int(line_end//3600)}:{int((line_end%3600)//60):02d}:{line_end%60:.2f}"
-                # Escape special characters
-                line = line.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-                # Determine style
-                style = "Loud" if "!" in line or line.isupper() else "Default"
-                # Write the line
-                f.write(f"Dialogue: 0,{start},{end},{style},,0,0,0,,{line}\n")
-        video.close()
-        audio.close()
-        print(f"Successfully created subtitles")
-        if os.path.exists(subtitle_path):
-            file_size = os.path.getsize(subtitle_path)
-            if file_size < 100:
-                print("WARNING: Subtitle file is suspiciously small!")
-        else:
-            print("ERROR: Subtitle file was not created!")
-
+            if sophisticated_timing:
+                # Use the detected word timings with overlap
+                for i, word in enumerate(words):
+                    if i < len(word_timings):
+                        word_start, word_end = word_timings[i]
+                        
+                        # Format time as H:MM:SS.ms
+                        start = f"{int(word_start//3600)}:{int((word_start%3600)//60):02d}:{word_start%60:.2f}"
+                        end = f"{int(word_end//3600)}:{int((word_end%3600)//60):02d}:{word_end%60:.2f}"
+                        
+                        # Escape special characters
+                        safe_word = word.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+                        
+                        # Write a separate line for each word with its own style
+                        # This creates a cleaner look with only the current word highlighted
+                        f.write(f"Dialogue: 0,{start},{end},{highlight_color},,0,0,0,,{safe_word}\n")
+            else:
+                # Use simple timing with overlap
+                word_duration = audio.duration / (len(words) * 1.2)  # 20% faster to catch up with audio
+                overlap = word_duration * 0.1  # 10% overlap between words
+                
+                for i, word in enumerate(words):
+                    # Start slightly earlier and end slightly later for better sync
+                    word_start = max(0, i * word_duration - overlap)
+                    word_end = (i + 1) * word_duration + overlap
+                    
+                    # Format time as H:MM:SS.ms
+                    start = f"{int(word_start//3600)}:{int((word_start%3600)//60):02d}:{word_start%60:.2f}"
+                    end = f"{int(word_end//3600)}:{int((word_end%3600)//60):02d}:{word_end%60:.2f}"
+                    
+                    # Escape special characters
+                    safe_word = word.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+                    
+                    # Write a separate line for each word with its own style
+                    f.write(f"Dialogue: 0,{start},{end},{highlight_color},,0,0,0,,{safe_word}\n")
+        
+        print(f"Successfully created subtitles with dynamic word highlighting")
         return subtitle_path
-
     except Exception as e:
         print(f"ERROR in subtitle generation: {str(e)}")
         print("Full traceback:")

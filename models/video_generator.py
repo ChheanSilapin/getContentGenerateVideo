@@ -11,7 +11,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from services.audio_service import generate_audio
 from services.image_service import download_images, copy_selected_images
-from services.video_service import create_slideshow
+from services.video_service import create_enhanced_slideshow
 from services.subtitle_service import generate_subtitles
 from Final_Video import merge_video_subtitle
 # Define get_title_content function directly to avoid import issues
@@ -49,6 +49,27 @@ class VideoGeneratorModel:
         self.output_folder = None
         self.processing_option = "cpu"  # Default to CPU
         self.progress_callback = None
+        
+        # Enhancement options
+        self.use_effects = True
+        self.zoom_effect = True
+        self.fade_effect = True
+        self.enhancement_options = {
+            "color_correction": True,
+            "background_replacement": False,
+            "audio_enhancement": True,
+            "motion_graphics": False,
+            "framing": True,
+            "color_correction_intensity": 1.0,
+            "framing_crop_percent": 0.95,
+            "audio_volume_boost": 1.2,
+            "motion_graphics_opacity": 0.15,
+            "contrast": 1.1,
+            "brightness": 0.05,
+            "saturation": 1.2,
+            "sharpness": 1.0,
+            "noise_reduction": True
+        }
 
     def set_progress_callback(self, callback):
         """Set a callback function for progress updates"""
@@ -171,8 +192,8 @@ class VideoGeneratorModel:
         zoom_effect = getattr(self, 'zoom_effect', True)
         fade_effect = getattr(self, 'fade_effect', True)
 
-        # Pass the processing option and effect settings to the create_slideshow function
-        if not create_slideshow(
+        # Pass the processing option and effect settings to the create_enhanced_slideshow function
+        if not create_enhanced_slideshow(
             images_dir, 
             title, 
             content, 
@@ -181,7 +202,9 @@ class VideoGeneratorModel:
             use_gpu=(self.processing_option == "gpu"),
             use_effects=use_effects,
             zoom_effect=zoom_effect,
-            fade_effect=fade_effect
+            fade_effect=fade_effect,
+            enhance=True,  # Enable enhancements
+            enhancement_options=getattr(self, 'enhancement_options', None)
         ):
             print("ERROR: Failed to create video.")
             self.update_progress(0, "Failed to create video")

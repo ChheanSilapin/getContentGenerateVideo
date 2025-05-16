@@ -17,15 +17,96 @@ import urllib.parse
 
 # Import the model
 try:
+    import sys
+    import os
+    # Add the parent directory to the path to ensure imports work
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+    
+    # Try to import OpenCV, but don't fail if it's not available
+    try:
+        import cv2
+    except ImportError:
+        print("OpenCV (cv2) not available. Some features may be limited.")
+    
     from models.video_generator import VideoGeneratorModel
-except ImportError:
-    print("Error importing VideoGeneratorModel")
+except ImportError as e:
+    print(f"Error importing VideoGeneratorModel: {e}")
+    # Create a fallback model class if import fails
+    class VideoGeneratorModel:
+        """Fallback model class when the real one can't be imported"""
+        def __init__(self):
+            print("WARNING: Using fallback VideoGeneratorModel")
+            self.text_input = None
+            self.image_source = None
+            self.website_url = None
+            self.local_folder = None
+            self.selected_images = []
+            self.processing_option = "cpu"
+            self.progress_callback = None
+            
+        def set_progress_callback(self, callback):
+            """Set a callback function for progress updates"""
+            self.progress_callback = callback
+            
+        def update_progress(self, value, message=None):
+            """Update progress value and message"""
+            if self.progress_callback:
+                self.progress_callback(value, message)
+            else:
+                print(f"Progress: {value}% - {message}")
+            
+        def generate_video(self, stop_event=None):
+            """Generate a placeholder video"""
+            print("Using fallback video generation")
+            # Create output directory
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            output_dir = os.path.join("output", f"video_{timestamp}")
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # Create placeholder files
+            subtitle_file = os.path.join(output_dir, "subtitles.ass")
+            video_file = os.path.join(output_dir, "video.mp4")
+            
+            with open(subtitle_file, "w") as f:
+                f.write("Placeholder subtitle file")
+                
+            with open(video_file, "w") as f:
+                f.write("Placeholder video file")
+                
+            return subtitle_file, video_file, output_dir
+            
+        def finalize_video(self, subtitle_path, video_path, output_dir, stop_event=None):
+            """Finalize the placeholder video"""
+            final_output = os.path.join(output_dir, "final_output.mp4")
+            
+            with open(final_output, "w") as f:
+                f.write("Placeholder final video file")
+                
+            return final_output
+
+# Import datetime correctly
+import datetime
 
 # Import services
 try:
     from services.image_service import download_images, download_images_for_preview, copy_selected_images
-except ImportError:
-    print("Error importing image service functions")
+except ImportError as e:
+    print(f"Error importing image service functions: {e}")
+    # Create fallback functions
+    def download_images(url, output_folder, max_images=10):
+        """Fallback download_images function"""
+        print(f"Fallback: download_images({url}, {output_folder}, {max_images})")
+        return []
+        
+    def download_images_for_preview(url, output_folder, max_images=10):
+        """Fallback download_images_for_preview function"""
+        print(f"Fallback: download_images_for_preview({url}, {output_folder}, {max_images})")
+        return []
+        
+    def copy_selected_images(image_paths, output_folder):
+        """Fallback copy_selected_images function"""
+        print(f"Fallback: copy_selected_images({image_paths}, {output_folder})")
+        return False
 
 class SimpleVideoGeneratorUI:
     def __init__(self, root):
@@ -71,16 +152,19 @@ class SimpleVideoGeneratorUI:
         # Create tabs
         self.input_tab = ttk.Frame(self.notebook)
         self.image_tab = ttk.Frame(self.notebook)
+        self.enhancement_tab = ttk.Frame(self.notebook)
         self.log_tab = ttk.Frame(self.notebook)
 
         # Add tabs to notebook
         self.notebook.add(self.input_tab, text=" Input ")
         self.notebook.add(self.image_tab, text=" Images ")
+        self.notebook.add(self.enhancement_tab, text=" Enhancement ")
         self.notebook.add(self.log_tab, text=" Log ")
 
         # Set up tabs
         self.setup_input_tab()
         self.setup_image_tab()
+        self.setup_enhancement_tab()
         self.setup_log_tab()
 
     def setup_input_tab(self):
@@ -112,32 +196,33 @@ class SimpleVideoGeneratorUI:
         self.text_input.config(yscrollcommand=text_scrollbar.set)
 
         # Image source section
-        image_source_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=10)
-        image_source_frame.pack(fill=tk.X, padx=5, pady=5)
-
-        url_frame = ttk.Frame(image_source_frame)
+        image_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=10)
+        image_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Website URL input
+        url_frame = ttk.Frame(image_frame)
         url_frame.pack(fill=tk.X, padx=5, pady=5)
-
+        
         url_label = ttk.Label(url_frame, text="Website URL:")
         url_label.pack(side=tk.LEFT, padx=5)
-
-        self.url_entry = ttk.Entry(url_frame, width=50, font=("Helvetica", 10))
+        
+        self.website_url = tk.StringVar()
+        self.url_entry = ttk.Entry(url_frame, textvariable=self.website_url, width=40)
         self.url_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-
-        # Image selection button with hover effect
-        image_select_button = tk.Button(
+        
+        url_button = tk.Button(
             url_frame,
-            text="Browse Images",
+            text="Browse",
             bg=self.colors["secondary"],
             fg="white",
-            font=("Helvetica", 10, "bold"),
+            font=("Helvetica", 10),
             relief="flat",
-            activebackground=self.colors["primary"],
-            command=lambda: self.notebook.select(self.image_tab)
+            command=self.url_button_click,
+            activebackground=self.colors["primary"]
         )
-        image_select_button.pack(side=tk.LEFT, padx=5)
-        image_select_button.bind("<Enter>", lambda e: image_select_button.config(bg=self.colors["primary"]))
-        image_select_button.bind("<Leave>", lambda e: image_select_button.config(bg=self.colors["secondary"]))
+        url_button.pack(side=tk.LEFT, padx=5)
+        url_button.bind("<Enter>", lambda e: url_button.config(bg=self.colors["primary"]))
+        url_button.bind("<Leave>", lambda e: url_button.config(bg=self.colors["secondary"]))
 
         # Processing options
         options_frame = ttk.LabelFrame(main_frame, text="Processing Options", padding=10)
@@ -350,6 +435,123 @@ class SimpleVideoGeneratorUI:
         clear_all_btn.bind("<Enter>", lambda e: clear_all_btn.config(bg="#95a5a6"))
         clear_all_btn.bind("<Leave>", lambda e: clear_all_btn.config(bg=self.colors["light_text"]))
 
+    def setup_enhancement_tab(self):
+        """Set up the enhancement tab with video optimization options"""
+        main_frame = ttk.Frame(self.enhancement_tab, padding=10)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Header
+        header_frame = ttk.Frame(main_frame)
+        header_frame.pack(fill=tk.X, padx=5, pady=(5, 10))
+
+        label = ttk.Label(header_frame, text="Video Enhancement Options", font=("Helvetica", 14, "bold"))
+        label.pack(side=tk.LEFT)
+
+        # Basic options section
+        basic_frame = ttk.LabelFrame(main_frame, text="Basic Options", padding=10)
+        basic_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Create variables for enhancement options
+        self.color_correction = tk.BooleanVar(value=True)
+        self.audio_enhancement = tk.BooleanVar(value=True)
+        self.framing = tk.BooleanVar(value=True)
+        self.motion_graphics = tk.BooleanVar(value=False)
+        self.noise_reduction = tk.BooleanVar(value=True)
+
+        # Create a grid layout for checkboxes
+        ttk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction).grid(row=0, column=0, sticky=tk.W, padx=20, pady=5)
+        ttk.Checkbutton(basic_frame, text="Audio Enhancement", variable=self.audio_enhancement).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
+        ttk.Checkbutton(basic_frame, text="Framing", variable=self.framing).grid(row=1, column=0, sticky=tk.W, padx=20, pady=5)
+        ttk.Checkbutton(basic_frame, text="Motion Graphics", variable=self.motion_graphics).grid(row=1, column=1, sticky=tk.W, padx=20, pady=5)
+        ttk.Checkbutton(basic_frame, text="Noise Reduction", variable=self.noise_reduction).grid(row=2, column=0, sticky=tk.W, padx=20, pady=5)
+
+        # Advanced options section
+        advanced_frame = ttk.LabelFrame(main_frame, text="Advanced Options", padding=10)
+        advanced_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Create sliders for advanced options
+        self.color_intensity = tk.DoubleVar(value=1.0)
+        self.crop_percent = tk.DoubleVar(value=0.95)
+        self.volume_boost = tk.DoubleVar(value=1.2)
+        self.contrast = tk.DoubleVar(value=1.1)
+        self.brightness = tk.DoubleVar(value=0.05)
+        self.saturation = tk.DoubleVar(value=1.2)
+        self.sharpness = tk.DoubleVar(value=1.0)
+
+        # Left column
+        left_frame = ttk.Frame(advanced_frame)
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
+
+        ttk.Label(left_frame, text="Color Intensity:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(left_frame, from_=0.5, to=2.0, variable=self.color_intensity, length=200).grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        ttk.Label(left_frame, text="Framing Crop:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(left_frame, from_=0.8, to=1.0, variable=self.crop_percent, length=200).grid(row=1, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        ttk.Label(left_frame, text="Volume Boost:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(left_frame, from_=0.8, to=1.5, variable=self.volume_boost, length=200).grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        # Right column
+        right_frame = ttk.Frame(advanced_frame)
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
+        
+        ttk.Label(right_frame, text="Contrast:").grid(row=0, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(right_frame, from_=0.8, to=1.5, variable=self.contrast, length=200).grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        ttk.Label(right_frame, text="Brightness:").grid(row=1, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(right_frame, from_=0.0, to=0.2, variable=self.brightness, length=200).grid(row=1, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        ttk.Label(right_frame, text="Saturation:").grid(row=2, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(right_frame, from_=0.8, to=1.5, variable=self.saturation, length=200).grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+        
+        ttk.Label(right_frame, text="Sharpness:").grid(row=3, column=0, sticky=tk.W, pady=5)
+        ttk.Scale(right_frame, from_=0.0, to=2.0, variable=self.sharpness, length=200).grid(row=3, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+
+        # Help text
+        help_frame = ttk.Frame(main_frame)
+        help_frame.pack(fill=tk.X, padx=5, pady=10)
+        
+        help_text = ttk.Label(
+            help_frame, 
+            text="These settings control how your video will be enhanced. Basic options can be toggled on/off, while advanced options allow fine-tuning.",
+            font=("Helvetica", 9),
+            foreground=self.colors["light_text"],
+            wraplength=600
+        )
+        help_text.pack(fill=tk.X)
+
+        # Apply button
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill=tk.X, pady=10)
+        
+        apply_button = tk.Button(
+            button_frame,
+            text="Apply Settings",
+            bg=self.colors["success"],
+            fg="white",
+            font=("Helvetica", 11, "bold"),
+            relief="flat",
+            command=self.update_enhancement_options,
+            activebackground="#27ae60"
+        )
+        apply_button.pack(side=tk.RIGHT, padx=5)
+        apply_button.bind("<Enter>", lambda e: apply_button.config(bg="#27ae60"))
+        apply_button.bind("<Leave>", lambda e: apply_button.config(bg=self.colors["success"]))
+        
+        reset_button = tk.Button(
+            button_frame,
+            text="Reset to Defaults",
+            bg=self.colors["secondary"],
+            fg="white",
+            font=("Helvetica", 11, "bold"),
+            relief="flat",
+            command=self.reset_enhancement_options,
+            activebackground=self.colors["primary"]
+        )
+        reset_button.pack(side=tk.RIGHT, padx=5)
+        reset_button.bind("<Enter>", lambda e: reset_button.config(bg=self.colors["primary"]))
+        reset_button.bind("<Leave>", lambda e: reset_button.config(bg=self.colors["secondary"]))
+
     def setup_log_tab(self):
         self.log_text = tk.Text(
             self.log_tab,
@@ -498,9 +700,10 @@ class SimpleVideoGeneratorUI:
             def progress_callback(value, message=None):
                 self.root.after(0, lambda: self.update_progress_ui(value, message))
             self.model.set_progress_callback(progress_callback)
-            self.model.use_effects = True
-            self.model.zoom_effect = True
-            self.model.fade_effect = True
+            
+            # Update enhancement options before generating
+            self.update_enhancement_options()
+            
             subtitle_path, video_path, output_dir = self.model.generate_video(self.stop_event)
             if self.stop_event.is_set():
                 self.root.after(0, lambda: self.log("Video generation stopped by user"))
@@ -707,6 +910,10 @@ class SimpleVideoGeneratorUI:
         self.model.selected_images = self.selected_images
         self.model.website_url = ""
         self.model.local_folder = ""
+        
+        # Update enhancement options in the model
+        self.update_enhancement_options()
+        
         self.log(f"Starting video generation with {self.cpu_gpu.get()}")
         self.log(f"Text: {text[:50]}..." if len(text) > 50 else f"Text: {text}")
         self.log(f"Using {len(self.selected_images)} selected images")
@@ -718,6 +925,56 @@ class SimpleVideoGeneratorUI:
         self.generation_thread = threading.Thread(target=self.generate_video_thread)
         self.generation_thread.daemon = True
         self.generation_thread.start()
+
+    def update_enhancement_options(self):
+        """Update the model with current enhancement options"""
+        # Update basic options
+        self.model.enhancement_options = {
+            "color_correction": self.color_correction.get(),
+            "audio_enhancement": self.audio_enhancement.get(),
+            "framing": self.framing.get(),
+            "motion_graphics": self.motion_graphics.get(),
+            "noise_reduction": self.noise_reduction.get(),
+            
+            # Advanced options
+            "color_correction_intensity": self.color_intensity.get(),
+            "framing_crop_percent": self.crop_percent.get(),
+            "audio_volume_boost": self.volume_boost.get(),
+            "contrast": self.contrast.get(),
+            "brightness": self.brightness.get(),
+            "saturation": self.saturation.get(),
+            "sharpness": self.sharpness.get()
+        }
+        
+        # Update effect flags
+        self.model.use_effects = any([self.color_correction.get(), self.motion_graphics.get(), self.framing.get()])
+        
+        # Log the changes
+        self.log("Enhancement options updated")
+        
+        # Switch back to input tab
+        self.notebook.select(self.input_tab)
+
+    def reset_enhancement_options(self):
+        """Reset enhancement options to defaults"""
+        # Reset basic options
+        self.color_correction.set(True)
+        self.audio_enhancement.set(True)
+        self.framing.set(True)
+        self.motion_graphics.set(False)
+        self.noise_reduction.set(True)
+        
+        # Reset advanced options
+        self.color_intensity.set(1.0)
+        self.crop_percent.set(0.95)
+        self.volume_boost.set(1.2)
+        self.contrast.set(1.1)
+        self.brightness.set(0.05)
+        self.saturation.set(1.2)
+        self.sharpness.set(1.0)
+        
+        # Log the changes
+        self.log("Enhancement options reset to defaults")
 
     def stop_button_click(self):
         if self.stop_event:
@@ -866,6 +1123,19 @@ class SimpleVideoGeneratorUI:
                 self.selected_images.remove(path)
         
         print(f"Selected images: {len(self.selected_images)}")
+
+    def toggle_advanced_options(self):
+        """Show or hide advanced enhancement options"""
+        if self.show_advanced.get():
+            self.advanced_frame.pack(fill=tk.X, padx=5, pady=2)
+            # Ensure the window is large enough to show everything
+            current_height = self.root.winfo_height()
+            if current_height < 700:  # Minimum height to show all controls
+                screen_height = self.root.winfo_screenheight()
+                new_height = min(700, screen_height - 100)  # Don't make it larger than screen
+                self.root.geometry(f"{self.root.winfo_width()}x{new_height}")
+        else:
+            self.advanced_frame.pack_forget()
 
 def main():
     root = tk.Tk()

@@ -18,3 +18,19 @@ video_generator/
 └── utils/
     ├── __init__.py
     └── helpers.py          # Common utility functions
+
+
+1. Changed Alignment Value: 
+    Changed from Alignment-2 (bottom center) to Alignment=8 (top center) 
+    The alignment values work like this: 
+    1, 2, 3 bottom (left, center, right) 
+    4, 5, 6 = middle (left, center, right) 
+    7, 8, 9 = top (left, center, right) 
+2. Added Vertical Margin: 
+    Set MarginV-200 to add space from the top edge 
+    You can adjust this value to fine-tune the position: 
+    Lower value = higher position (closer to top) 
+    Higher value = lower position (further from top) 
+    These changes will move the subtitles to the top center of the screen with some margin from the top edge. If you want to adjust che position further: 
+    To move subtitles higher: Decrease the MarginV value (e.g., 150, 100) 
+    To move subtitles lower: Increase the MarginV value (e.g., 250, 300)

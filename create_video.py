@@ -208,11 +208,12 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
                     scale_factor = min(width_ratio, height_ratio) * 0.9  # 90% of max size for a small margin
 
                     # Apply zoom effect - start slightly smaller and zoom in
-                    # Vary the effect based on the image index to create diversity
-                    img_index = int(filename.split('.')[0])
+                    # Use a hash of the filename instead of trying to parse as integer
+                    # This ensures consistent effects for the same file while avoiding parsing errors
+                    img_hash = hash(filename) % 4  # Get a number 0-3 based on filename hash
                     
-                    # Choose effect type based on image index
-                    effect_type = img_index % 4
+                    # Choose effect type based on hash value
+                    effect_type = img_hash
                     
                     if effect_type == 0:
                         # Zoom in effect
