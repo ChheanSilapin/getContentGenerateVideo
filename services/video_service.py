@@ -14,13 +14,20 @@ from utils.helpers import ensure_directory_exists
 
 # Import config
 try:
-    from config import DEFAULT_FRAME_RATE, DEFAULT_ZOOM_FACTOR, VIDEO_WIDTH, VIDEO_HEIGHT
+    from config import (
+        DEFAULT_FRAME_RATE, DEFAULT_ZOOM_FACTOR, VIDEO_WIDTH, VIDEO_HEIGHT,
+        DEFAULT_ASPECT_RATIO, RATIO_9_16, RATIO_16_9, RATIO_1_1
+    )
 except ImportError:
     # Default values if config.py is not available
     DEFAULT_FRAME_RATE = 25
     DEFAULT_ZOOM_FACTOR = 0.5
     VIDEO_WIDTH = 720
     VIDEO_HEIGHT = 1280
+    DEFAULT_ASPECT_RATIO = "9:16"
+    RATIO_9_16 = {"name": "9:16 (Vertical)", "width": 720, "height": 1280}
+    RATIO_16_9 = {"name": "16:9 (Horizontal)", "width": 1280, "height": 720}
+    RATIO_1_1 = {"name": "1:1 (Square)", "width": 1080, "height": 1080}
 
 # Import from Final_Video.py
 try:
@@ -40,7 +47,7 @@ except ImportError:
             print(f"Error in fallback merge_video_subtitle: {e}")
             return None
 
-def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False, stop_event=None):
+def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
     """
     Create a slideshow video from images using MoviePy
 
@@ -54,6 +61,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
         frameRarte: Frame rate for video
         use_gpu_encoding: Whether to use GPU for encoding
         stop_event: Threading event to stop the process
+        aspect_ratio: Aspect ratio for the video (9:16, 16:9, or 1:1)
 
     Returns:
         str: Path to output video if successful, None otherwise
@@ -62,9 +70,19 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     if stop_event and stop_event.is_set():
         print("Process stopped by user during slideshow creation.")
         return None
-        
+
     image_clips = []
-    target_width, target_height = VIDEO_WIDTH, VIDEO_HEIGHT  # Target dimensions for vertical video
+
+    # Set target dimensions based on aspect ratio
+    if aspect_ratio == "16:9":
+        target_width, target_height = RATIO_16_9["width"], RATIO_16_9["height"]
+        print(f"Using 16:9 aspect ratio: {target_width}x{target_height}")
+    elif aspect_ratio == "1:1":
+        target_width, target_height = RATIO_1_1["width"], RATIO_1_1["height"]
+        print(f"Using 1:1 aspect ratio: {target_width}x{target_height}")
+    else:  # Default to 9:16
+        target_width, target_height = RATIO_9_16["width"], RATIO_9_16["height"]
+        print(f"Using 9:16 aspect ratio: {target_width}x{target_height}")
 
     # Check if GPU is enabled
     use_gpu = os.environ.get("CUDA_VISIBLE_DEVICES", "") != ""
@@ -276,7 +294,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
 
     return outputVideo
 
-def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True, stop_event=None):
+def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
     """
     Create a slideshow video from images
 
@@ -291,6 +309,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
         zoom_effect: Whether to use zoom effects
         fade_effect: Whether to use fade effects
         stop_event: Threading event to stop the process
+        aspect_ratio: Aspect ratio for the video (9:16, 16:9, or 1:1)
 
     Returns:
         bool: True if successful, False otherwise
@@ -300,7 +319,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
         if stop_event and stop_event.is_set():
             print("Process stopped by user before slideshow creation.")
             return False
-            
+
         # Set environment variable for GPU/CPU selection
         if use_gpu:
             print("Using GPU for video processing")
@@ -326,7 +345,8 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
             outputVideo=output_file,
             zoomFactor=DEFAULT_ZOOM_FACTOR,
             frameRarte=DEFAULT_FRAME_RATE,
-            use_gpu_encoding=use_gpu_encoding
+            use_gpu_encoding=use_gpu_encoding,
+            aspect_ratio=aspect_ratio
         )
         return result is not None
     except Exception as e:
@@ -336,15 +356,33 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
 
 def create_enhanced_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False,
                              use_effects=True, zoom_effect=True, fade_effect=True, enhance=True,
-                             enhancement_options=None, stop_event=None):
+                             enhancement_options=None, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
     """
     Create an enhanced slideshow video with optimizations
+
+    Args:
+        images_folder: Folder containing images
+        title: Title of the video
+        content: Content text
+        audio_file: Path to audio file
+        output_file: Path to output video file
+        use_gpu: Whether to use GPU for processing
+        use_effects: Whether to use visual effects
+        zoom_effect: Whether to use zoom effects
+        fade_effect: Whether to use fade effects
+        enhance: Whether to apply video enhancements
+        enhancement_options: Dictionary of enhancement options
+        stop_event: Threading event to stop the process
+        aspect_ratio: Aspect ratio for the video (9:16, 16:9, or 1:1)
+
+    Returns:
+        bool: True if successful, False otherwise
     """
     # Check if we should stop
     if stop_event and stop_event.is_set():
         print("Process stopped by user during slideshow creation.")
         return False
-        
+
     # Default enhancement options if not provided
     if enhancement_options is None:
         enhancement_options = {
@@ -357,11 +395,16 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
         # First create the basic slideshow
         temp_output = output_file.replace('.mp4', '_temp.mp4')
 
+        # Extract aspect ratio from enhancement options if available
+        if enhancement_options and 'aspect_ratio' in enhancement_options:
+            aspect_ratio = enhancement_options['aspect_ratio']
+
         result = create_slideshow(
             images_folder, title, content, audio_file, temp_output,
             use_gpu=use_gpu, use_effects=use_effects,
             zoom_effect=zoom_effect, fade_effect=fade_effect,
-            stop_event=stop_event  # Pass the stop_event
+            stop_event=stop_event,  # Pass the stop_event
+            aspect_ratio=aspect_ratio  # Pass the aspect ratio
         )
 
         # If the process was stopped by user, clean up and return True
@@ -381,7 +424,7 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
                 if stop_event and stop_event.is_set():
                     print("Process stopped by user before enhancement.")
                     return False
-                    
+
                 # Apply our custom enhancements
                 enhanced_temp = output_file.replace('.mp4', '_enhanced_temp.mp4')
 
@@ -471,7 +514,7 @@ from services.video_optimization import enhance_video, apply_ffmpeg_enhancements
 def _clean_up_temp_files(*file_paths):
     """
     Clean up temporary files created during video generation
-    
+
     Args:
         file_paths: Paths to files that should be removed
     """
@@ -480,13 +523,13 @@ def _clean_up_temp_files(*file_paths):
             if os.path.exists(file_path):
                 os.remove(file_path)
                 print(f"Removed temporary file: {file_path}")
-                
+
             # Also check for MoviePy temporary files
             temp_audio = file_path + "TEMP_MPY_wvf_snd.mp3"
             if os.path.exists(temp_audio):
                 os.remove(temp_audio)
                 print(f"Removed temporary audio file: {temp_audio}")
-                
+
             # Check for other potential temp files with similar names
             dir_path = os.path.dirname(file_path)
             base_name = os.path.basename(file_path)

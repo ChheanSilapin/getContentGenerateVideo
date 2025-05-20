@@ -141,21 +141,21 @@ class VideoGeneratorGUI:
         # Create tabs
         self.input_tab = ttk.Frame(self.notebook)
         self.image_tab = ttk.Frame(self.notebook)
-        self.enhancement_tab = ttk.Frame(self.notebook)
+        self.option_tab = ttk.Frame(self.notebook)
         self.log_tab = ttk.Frame(self.notebook)
         self.batch_tab = ttk.Frame(self.notebook)
 
         # Add tabs to notebook
         self.notebook.add(self.input_tab, text=" Input ")
         self.notebook.add(self.image_tab, text=" Images ")
-        self.notebook.add(self.enhancement_tab, text=" Enhancement ")
-        self.notebook.add(self.log_tab, text=" Log ")
+        self.notebook.add(self.option_tab, text=" Option ")
         self.notebook.add(self.batch_tab, text=" Batch Processing ")
+        self.notebook.add(self.log_tab, text=" Log ")
 
         # Set up tabs
         self.setup_input_tab()
         self.setup_image_tab()
-        self.setup_enhancement_tab()
+        self.setup_option_tab()
         self.setup_log_tab()
         self._setup_batch_tab()
 
@@ -427,32 +427,65 @@ class VideoGeneratorGUI:
         clear_all_btn.bind("<Enter>", lambda e: clear_all_btn.config(bg="#95a5a6"))
         clear_all_btn.bind("<Leave>", lambda e: clear_all_btn.config(bg=self.colors["light_text"]))
 
-    def setup_enhancement_tab(self):
-        """Set up the enhancement tab with video optimization options"""
-        main_frame = ttk.Frame(self.enhancement_tab, padding=10)
+    def setup_option_tab(self):
+        """Set up the option tab with video optimization options"""
+        main_frame = ttk.Frame(self.option_tab, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
 
         # Header
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill=tk.X, padx=5, pady=(5, 10))
 
-        label = ttk.Label(header_frame, text="Video Enhancement Options", font=("Helvetica", 14, "bold"))
+        label = ttk.Label(header_frame, text="Video option Options", font=("Helvetica", 14, "bold"))
         label.pack(side=tk.LEFT)
+
+        # Video Ratio section
+        ratio_frame = ttk.LabelFrame(main_frame, text="Video Aspect Ratio", padding=10)
+        ratio_frame.pack(fill=tk.X, padx=5, pady=5)
+
+        # Create variable for aspect ratio
+        self.aspect_ratio = tk.StringVar(value="9:16")
+
+        # Create a grid layout for radio buttons
+        ratio_label = ttk.Label(ratio_frame, text="Select video aspect ratio:")
+        ratio_label.grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+
+        # Radio buttons for aspect ratios
+        ttk.Radiobutton(
+            ratio_frame,
+            text="9:16 (Vertical - Best for mobile)",
+            variable=self.aspect_ratio,
+            value="9:16"
+        ).grid(row=1, column=0, sticky=tk.W, padx=20, pady=2)
+
+        ttk.Radiobutton(
+            ratio_frame,
+            text="16:9 (Horizontal - Best for YouTube/TV)",
+            variable=self.aspect_ratio,
+            value="16:9"
+        ).grid(row=2, column=0, sticky=tk.W, padx=20, pady=2)
+
+        ttk.Radiobutton(
+            ratio_frame,
+            text="1:1 (Square - Best for Instagram/Facebook)",
+            variable=self.aspect_ratio,
+            value="1:1"
+        ).grid(row=3, column=0, sticky=tk.W, padx=20, pady=2)
 
         # Basic options section
         basic_frame = ttk.LabelFrame(main_frame, text="Basic Options", padding=10)
         basic_frame.pack(fill=tk.X, padx=5, pady=5)
 
-        # Create variables for enhancement options
+        # Create variables for option options
         self.color_correction = tk.BooleanVar(value=True)
-        self.audio_enhancement = tk.BooleanVar(value=True)
+        self.audio_option = tk.BooleanVar(value=True)
         self.framing = tk.BooleanVar(value=True)
         self.motion_graphics = tk.BooleanVar(value=False)
         self.noise_reduction = tk.BooleanVar(value=True)
 
         # Create a grid layout for checkboxes
         ttk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction).grid(row=0, column=0, sticky=tk.W, padx=20, pady=5)
-        ttk.Checkbutton(basic_frame, text="Audio Enhancement", variable=self.audio_enhancement).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
+        ttk.Checkbutton(basic_frame, text="Audio option", variable=self.audio_option).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
         ttk.Checkbutton(basic_frame, text="Framing", variable=self.framing).grid(row=1, column=0, sticky=tk.W, padx=20, pady=5)
         ttk.Checkbutton(basic_frame, text="Motion Graphics", variable=self.motion_graphics).grid(row=1, column=1, sticky=tk.W, padx=20, pady=5)
         ttk.Checkbutton(basic_frame, text="Noise Reduction", variable=self.noise_reduction).grid(row=2, column=0, sticky=tk.W, padx=20, pady=5)
@@ -523,7 +556,7 @@ class VideoGeneratorGUI:
             fg="white",
             font=("Helvetica", 11, "bold"),
             relief="flat",
-            command=self.update_enhancement_options,
+            command=self.update_option_options,
             activebackground="#27ae60"
         )
         apply_button.pack(side=tk.RIGHT, padx=5)
@@ -537,7 +570,7 @@ class VideoGeneratorGUI:
             fg="white",
             font=("Helvetica", 11, "bold"),
             relief="flat",
-            command=self.reset_enhancement_options,
+            command=self.reset_option_options,
             activebackground=self.colors["primary"]
         )
         reset_button.pack(side=tk.RIGHT, padx=5)
@@ -709,8 +742,8 @@ class VideoGeneratorGUI:
                 self.root.after(0, lambda: self.update_progress_ui(value, message))
             self.model.set_progress_callback(progress_callback)
 
-            # Update enhancement options before generating
-            self.update_enhancement_options()
+            # Update option options before generating
+            self.update_option_options()
 
             subtitle_path, video_path, output_dir = self.model.generate_video(self.stop_event)
             if self.stop_event.is_set():
@@ -929,8 +962,8 @@ class VideoGeneratorGUI:
         self.model.website_url = ""
         self.model.local_folder = ""
 
-        # Update enhancement options in the model
-        self.update_enhancement_options()
+        # Update option options in the model
+        self.update_option_options()
 
         self.log(f"Starting video generation with {self.cpu_gpu.get()}")
         self.log(f"Text: {text[:50]}..." if len(text) > 50 else f"Text: {text}")
@@ -944,12 +977,12 @@ class VideoGeneratorGUI:
         self.generation_thread.daemon = True
         self.generation_thread.start()
 
-    def update_enhancement_options(self):
-        """Update the model with current enhancement options"""
+    def update_option_options(self):
+        """Update the model with current option options"""
         # Update basic options
-        self.model.enhancement_options = {
+        self.model.option_options = {
             "color_correction": self.color_correction.get(),
-            "audio_enhancement": self.audio_enhancement.get(),
+            "audio_option": self.audio_option.get(),
             "framing": self.framing.get(),
             "motion_graphics": self.motion_graphics.get(),
             "noise_reduction": self.noise_reduction.get(),
@@ -961,26 +994,35 @@ class VideoGeneratorGUI:
             "contrast": self.contrast.get(),
             "brightness": self.brightness.get(),
             "saturation": self.saturation.get(),
-            "sharpness": self.sharpness.get()
+            "sharpness": self.sharpness.get(),
+
+            # Aspect ratio
+            "aspect_ratio": self.aspect_ratio.get()
         }
+
+        # Update the model's aspect ratio property
+        self.model.aspect_ratio = self.aspect_ratio.get()
 
         # Update effect flags
         self.model.use_effects = any([self.color_correction.get(), self.motion_graphics.get(), self.framing.get()])
 
         # Log the changes
-        self.log("Enhancement options updated")
+        self.log(f"option options updated with {self.aspect_ratio.get()} aspect ratio")
 
         # Switch back to input tab
         self.notebook.select(self.input_tab)
 
-    def reset_enhancement_options(self):
-        """Reset enhancement options to defaults"""
+    def reset_option_options(self):
+        """Reset option options to defaults"""
         # Reset basic options
         self.color_correction.set(True)
-        self.audio_enhancement.set(True)
+        self.audio_option.set(True)
         self.framing.set(True)
         self.motion_graphics.set(False)
         self.noise_reduction.set(True)
+
+        # Reset aspect ratio to default (9:16)
+        self.aspect_ratio.set("9:16")
 
         # Reset advanced options
         self.color_intensity.set(1.0)
@@ -992,7 +1034,7 @@ class VideoGeneratorGUI:
         self.sharpness.set(1.0)
 
         # Log the changes
-        self.log("Enhancement options reset to defaults")
+        self.log("option options reset to defaults with 9:16 aspect ratio")
 
     def stop_button_click(self):
         if self.stop_event:
@@ -1144,53 +1186,53 @@ class VideoGeneratorGUI:
         # Main container
         batch_frame = ttk.Frame(self.batch_tab, padding=10)
         batch_frame.pack(fill=tk.BOTH, expand=True)
-        
+
         # Batch jobs list
         jobs_frame = ttk.LabelFrame(batch_frame, text="Batch Jobs", padding=10)
         jobs_frame.pack(fill=tk.BOTH, expand=True, pady=10)
-        
+
         # Jobs listbox with scrollbar
         jobs_scroll = ttk.Scrollbar(jobs_frame)
         jobs_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        self.jobs_listbox = tk.Listbox(jobs_frame, height=10, 
+
+        self.jobs_listbox = tk.Listbox(jobs_frame, height=10,
                                        yscrollcommand=jobs_scroll.set,
                                        font=("Helvetica", 10))
         self.jobs_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         jobs_scroll.config(command=self.jobs_listbox.yview)
-        
+
         # Buttons frame
         buttons_frame = ttk.Frame(batch_frame)
         buttons_frame.pack(fill=tk.X, pady=10)
-        
+
         # Add current settings as job
-        add_job_btn = ttk.Button(buttons_frame, text="Add Current Settings as Job", 
+        add_job_btn = ttk.Button(buttons_frame, text="Add Current Settings as Job",
                                 command=self.add_current_as_job)
         add_job_btn.pack(side=tk.LEFT, padx=5)
-        
+
         # Remove selected job
-        remove_job_btn = ttk.Button(buttons_frame, text="Remove Selected Job", 
+        remove_job_btn = ttk.Button(buttons_frame, text="Remove Selected Job",
                                    command=self.remove_selected_job)
         remove_job_btn.pack(side=tk.LEFT, padx=5)
-        
+
         # Clear all jobs
-        clear_jobs_btn = ttk.Button(buttons_frame, text="Clear All Jobs", 
+        clear_jobs_btn = ttk.Button(buttons_frame, text="Clear All Jobs",
                                    command=self.clear_all_jobs)
         clear_jobs_btn.pack(side=tk.LEFT, padx=5)
-        
+
         # Start batch processing
-        start_batch_btn = ttk.Button(buttons_frame, text="Start Batch Processing", 
+        start_batch_btn = ttk.Button(buttons_frame, text="Start Batch Processing",
                                     command=self.start_batch_processing,
                                     style="Accent.TButton")
         start_batch_btn.pack(side=tk.RIGHT, padx=5)
-    
+
     def add_current_as_job(self):
         """Add current settings as a batch job"""
         text = self.text_input.get("1.0", tk.END).strip()
         if not text:
             messagebox.showwarning("Input Error", "Please enter text for voice generation")
             return
-            
+
         # Determine image source and validate
         if self.selected_images:
             image_source = "3"  # Selected images
@@ -1222,34 +1264,34 @@ class VideoGeneratorGUI:
         else:
             messagebox.showwarning("Input Error", "Please provide either a website URL, select images, or choose a local folder")
             return
-    
+
     def remove_selected_job(self):
         """Remove the selected job from the batch"""
         selected = self.jobs_listbox.curselection()
         if not selected:
             return
-            
+
         index = selected[0]
         self.jobs_listbox.delete(index)
         self.model.batch_jobs.pop(index)
         self.log(f"Removed batch job #{index+1}")
-    
+
     def clear_all_jobs(self):
         """Clear all batch jobs"""
         self.jobs_listbox.delete(0, tk.END)
         self.model.batch_jobs = []
         self.log("Cleared all batch jobs")
-    
+
     def start_batch_processing(self):
         """Start processing all batch jobs"""
         if not self.model.batch_jobs:
             messagebox.showwarning("No Jobs", "Please add at least one job to the batch")
             return
-            
+
         if self.generation_thread and self.generation_thread.is_alive():
             messagebox.showwarning("Process Running", "Video generation is already in progress")
             return
-            
+
         self.log(f"Starting batch processing of {len(self.model.batch_jobs)} jobs")
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
@@ -1259,17 +1301,17 @@ class VideoGeneratorGUI:
         self.generation_thread = threading.Thread(target=self.process_batch_thread)
         self.generation_thread.daemon = True
         self.generation_thread.start()
-    
+
     def process_batch_thread(self):
         """Process batch jobs in a separate thread"""
         try:
             results = self.model.process_batch(self.stop_event)
-            
+
             if self.stop_event.is_set():
                 self.root.after(0, lambda: self.log("Batch processing stopped by user"))
                 self.root.after(0, lambda: self.reset_ui())
                 return
-                
+
             # Update UI with results
             self.root.after(0, lambda: self.batch_completed(results))
         except Exception as e:
@@ -1277,18 +1319,18 @@ class VideoGeneratorGUI:
             traceback.print_exc()
             self.root.after(0, lambda: self.log(f"Error in batch processing: {e}"))
             self.root.after(0, lambda: self.reset_ui())
-    
+
     def batch_completed(self, results):
         """Handle batch completion"""
         self.log("Batch processing completed")
         self.reset_ui()
-        
+
         # Count successes and failures
         successes = sum(1 for _, video_path in results if video_path)
         failures = len(results) - successes
-        
+
         message = f"Batch processing completed:\n{successes} videos generated successfully\n{failures} jobs failed"
-        
+
         if successes > 0:
             # Ask if user wants to open the output folder
             response = messagebox.askyesno(

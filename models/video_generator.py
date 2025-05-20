@@ -9,6 +9,9 @@ from datetime import datetime
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Import config
+from config import DEFAULT_ASPECT_RATIO, RATIO_9_16, RATIO_16_9, RATIO_1_1
+
 from services.audio_service import generate_audio
 from services.image_service import download_images, copy_selected_images
 from services.video_service import create_enhanced_slideshow
@@ -51,7 +54,10 @@ class VideoGeneratorModel:
         self.progress_callback = None
         self.batch_jobs = []  # List to store multiple generation jobs
         self.current_job_index = 0
-        
+
+        # Video aspect ratio
+        self.aspect_ratio = DEFAULT_ASPECT_RATIO
+
         # Enhancement options
         self.use_effects = True
         self.zoom_effect = True
@@ -70,7 +76,8 @@ class VideoGeneratorModel:
             "brightness": 0.05,
             "saturation": 1.2,
             "sharpness": 1.0,
-            "noise_reduction": True
+            "noise_reduction": True,
+            "aspect_ratio": DEFAULT_ASPECT_RATIO  # Add aspect ratio to enhancement options
         }
 
     def set_progress_callback(self, callback):
@@ -97,10 +104,10 @@ class VideoGeneratorModel:
             print("Process stopped by user.")
             self.update_progress(0, "Process stopped by user")
             return None, None, None
-        
+
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Store the stop_event as an instance variable so other methods can access it
         self.stop_event = stop_event
 
@@ -112,7 +119,7 @@ class VideoGeneratorModel:
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"Created output directory: {output_dir}")
-        
+
         # Store output_dir as instance variable for cleanup if needed
         self.current_output_dir = output_dir
 
@@ -146,7 +153,7 @@ class VideoGeneratorModel:
                 print("ERROR: No images selected from website.")
                 self.update_progress(0, "No images selected from website")
                 return None, None, None
-            
+
             print(f"Using {len(self.selected_images)} selected images from website")
             self.update_progress(35, f"Copying {len(self.selected_images)} selected images")
             if not copy_selected_images(self.selected_images, images_dir):
@@ -200,20 +207,28 @@ class VideoGeneratorModel:
         zoom_effect = getattr(self, 'zoom_effect', True)
         fade_effect = getattr(self, 'fade_effect', True)
 
-        # Pass the processing option and effect settings to the create_enhanced_slideshow function
+        # Get aspect ratio settings
+        aspect_ratio = getattr(self, 'aspect_ratio', DEFAULT_ASPECT_RATIO)
+
+        # Update enhancement options with current aspect ratio
+        enhancement_options = getattr(self, 'enhancement_options', {}).copy()
+        enhancement_options['aspect_ratio'] = aspect_ratio
+
+        # Pass the processing option, effect settings, and aspect ratio to the create_enhanced_slideshow function
         result = create_enhanced_slideshow(
-            images_dir, 
-            title, 
-            content, 
-            audio_file, 
-            video_file, 
+            images_dir,
+            title,
+            content,
+            audio_file,
+            video_file,
             use_gpu=(self.processing_option == "gpu"),
             use_effects=use_effects,
             zoom_effect=zoom_effect,
             fade_effect=fade_effect,
             enhance=True,  # Enable enhancements
-            enhancement_options=getattr(self, 'enhancement_options', None),
-            stop_event=stop_event  # Pass the stop event
+            enhancement_options=enhancement_options,
+            stop_event=stop_event,  # Pass the stop event
+            aspect_ratio=aspect_ratio  # Pass the aspect ratio
         )
 
         # Check if the process was stopped by user
@@ -285,30 +300,30 @@ class VideoGeneratorModel:
     def _organize_output_folder(self, output_dir):
         """
         Organize the output folder based on image source
-        
+
         Args:
             output_dir: Output directory
         """
         try:
             # Keep only the final video and downloaded images
             # Remove intermediate files but preserve the images directory
-            
+
             # Always keep the final output video
             final_video = os.path.join(output_dir, "final_output.mp4")
-            
+
             # Files to remove (intermediate files)
             files_to_remove = [
                 os.path.join(output_dir, "slideshow.mp4"),  # Intermediate video
                 os.path.join(output_dir, "subtitles.ass"),  # Subtitle file
                 os.path.join(output_dir, "voice.mp3")       # Voice file
             ]
-            
+
             # Remove intermediate files
             for file_path in files_to_remove:
                 if os.path.exists(file_path):
                     os.remove(file_path)
                     print(f"Removed intermediate file: {file_path}")
-            
+
             # Handle images based on source
             images_dir = os.path.join(output_dir, "images")
             if self.image_source == "1":  # Website URL
@@ -324,10 +339,10 @@ class VideoGeneratorModel:
                 # Keep selected images if they were downloaded, remove if they were from local folder
                 # This is determined by checking if the images are in the selected_images list
                 # and if they have a web URL pattern
-                
+
                 # Check if any selected image has a URL pattern
                 has_downloaded_images = any(img.startswith(('http://', 'https://')) for img in self.selected_images)
-                
+
                 if not has_downloaded_images:
                     # If all images were local, remove the images directory
                     if os.path.exists(images_dir):
@@ -336,7 +351,7 @@ class VideoGeneratorModel:
                         print(f"Removed images directory (local selected images): {images_dir}")
                 else:
                     print(f"Keeping downloaded selected images in: {images_dir}")
-                    
+
         except Exception as e:
             print(f"Error organizing output folder: {e}")
 
@@ -379,16 +394,16 @@ class VideoGeneratorModel:
         }
         self.batch_jobs.append(job)
         return len(self.batch_jobs)  # Return job ID (1-based index)
-    
+
     def process_batch(self, stop_event=None):
         """Process all jobs in the batch queue"""
         results = []
         self.current_job_index = 0
-        
+
         for i, job in enumerate(self.batch_jobs):
             if stop_event and stop_event.is_set():
                 break
-                
+
             self.current_job_index = i
             # Update model with current job parameters
             self.text_input = job["text_input"]
@@ -396,10 +411,10 @@ class VideoGeneratorModel:
             self.selected_images = job["selected_images"]
             self.website_url = job["website_url"]
             self.local_folder = job["local_folder"]
-            
+
             # Update progress with job information
             self.update_progress(0, f"Starting job {i+1}/{len(self.batch_jobs)}")
-            
+
             # Process the job
             subtitle_path, video_path, output_dir = self.generate_video(stop_event)
             if subtitle_path and video_path and output_dir:
@@ -410,7 +425,7 @@ class VideoGeneratorModel:
             else:
                 job["status"] = "failed"
                 results.append((job, None))
-        
+
         return results
 
     def _cleanup_on_stop(self):
