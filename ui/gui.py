@@ -72,8 +72,6 @@ except ImportError as e:
             with open(final_output, "w") as f:
                 f.write("Placeholder final video file")
 
-            return final_output
-
 # Import datetime correctly
 import datetime
 
@@ -145,18 +143,21 @@ class VideoGeneratorGUI:
         self.image_tab = ttk.Frame(self.notebook)
         self.enhancement_tab = ttk.Frame(self.notebook)
         self.log_tab = ttk.Frame(self.notebook)
+        self.batch_tab = ttk.Frame(self.notebook)
 
         # Add tabs to notebook
         self.notebook.add(self.input_tab, text=" Input ")
         self.notebook.add(self.image_tab, text=" Images ")
         self.notebook.add(self.enhancement_tab, text=" Enhancement ")
         self.notebook.add(self.log_tab, text=" Log ")
+        self.notebook.add(self.batch_tab, text=" Batch Processing ")
 
         # Set up tabs
         self.setup_input_tab()
         self.setup_image_tab()
         self.setup_enhancement_tab()
         self.setup_log_tab()
+        self._setup_batch_tab()
 
     def setup_input_tab(self):
         # Main frame for input tab
@@ -1137,6 +1138,169 @@ class VideoGeneratorGUI:
         image_frame.update_idletasks()
         self.image_canvas.config(scrollregion=self.image_canvas.bbox("all"))
         self.log(f"Displayed {len(self.selected_images)} selected images")
+
+    def _setup_batch_tab(self):
+        """Set up the batch processing tab"""
+        # Main container
+        batch_frame = ttk.Frame(self.batch_tab, padding=10)
+        batch_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Batch jobs list
+        jobs_frame = ttk.LabelFrame(batch_frame, text="Batch Jobs", padding=10)
+        jobs_frame.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        # Jobs listbox with scrollbar
+        jobs_scroll = ttk.Scrollbar(jobs_frame)
+        jobs_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        self.jobs_listbox = tk.Listbox(jobs_frame, height=10, 
+                                       yscrollcommand=jobs_scroll.set,
+                                       font=("Helvetica", 10))
+        self.jobs_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        jobs_scroll.config(command=self.jobs_listbox.yview)
+        
+        # Buttons frame
+        buttons_frame = ttk.Frame(batch_frame)
+        buttons_frame.pack(fill=tk.X, pady=10)
+        
+        # Add current settings as job
+        add_job_btn = ttk.Button(buttons_frame, text="Add Current Settings as Job", 
+                                command=self.add_current_as_job)
+        add_job_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Remove selected job
+        remove_job_btn = ttk.Button(buttons_frame, text="Remove Selected Job", 
+                                   command=self.remove_selected_job)
+        remove_job_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Clear all jobs
+        clear_jobs_btn = ttk.Button(buttons_frame, text="Clear All Jobs", 
+                                   command=self.clear_all_jobs)
+        clear_jobs_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Start batch processing
+        start_batch_btn = ttk.Button(buttons_frame, text="Start Batch Processing", 
+                                    command=self.start_batch_processing,
+                                    style="Accent.TButton")
+        start_batch_btn.pack(side=tk.RIGHT, padx=5)
+    
+    def add_current_as_job(self):
+        """Add current settings as a batch job"""
+        text = self.text_input.get("1.0", tk.END).strip()
+        if not text:
+            messagebox.showwarning("Input Error", "Please enter text for voice generation")
+            return
+            
+        # Determine image source and validate
+        if self.selected_images:
+            image_source = "3"  # Selected images
+            job_id = self.model.add_batch_job(
+                text_input=text,
+                image_source=image_source,
+                selected_images=self.selected_images
+            )
+            self.jobs_listbox.insert(tk.END, f"Job #{job_id}: {text[:30]}... ({len(self.selected_images)} images)")
+            self.log(f"Added batch job #{job_id} with {len(self.selected_images)} images")
+        elif self.url_entry.get().strip():
+            image_source = "1"  # Website URL
+            job_id = self.model.add_batch_job(
+                text_input=text,
+                image_source=image_source,
+                website_url=self.url_entry.get().strip()
+            )
+            self.jobs_listbox.insert(tk.END, f"Job #{job_id}: {text[:30]}... (URL: {self.url_entry.get().strip()[:20]}...)")
+            self.log(f"Added batch job #{job_id} with website URL")
+        elif hasattr(self, 'folder_path') and self.folder_path:
+            image_source = "2"  # Local folder
+            job_id = self.model.add_batch_job(
+                text_input=text,
+                image_source=image_source,
+                local_folder=self.folder_path
+            )
+            self.jobs_listbox.insert(tk.END, f"Job #{job_id}: {text[:30]}... (Folder: {os.path.basename(self.folder_path)})")
+            self.log(f"Added batch job #{job_id} with local folder")
+        else:
+            messagebox.showwarning("Input Error", "Please provide either a website URL, select images, or choose a local folder")
+            return
+    
+    def remove_selected_job(self):
+        """Remove the selected job from the batch"""
+        selected = self.jobs_listbox.curselection()
+        if not selected:
+            return
+            
+        index = selected[0]
+        self.jobs_listbox.delete(index)
+        self.model.batch_jobs.pop(index)
+        self.log(f"Removed batch job #{index+1}")
+    
+    def clear_all_jobs(self):
+        """Clear all batch jobs"""
+        self.jobs_listbox.delete(0, tk.END)
+        self.model.batch_jobs = []
+        self.log("Cleared all batch jobs")
+    
+    def start_batch_processing(self):
+        """Start processing all batch jobs"""
+        if not self.model.batch_jobs:
+            messagebox.showwarning("No Jobs", "Please add at least one job to the batch")
+            return
+            
+        if self.generation_thread and self.generation_thread.is_alive():
+            messagebox.showwarning("Process Running", "Video generation is already in progress")
+            return
+            
+        self.log(f"Starting batch processing of {len(self.model.batch_jobs)} jobs")
+        self.progress_bar["value"] = 0
+        self.progress_label.config(text="0%")
+        self.generate_button.config(state=tk.DISABLED)
+        self.stop_button.config(state=tk.NORMAL)
+        self.stop_event = threading.Event()
+        self.generation_thread = threading.Thread(target=self.process_batch_thread)
+        self.generation_thread.daemon = True
+        self.generation_thread.start()
+    
+    def process_batch_thread(self):
+        """Process batch jobs in a separate thread"""
+        try:
+            results = self.model.process_batch(self.stop_event)
+            
+            if self.stop_event.is_set():
+                self.root.after(0, lambda: self.log("Batch processing stopped by user"))
+                self.root.after(0, lambda: self.reset_ui())
+                return
+                
+            # Update UI with results
+            self.root.after(0, lambda: self.batch_completed(results))
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            self.root.after(0, lambda: self.log(f"Error in batch processing: {e}"))
+            self.root.after(0, lambda: self.reset_ui())
+    
+    def batch_completed(self, results):
+        """Handle batch completion"""
+        self.log("Batch processing completed")
+        self.reset_ui()
+        
+        # Count successes and failures
+        successes = sum(1 for _, video_path in results if video_path)
+        failures = len(results) - successes
+        
+        message = f"Batch processing completed:\n{successes} videos generated successfully\n{failures} jobs failed"
+        
+        if successes > 0:
+            # Ask if user wants to open the output folder
+            response = messagebox.askyesno(
+                "Batch Complete",
+                f"{message}\n\nDo you want to open the output folder?"
+            )
+            if response and results[0][1]:  # If there's at least one successful result
+                # Open the folder containing the first successful video
+                output_dir = os.path.dirname(results[0][1])
+                self.open_file(output_dir)
+        else:
+            messagebox.showinfo("Batch Complete", message)
 
 def main():
     """Main function to run the GUI application"""

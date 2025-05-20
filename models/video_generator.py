@@ -49,6 +49,8 @@ class VideoGeneratorModel:
         self.output_folder = None
         self.processing_option = "cpu"  # Default to CPU
         self.progress_callback = None
+        self.batch_jobs = []  # List to store multiple generation jobs
+        self.current_job_index = 0
         
         # Enhancement options
         self.use_effects = True
@@ -98,6 +100,9 @@ class VideoGeneratorModel:
         
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Store the stop_event as an instance variable so other methods can access it
+        self.stop_event = stop_event
 
         # Use custom output folder if provided
         if self.output_folder and os.path.isdir(self.output_folder):
@@ -107,6 +112,9 @@ class VideoGeneratorModel:
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"Created output directory: {output_dir}")
+        
+        # Store output_dir as instance variable for cleanup if needed
+        self.current_output_dir = output_dir
 
         # Create subdirectories
         images_dir = os.path.join(output_dir, "images")
@@ -193,7 +201,7 @@ class VideoGeneratorModel:
         fade_effect = getattr(self, 'fade_effect', True)
 
         # Pass the processing option and effect settings to the create_enhanced_slideshow function
-        if not create_enhanced_slideshow(
+        result = create_enhanced_slideshow(
             images_dir, 
             title, 
             content, 
@@ -204,16 +212,21 @@ class VideoGeneratorModel:
             zoom_effect=zoom_effect,
             fade_effect=fade_effect,
             enhance=True,  # Enable enhancements
-            enhancement_options=getattr(self, 'enhancement_options', None)
-        ):
-            print("ERROR: Failed to create video.")
-            self.update_progress(0, "Failed to create video")
-            return None, None, None
+            enhancement_options=getattr(self, 'enhancement_options', None),
+            stop_event=stop_event  # Pass the stop event
+        )
 
-        # Check if we should stop
+        # Check if the process was stopped by user
         if stop_event and stop_event.is_set():
             print("Process stopped by user.")
             self.update_progress(0, "Process stopped by user")
+            self._cleanup_on_stop()  # Clean up files
+            return None, None, None
+
+        # Only report an error if the result is False (not stopped by user)
+        if not result:
+            print("ERROR: Failed to create video.")
+            self.update_progress(0, "Failed to create video")
             return None, None, None
 
         self.update_progress(70, "Video created successfully")
@@ -272,28 +285,58 @@ class VideoGeneratorModel:
     def _organize_output_folder(self, output_dir):
         """
         Organize the output folder based on image source
-
+        
         Args:
             output_dir: Output directory
         """
         try:
-            # Keep only the necessary files
+            # Keep only the final video and downloaded images
+            # Remove intermediate files but preserve the images directory
+            
+            # Always keep the final output video
+            final_video = os.path.join(output_dir, "final_output.mp4")
+            
+            # Files to remove (intermediate files)
+            files_to_remove = [
+                os.path.join(output_dir, "slideshow.mp4"),  # Intermediate video
+                os.path.join(output_dir, "subtitles.ass"),  # Subtitle file
+                os.path.join(output_dir, "voice.mp3")       # Voice file
+            ]
+            
+            # Remove intermediate files
+            for file_path in files_to_remove:
+                if os.path.exists(file_path):
+                    os.remove(file_path)
+                    print(f"Removed intermediate file: {file_path}")
+            
+            # Handle images based on source
+            images_dir = os.path.join(output_dir, "images")
             if self.image_source == "1":  # Website URL
-                # For website URL, keep images, final video, voice.mp3, and subtitles
-                pass  # No need to delete anything
-            else:  # Local folder or selected images
-                # For local folder, keep only final video, voice.mp3, and subtitles
-                images_dir = os.path.join(output_dir, "images")
+                # Keep downloaded images from website
+                print(f"Keeping downloaded images in: {images_dir}")
+            elif self.image_source == "2":  # Local folder
+                # Remove images directory since they're copies from local folder
                 if os.path.exists(images_dir):
                     import shutil
                     shutil.rmtree(images_dir)
-                    print(f"Removed images directory: {images_dir}")
-
-                # Remove the slideshow.mp4 file (intermediate file)
-                slideshow_file = os.path.join(output_dir, "slideshow.mp4")
-                if os.path.exists(slideshow_file):
-                    os.remove(slideshow_file)
-                    print(f"Removed intermediate video: {slideshow_file}")
+                    print(f"Removed images directory (local folder source): {images_dir}")
+            elif self.image_source == "3":  # Selected images
+                # Keep selected images if they were downloaded, remove if they were from local folder
+                # This is determined by checking if the images are in the selected_images list
+                # and if they have a web URL pattern
+                
+                # Check if any selected image has a URL pattern
+                has_downloaded_images = any(img.startswith(('http://', 'https://')) for img in self.selected_images)
+                
+                if not has_downloaded_images:
+                    # If all images were local, remove the images directory
+                    if os.path.exists(images_dir):
+                        import shutil
+                        shutil.rmtree(images_dir)
+                        print(f"Removed images directory (local selected images): {images_dir}")
+                else:
+                    print(f"Keeping downloaded selected images in: {images_dir}")
+                    
         except Exception as e:
             print(f"Error organizing output folder: {e}")
 
@@ -324,10 +367,60 @@ class VideoGeneratorModel:
         self.update_progress(30, f"Downloaded {len(image_paths)} images for preview")
         return image_paths
 
+    def add_batch_job(self, text_input, image_source, selected_images=None, website_url=None, local_folder=None):
+        """Add a job to the batch processing queue"""
+        job = {
+            "text_input": text_input,
+            "image_source": image_source,
+            "selected_images": selected_images or [],
+            "website_url": website_url or "",
+            "local_folder": local_folder or "",
+            "status": "pending"
+        }
+        self.batch_jobs.append(job)
+        return len(self.batch_jobs)  # Return job ID (1-based index)
+    
+    def process_batch(self, stop_event=None):
+        """Process all jobs in the batch queue"""
+        results = []
+        self.current_job_index = 0
+        
+        for i, job in enumerate(self.batch_jobs):
+            if stop_event and stop_event.is_set():
+                break
+                
+            self.current_job_index = i
+            # Update model with current job parameters
+            self.text_input = job["text_input"]
+            self.image_source = job["image_source"]
+            self.selected_images = job["selected_images"]
+            self.website_url = job["website_url"]
+            self.local_folder = job["local_folder"]
+            
+            # Update progress with job information
+            self.update_progress(0, f"Starting job {i+1}/{len(self.batch_jobs)}")
+            
+            # Process the job
+            subtitle_path, video_path, output_dir = self.generate_video(stop_event)
+            if subtitle_path and video_path and output_dir:
+                final_video = self.finalize_video(subtitle_path, video_path, output_dir, stop_event)
+                job["status"] = "completed" if final_video else "failed"
+                job["output_path"] = final_video if final_video else None
+                results.append((job, final_video))
+            else:
+                job["status"] = "failed"
+                results.append((job, None))
+        
+        return results
 
-
-
-
-
-
-
+    def _cleanup_on_stop(self):
+        """Clean up files when process is stopped by user"""
+        if hasattr(self, 'current_output_dir') and self.current_output_dir:
+            try:
+                import shutil
+                if os.path.exists(self.current_output_dir):
+                    print(f"Cleaning up output directory: {self.current_output_dir}")
+                    shutil.rmtree(self.current_output_dir)
+                    print(f"Removed output directory after stop: {self.current_output_dir}")
+            except Exception as e:
+                print(f"Warning: Could not clean up output directory: {e}")

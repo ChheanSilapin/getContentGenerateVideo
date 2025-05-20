@@ -139,11 +139,13 @@ if __name__ == "__main__":
             print("Exiting.")
             sys.exit(1)
 
-    # Debug information removed
-
-    # Check command line arguments
-    if len(sys.argv) > 1 and sys.argv[1] == "--console":
-        run_console_mode()
-    else:
-        # Start the GUI
-        create_gui()
+    try:
+        # Check command line arguments
+        if len(sys.argv) > 1 and sys.argv[1] == "--console":
+            run_console_mode()
+        else:
+            # Start the GUI
+            create_gui()
+    except KeyboardInterrupt:
+        print("\nProgram terminated by user (Ctrl+C)")
+        sys.exit(0)

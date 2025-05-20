@@ -40,7 +40,7 @@ except ImportError:
             print(f"Error in fallback merge_video_subtitle: {e}")
             return None
 
-def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False):
+def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False, stop_event=None):
     """
     Create a slideshow video from images using MoviePy
 
@@ -53,10 +53,16 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
         zoomFactor: Zoom factor for effects
         frameRarte: Frame rate for video
         use_gpu_encoding: Whether to use GPU for encoding
+        stop_event: Threading event to stop the process
 
     Returns:
         str: Path to output video if successful, None otherwise
     """
+    # Check if we should stop
+    if stop_event and stop_event.is_set():
+        print("Process stopped by user during slideshow creation.")
+        return None
+        
     image_clips = []
     target_width, target_height = VIDEO_WIDTH, VIDEO_HEIGHT  # Target dimensions for vertical video
 
@@ -270,7 +276,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
 
     return outputVideo
 
-def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True):
+def create_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True, stop_event=None):
     """
     Create a slideshow video from images
 
@@ -284,11 +290,17 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
         use_effects: Whether to use visual effects
         zoom_effect: Whether to use zoom effects
         fade_effect: Whether to use fade effects
+        stop_event: Threading event to stop the process
 
     Returns:
         bool: True if successful, False otherwise
     """
     try:
+        # Check if we should stop
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user before slideshow creation.")
+            return False
+            
         # Set environment variable for GPU/CPU selection
         if use_gpu:
             print("Using GPU for video processing")
@@ -324,10 +336,15 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
 
 def create_enhanced_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False,
                              use_effects=True, zoom_effect=True, fade_effect=True, enhance=True,
-                             enhancement_options=None):
+                             enhancement_options=None, stop_event=None):
     """
     Create an enhanced slideshow video with optimizations
     """
+    # Check if we should stop
+    if stop_event and stop_event.is_set():
+        print("Process stopped by user during slideshow creation.")
+        return False
+        
     # Default enhancement options if not provided
     if enhancement_options is None:
         enhancement_options = {
@@ -343,8 +360,16 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
         result = create_slideshow(
             images_folder, title, content, audio_file, temp_output,
             use_gpu=use_gpu, use_effects=use_effects,
-            zoom_effect=zoom_effect, fade_effect=fade_effect
+            zoom_effect=zoom_effect, fade_effect=fade_effect,
+            stop_event=stop_event  # Pass the stop_event
         )
+
+        # If the process was stopped by user, clean up and return True
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user after slideshow creation.")
+            # Clean up any temporary files
+            _clean_up_temp_files(temp_output, output_file)
+            return True  # Return True instead of False for a clean stop
 
         if not result:
             return False
@@ -352,11 +377,21 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
         if enhance:
             print("Applying video enhancements...")
             try:
+                # Check if we should stop
+                if stop_event and stop_event.is_set():
+                    print("Process stopped by user before enhancement.")
+                    return False
+                    
                 # Apply our custom enhancements
                 enhanced_temp = output_file.replace('.mp4', '_enhanced_temp.mp4')
 
                 # Use the provided enhancement options
                 enhance_result = enhance_video(temp_output, enhanced_temp, enhancement_options)
+
+                # Check if we should stop
+                if stop_event and stop_event.is_set():
+                    print("Process stopped by user during enhancement.")
+                    return False
 
                 if enhance_result and os.path.exists(enhanced_temp):
                     # Apply final FFmpeg enhancements
@@ -395,22 +430,22 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
                         shutil.copy2(temp_output, output_file)
                         return os.path.exists(output_file)
                     except Exception as copy_error:
-                        print(f"Error copying temp file: {copy_error}")
+                        print(f"Error copying original video: {copy_error}")
                         return False
                 return False
         else:
-            # Just rename the temp file to the final output
+            # If no enhancement requested, just rename the temp file
             try:
                 shutil.copy2(temp_output, output_file)
                 if os.path.exists(temp_output):
                     os.remove(temp_output)
                 return os.path.exists(output_file)
             except Exception as rename_error:
-                print(f"Error renaming temp file: {rename_error}")
+                print(f"Error renaming video file: {rename_error}")
                 return False
-
     except Exception as e:
         print(f"Error creating enhanced slideshow: {e}")
+        traceback.print_exc()
         return False
 
 def merge_video_with_subtitles(video_path, subtitle_path, output_file):
@@ -431,7 +466,34 @@ def merge_video_with_subtitles(video_path, subtitle_path, output_file):
         print(f"Error merging video with subtitles: {e}")
         return None
 
+from services.video_optimization import enhance_video, apply_ffmpeg_enhancements
 
-
-
-
+def _clean_up_temp_files(*file_paths):
+    """
+    Clean up temporary files created during video generation
+    
+    Args:
+        file_paths: Paths to files that should be removed
+    """
+    for file_path in file_paths:
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+                print(f"Removed temporary file: {file_path}")
+                
+            # Also check for MoviePy temporary files
+            temp_audio = file_path + "TEMP_MPY_wvf_snd.mp3"
+            if os.path.exists(temp_audio):
+                os.remove(temp_audio)
+                print(f"Removed temporary audio file: {temp_audio}")
+                
+            # Check for other potential temp files with similar names
+            dir_path = os.path.dirname(file_path)
+            base_name = os.path.basename(file_path)
+            for f in os.listdir(dir_path):
+                if f.startswith(base_name) and "_temp" in f:
+                    full_path = os.path.join(dir_path, f)
+                    os.remove(full_path)
+                    print(f"Removed related temporary file: {full_path}")
+        except Exception as e:
+            print(f"Warning: Could not remove temporary file {file_path}: {e}")

@@ -5,11 +5,12 @@ import os
 import cv2
 import numpy as np
 import subprocess
+import time
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip
 from moviepy.audio.fx.all import volumex, audio_normalize
 from scipy.signal import butter, lfilter
 
-def enhance_video(input_video, output_video, options=None):
+def enhance_video(input_video, output_video, options=None, stop_event=None):
     """
     Enhance video with multiple optimization techniques
     
@@ -17,10 +18,15 @@ def enhance_video(input_video, output_video, options=None):
         input_video: Path to input video
         output_video: Path to output video
         options: Dictionary of enhancement options
+        stop_event: Threading event to stop the process
     
     Returns:
         str: Path to enhanced video
     """
+    if stop_event and stop_event.is_set():
+        print("Process stopped by user during video enhancement.")
+        return None
+        
     if options is None:
         options = {
             "color_correction": True,
@@ -45,10 +51,22 @@ def enhance_video(input_video, output_video, options=None):
         # Load the video
         video = VideoFileClip(input_video)
         
+        # Check for stop event
+        if stop_event and stop_event.is_set():
+            video.close()
+            print("Process stopped by user during video loading.")
+            return None
+            
         # Apply enhancements based on options
         if options.get("color_correction"):
             intensity = options.get("color_correction_intensity", 1.0)
             video = apply_color_correction(video, intensity)
+            
+            # Check for stop event
+            if stop_event and stop_event.is_set():
+                video.close()
+                print("Process stopped by user during color correction.")
+                return None
         
         if options.get("background_replacement"):
             video = replace_background(video, options.get("background_color", "#000000"))
@@ -74,6 +92,11 @@ def enhance_video(input_video, output_video, options=None):
         # Close the clips
         video.close()
         
+        # Check for stop event
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user after video writing.")
+            return None
+            
         # Apply FFmpeg enhancements if needed
         if options.get("apply_ffmpeg", True):
             ffmpeg_options = {
@@ -85,7 +108,7 @@ def enhance_video(input_video, output_video, options=None):
             }
             temp_output = output_video + ".temp.mp4"
             os.rename(output_video, temp_output)
-            apply_ffmpeg_enhancements(temp_output, output_video, ffmpeg_options)
+            apply_ffmpeg_enhancements(temp_output, output_video, ffmpeg_options, stop_event)
             if os.path.exists(temp_output):
                 os.remove(temp_output)
         
@@ -220,8 +243,12 @@ def enhance_audio(audio_clip, volume_boost=1.2):
         print(f"Error enhancing audio: {e}")
         return audio_clip  # Return original if enhancement fails
 
-def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=None):
+def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=None, stop_event=None):
     """Apply advanced FFmpeg enhancements for final output"""
+    if stop_event and stop_event.is_set():
+        print("Process stopped by user during FFmpeg enhancements.")
+        return None
+        
     try:
         # Default enhancement options
         if enhancement_options is None:
@@ -240,23 +267,7 @@ def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=Non
         if enhancement_options.get("sharpness", 1.0) > 0:
             sharpness = enhancement_options.get("sharpness", 1.0)
             video_filters.append(f"unsharp=5:5:{sharpness}:5:5:0.0")
-        
-        # Add equalization filters for contrast, brightness, saturation
-        eq_parts = []
-        if "contrast" in enhancement_options:
-            eq_parts.append(f"contrast={enhancement_options['contrast']}")
-        if "brightness" in enhancement_options:
-            eq_parts.append(f"brightness={enhancement_options['brightness']}")
-        if "saturation" in enhancement_options:
-            eq_parts.append(f"saturation={enhancement_options['saturation']}")
-        
-        if eq_parts:
-            video_filters.append("eq=" + ":".join(eq_parts))
-        
-        # Add noise reduction if enabled
-        if enhancement_options.get("noise_reduction", True):
-            video_filters.append("hqdn3d=4:3:6:4")
-        
+            
         # Combine all video filters
         vf_arg = ",".join(video_filters) if video_filters else "null"
         
@@ -274,13 +285,32 @@ def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=Non
             output_video
         ]
         
-        # Run FFmpeg
-        subprocess.run(cmd, check=True)
+        # Run FFmpeg with subprocess.Popen to be able to terminate it
+        process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        
+        # Poll the process while checking for stop_event
+        while process.poll() is None:
+            if stop_event and stop_event.is_set():
+                print("Terminating FFmpeg process...")
+                process.terminate()
+                # Wait a bit for graceful termination
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    # Force kill if it doesn't terminate gracefully
+                    process.kill()
+                return None
+            # Small sleep to prevent CPU hogging
+            time.sleep(0.1)
+            
         return output_video
     
     except Exception as e:
         print(f"Error applying FFmpeg enhancements: {e}")
         return None
+
+
+
 
 
 
