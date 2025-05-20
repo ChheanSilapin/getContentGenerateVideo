@@ -3,16 +3,22 @@
 Video Generator - Main Entry Point
 Creates videos with subtitles from text and images
 """
-# Import the local moviepy_patch module
 import sys
 import os
+import platform
+import traceback
+
+# Add the current directory to the path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+# Try to import the local moviepy_patch module
 try:
     import moviepy_patch
 except ImportError:
     print("Note: moviepy_patch module not found, continuing without it.")
-import platform
-import traceback
+
+# Import from utils
+from utils.helpers import ensure_directory_exists
 
 def check_required_files():
     """Check if all required files exist"""
@@ -22,9 +28,11 @@ def check_required_files():
         "services/image_service.py",
         "services/video_service.py",
         "services/subtitle_service.py",
-        "Final_Video.py",
-        "create_video.py",
-        "generate_ass.py"
+        "ui/gui.py",
+        "ui/image_selector.py",
+        "ui/text_redirector.py",
+        "utils/helpers.py",
+        "config.py"
     ]
 
     missing_files = []
@@ -37,9 +45,9 @@ def check_required_files():
 def create_gui():
     """Create and run the GUI application"""
     try:
-        # Use the simple_ui.py file directly
+        # Import the GUI module
         import tkinter as tk
-        from simple_ui import SimpleVideoGeneratorUI
+        from ui.gui import VideoGeneratorGUI
 
         root = tk.Tk()
         root.title("Video Generator")
@@ -57,7 +65,7 @@ def create_gui():
         root.minsize(800, 600)
 
         # Create the application
-        app = SimpleVideoGeneratorUI(root)
+        app = VideoGeneratorGUI(root)
         root.mainloop()
     except ImportError as e:
         print(f"Tkinter import error: {e}")
@@ -104,16 +112,12 @@ def check_and_create_directories():
         "output",
         "models",
         "services",
-        "ui"
+        "ui",
+        "utils"
     ]
 
     for directory in required_dirs:
-        if not os.path.exists(directory):
-            try:
-                os.makedirs(directory, exist_ok=True)
-                print(f"Created directory: {directory}")
-            except Exception as e:
-                print(f"Error creating directory {directory}: {e}")
+        ensure_directory_exists(directory)
 
 if __name__ == "__main__":
     print("Starting Video Generator...")
@@ -134,6 +138,8 @@ if __name__ == "__main__":
         if not response.lower().startswith('y'):
             print("Exiting.")
             sys.exit(1)
+
+    # Debug information removed
 
     # Check command line arguments
     if len(sys.argv) > 1 and sys.argv[1] == "--console":

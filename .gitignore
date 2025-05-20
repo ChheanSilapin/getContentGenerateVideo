@@ -33,3 +33,51 @@ build/
 .DS_Store
 Thumbs.db
 
+# Temporary files
+temp/
+*.tmp
+*.temp
+
+# Log files
+*.log
+logs/
+
+# FFmpeg files (already have some)
+*.exe
+*.dll
+
+# Model files and large data
+*.model
+*.weights
+*.h5
+*.pt
+*.pth
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*~
+*.bak
+*.backup
+
+# Generated content
+generated/
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# Coverage reports
+.coverage
+htmlcov/
+
+# Testing
+.pytest_cache/
+.tox/
+
+# Local configuration
+config.local.py
+local_settings.py
+

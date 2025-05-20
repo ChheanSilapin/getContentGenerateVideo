@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple Video Generator UI
+Video Generator GUI
 A professional-looking UI for generating videos from text and images
 """
 import os
@@ -15,22 +15,19 @@ import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 
-# Import the model
+# Import the model and UI components
 try:
-    import sys
-    import os
-    # Add the parent directory to the path to ensure imports work
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-    
     # Try to import OpenCV, but don't fail if it's not available
     try:
         import cv2
     except ImportError:
         print("OpenCV (cv2) not available. Some features may be limited.")
-    
+
     from models.video_generator import VideoGeneratorModel
+    from ui.image_selector import ImageSelector
+    from ui.text_redirector import TextRedirector
 except ImportError as e:
-    print(f"Error importing VideoGeneratorModel: {e}")
+    print(f"Error importing required modules: {e}")
     # Create a fallback model class if import fails
     class VideoGeneratorModel:
         """Fallback model class when the real one can't be imported"""
@@ -43,45 +40,38 @@ except ImportError as e:
             self.selected_images = []
             self.processing_option = "cpu"
             self.progress_callback = None
-            
+
         def set_progress_callback(self, callback):
             """Set a callback function for progress updates"""
             self.progress_callback = callback
-            
-        def update_progress(self, value, message=None):
-            """Update progress value and message"""
-            if self.progress_callback:
-                self.progress_callback(value, message)
-            else:
-                print(f"Progress: {value}% - {message}")
-            
+
         def generate_video(self, stop_event=None):
             """Generate a placeholder video"""
             print("Using fallback video generation")
             # Create output directory
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             output_dir = os.path.join("output", f"video_{timestamp}")
             os.makedirs(output_dir, exist_ok=True)
-            
+
             # Create placeholder files
             subtitle_file = os.path.join(output_dir, "subtitles.ass")
             video_file = os.path.join(output_dir, "video.mp4")
-            
+
             with open(subtitle_file, "w") as f:
                 f.write("Placeholder subtitle file")
-                
+
             with open(video_file, "w") as f:
                 f.write("Placeholder video file")
-                
+
             return subtitle_file, video_file, output_dir
-            
+
         def finalize_video(self, subtitle_path, video_path, output_dir, stop_event=None):
             """Finalize the placeholder video"""
             final_output = os.path.join(output_dir, "final_output.mp4")
-            
+
             with open(final_output, "w") as f:
                 f.write("Placeholder final video file")
-                
+
             return final_output
 
 # Import datetime correctly
@@ -97,18 +87,19 @@ except ImportError as e:
         """Fallback download_images function"""
         print(f"Fallback: download_images({url}, {output_folder}, {max_images})")
         return []
-        
+
     def download_images_for_preview(url, output_folder, max_images=10):
         """Fallback download_images_for_preview function"""
         print(f"Fallback: download_images_for_preview({url}, {output_folder}, {max_images})")
         return []
-        
+
     def copy_selected_images(image_paths, output_folder):
         """Fallback copy_selected_images function"""
         print(f"Fallback: copy_selected_images({image_paths}, {output_folder})")
         return False
 
-class SimpleVideoGeneratorUI:
+class VideoGeneratorGUI:
+    """Main GUI class for the Video Generator application"""
     def __init__(self, root):
         self.root = root
         self.root.configure(bg="#ffffff")  # Set root background
@@ -198,18 +189,18 @@ class SimpleVideoGeneratorUI:
         # Image source section
         image_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=10)
         image_frame.pack(fill=tk.X, padx=5, pady=5)
-        
+
         # Website URL input
         url_frame = ttk.Frame(image_frame)
         url_frame.pack(fill=tk.X, padx=5, pady=5)
-        
+
         url_label = ttk.Label(url_frame, text="Website URL:")
         url_label.pack(side=tk.LEFT, padx=5)
-        
+
         self.website_url = tk.StringVar()
         self.url_entry = ttk.Entry(url_frame, textvariable=self.website_url, width=40)
         self.url_entry.pack(side=tk.LEFT, padx=5, fill=tk.X, expand=True)
-        
+
         url_button = tk.Button(
             url_frame,
             text="Browse",
@@ -484,35 +475,35 @@ class SimpleVideoGeneratorUI:
 
         ttk.Label(left_frame, text="Color Intensity:").grid(row=0, column=0, sticky=tk.W, pady=5)
         ttk.Scale(left_frame, from_=0.5, to=2.0, variable=self.color_intensity, length=200).grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         ttk.Label(left_frame, text="Framing Crop:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Scale(left_frame, from_=0.8, to=1.0, variable=self.crop_percent, length=200).grid(row=1, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         ttk.Label(left_frame, text="Volume Boost:").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Scale(left_frame, from_=0.8, to=1.5, variable=self.volume_boost, length=200).grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         # Right column
         right_frame = ttk.Frame(advanced_frame)
         right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10)
-        
+
         ttk.Label(right_frame, text="Contrast:").grid(row=0, column=0, sticky=tk.W, pady=5)
         ttk.Scale(right_frame, from_=0.8, to=1.5, variable=self.contrast, length=200).grid(row=0, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         ttk.Label(right_frame, text="Brightness:").grid(row=1, column=0, sticky=tk.W, pady=5)
         ttk.Scale(right_frame, from_=0.0, to=0.2, variable=self.brightness, length=200).grid(row=1, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         ttk.Label(right_frame, text="Saturation:").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Scale(right_frame, from_=0.8, to=1.5, variable=self.saturation, length=200).grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-        
+
         ttk.Label(right_frame, text="Sharpness:").grid(row=3, column=0, sticky=tk.W, pady=5)
         ttk.Scale(right_frame, from_=0.0, to=2.0, variable=self.sharpness, length=200).grid(row=3, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
 
         # Help text
         help_frame = ttk.Frame(main_frame)
         help_frame.pack(fill=tk.X, padx=5, pady=10)
-        
+
         help_text = ttk.Label(
-            help_frame, 
+            help_frame,
             text="These settings control how your video will be enhanced. Basic options can be toggled on/off, while advanced options allow fine-tuning.",
             font=("Helvetica", 9),
             foreground=self.colors["light_text"],
@@ -523,7 +514,7 @@ class SimpleVideoGeneratorUI:
         # Apply button
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill=tk.X, pady=10)
-        
+
         apply_button = tk.Button(
             button_frame,
             text="Apply Settings",
@@ -537,7 +528,7 @@ class SimpleVideoGeneratorUI:
         apply_button.pack(side=tk.RIGHT, padx=5)
         apply_button.bind("<Enter>", lambda e: apply_button.config(bg="#27ae60"))
         apply_button.bind("<Leave>", lambda e: apply_button.config(bg=self.colors["success"]))
-        
+
         reset_button = tk.Button(
             button_frame,
             text="Reset to Defaults",
@@ -574,21 +565,21 @@ class SimpleVideoGeneratorUI:
         self.log("Welcome to Video Generator")
         self.log("Enter text and select images to create your video")
 
+    def log(self, message):
+        """Add a message to the log with timestamp"""
+        timestamp = datetime.datetime.now().strftime("[%H:%M:%S]")
+        self.log_text.config(state="normal")
+        self.log_text.insert(tk.END, f"{timestamp} {message}\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state="disabled")
+        print(f"{timestamp} {message}")
+
     def url_button_click(self):
         url = tk.simpledialog.askstring("Enter URL", "Enter website URL:")
         if url:
             self.url_entry.delete(0, tk.END)
             self.url_entry.insert(0, url)
             self.log(f"Set URL: {url}")
-
-    def folder_button_click(self):
-        folder_path = filedialog.askdirectory(title="Select Image Folder")
-        if folder_path:
-            self.folder_entry.config(state="normal")
-            self.folder_entry.delete(0, tk.END)
-            self.folder_entry.insert(0, folder_path)
-            self.folder_entry.config(state="readonly")
-            self.log(f"Selected folder: {folder_path}")
 
     def start_button_click(self):
         if self.generation_thread and self.generation_thread.is_alive():
@@ -695,15 +686,31 @@ class SimpleVideoGeneratorUI:
         self.generation_thread.daemon = True
         self.generation_thread.start()
 
+    def update_image_progress(self, value, message=None):
+        """Update the image progress bar and log message"""
+        self.image_progress_bar["value"] = value
+        self.image_progress_label.config(text=f"{value}%")
+        if message:
+            self.log(message)
+
+    def update_image_selection(self, var, path):
+        """Update the selected images list when a checkbox is clicked"""
+        if var.get() == 1:
+            if path not in self.selected_images:
+                self.selected_images.append(path)
+        else:
+            if path in self.selected_images:
+                self.selected_images.remove(path)
+
     def generate_video_thread(self):
         try:
             def progress_callback(value, message=None):
                 self.root.after(0, lambda: self.update_progress_ui(value, message))
             self.model.set_progress_callback(progress_callback)
-            
+
             # Update enhancement options before generating
             self.update_enhancement_options()
-            
+
             subtitle_path, video_path, output_dir = self.model.generate_video(self.stop_event)
             if self.stop_event.is_set():
                 self.root.after(0, lambda: self.log("Video generation stopped by user"))
@@ -762,59 +769,69 @@ class SimpleVideoGeneratorUI:
             bg="white",
             fg=self.colors["text"]
         )
-        title_label.grid(row=0, column=0, columnspan=3, pady=15)
+        title_label.grid(row=0, column=0, columnspan=4, pady=15)
 
-        # Display images with checkboxes
+        # Display images with checkboxes in a grid
         for i, img_path in enumerate(image_paths):
             try:
-                row = (i // 3) + 1
-                col = i % 3
+                row = (i // 5) + 1  # 4 images per row
+                col = i % 5
+
+                # Create a container for each image
                 img_container = tk.Frame(
                     image_frame,
                     bg="white",
-                    padx=10,
-                    pady=10,
                     relief="solid",
-                    borderwidth=1
+                    borderwidth=1,
+                    width=150,
+                    height=180
                 )
-                img_container.grid(row=row, column=col, padx=10, pady=10)
-                
+                img_container.grid(row=row, column=col, padx=5, pady=5)
+                img_container.grid_propagate(False)  # Force the frame to keep its size
+
                 # Create IntVar and store it with the path
                 var = tk.IntVar(value=1)  # Default to selected
-                
+
                 # Create checkbox with the variable
                 checkbox = tk.Checkbutton(
-                    img_container, 
-                    variable=var, 
+                    img_container,
+                    variable=var,
                     bg="white",
                     command=lambda v=var, p=img_path: self.update_image_selection(v, p)
                 )
-                checkbox.grid(row=0, column=0, sticky="nw")
-                
+                checkbox.grid(row=0, column=0, sticky="nw", padx=2, pady=2)
+
                 # Store the variable and path
                 self.image_vars.append((var, img_path))
-                
-                # Print debug info
-                print(f"Added checkbox for image {img_path} with var {var}")
-                
+
+                # Load and display the image
                 img = Image.open(img_path)
-                img.thumbnail((150, 150))
+                img.thumbnail((120, 120))  # Slightly smaller thumbnails to fit more in a row
                 photo = ImageTk.PhotoImage(img)
                 self.photo_references.append(photo)
-                img_label = tk.Label(img_container, image=photo, bg="white")
-                img_label.grid(row=1, column=0, pady=5)
+
+                # Create a frame to center the image
+                img_frame = tk.Frame(img_container, bg="white")
+                img_frame.grid(row=1, column=0, sticky="nsew")
+                img_container.grid_rowconfigure(1, weight=1)
+                img_container.grid_columnconfigure(0, weight=1)
+
+                img_label = tk.Label(img_frame, image=photo, bg="white")
+                img_label.pack(expand=True, fill="both", padx=5, pady=2)
+
+                # Display filename below the image
                 filename = os.path.basename(img_path)
-                if len(filename) > 20:
-                    filename = filename[:17] + "..."
-                name_label = tk.Label(img_container, text=filename, bg="white", fg=self.colors["text"], font=("Helvetica", 9))
-                name_label.grid(row=2, column=0)
-                try:
-                    with Image.open(img_path) as img_info:
-                        dimensions = f"{img_info.width} x {img_info.height} px"
-                        dim_label = tk.Label(img_container, text=dimensions, bg="white", fg=self.colors["light_text"], font=("Helvetica", 8))
-                        dim_label.grid(row=3, column=0)
-                except:
-                    pass
+                if len(filename) > 15:
+                    filename = filename[:12] + "..."
+                name_label = tk.Label(
+                    img_container,
+                    text=filename,
+                    bg="white",
+                    fg=self.colors["text"],
+                    font=("Helvetica", 9)
+                )
+                name_label.grid(row=2, column=0, padx=5, pady=(0, 5))
+
             except Exception as e:
                 self.log(f"Error displaying image {i+1}: {e}")
 
@@ -832,7 +849,7 @@ class SimpleVideoGeneratorUI:
             # Update all checkboxes using the stored variables
             for var, path in self.image_vars:
                 var.set(1 if select else 0)
-                
+
             # Update the selected_images list
             if select:
                 self.selected_images = [path for _, path in self.image_vars]
@@ -840,24 +857,24 @@ class SimpleVideoGeneratorUI:
             else:
                 self.selected_images = []
                 self.log("Deselected all images")
-            
+
             # Force update of the UI
             self.root.update_idletasks()
             return
-            
+
         # Fallback approach - find all checkbuttons in the image tab
         checkboxes = []
         self._find_all_widgets_of_type(self.image_tab, tk.Checkbutton, checkboxes)
-        
+
         if not checkboxes:
             messagebox.showinfo("No Images", "No images available to select")
             return
-            
+
         # Update all checkboxes
         for checkbox in checkboxes:
             if hasattr(checkbox, 'var'):
                 checkbox.var.set(1 if select else 0)
-                
+
         # Update the selected_images list
         if select:
             self.selected_images = []
@@ -869,17 +886,17 @@ class SimpleVideoGeneratorUI:
         else:
             self.selected_images = []
             self.log("Deselected all images")
-        
+
         # Force update of the UI
         self.root.update_idletasks()
-    
+
     def _find_all_widgets_of_type(self, parent, widget_type, result_list):
         """Recursively find all widgets of a specific type"""
         for child in parent.winfo_children():
             if isinstance(child, widget_type):
                 result_list.append(child)
             self._find_all_widgets_of_type(child, widget_type, result_list)
-    
+
     def _find_widgets_with_attribute(self, parent, attribute, result_list):
         """Recursively find all widgets with a specific attribute"""
         for child in parent.winfo_children():
@@ -910,10 +927,10 @@ class SimpleVideoGeneratorUI:
         self.model.selected_images = self.selected_images
         self.model.website_url = ""
         self.model.local_folder = ""
-        
+
         # Update enhancement options in the model
         self.update_enhancement_options()
-        
+
         self.log(f"Starting video generation with {self.cpu_gpu.get()}")
         self.log(f"Text: {text[:50]}..." if len(text) > 50 else f"Text: {text}")
         self.log(f"Using {len(self.selected_images)} selected images")
@@ -935,7 +952,7 @@ class SimpleVideoGeneratorUI:
             "framing": self.framing.get(),
             "motion_graphics": self.motion_graphics.get(),
             "noise_reduction": self.noise_reduction.get(),
-            
+
             # Advanced options
             "color_correction_intensity": self.color_intensity.get(),
             "framing_crop_percent": self.crop_percent.get(),
@@ -945,13 +962,13 @@ class SimpleVideoGeneratorUI:
             "saturation": self.saturation.get(),
             "sharpness": self.sharpness.get()
         }
-        
+
         # Update effect flags
         self.model.use_effects = any([self.color_correction.get(), self.motion_graphics.get(), self.framing.get()])
-        
+
         # Log the changes
         self.log("Enhancement options updated")
-        
+
         # Switch back to input tab
         self.notebook.select(self.input_tab)
 
@@ -963,7 +980,7 @@ class SimpleVideoGeneratorUI:
         self.framing.set(True)
         self.motion_graphics.set(False)
         self.noise_reduction.set(True)
-        
+
         # Reset advanced options
         self.color_intensity.set(1.0)
         self.crop_percent.set(0.95)
@@ -972,7 +989,7 @@ class SimpleVideoGeneratorUI:
         self.brightness.set(0.05)
         self.saturation.set(1.2)
         self.sharpness.set(1.0)
-        
+
         # Log the changes
         self.log("Enhancement options reset to defaults")
 
@@ -993,13 +1010,6 @@ class SimpleVideoGeneratorUI:
         self.progress_label.config(text=f"{value}%")
         if message:
             self.log(message)
-
-    def show_success_message(self, video_path):
-        result = messagebox.askquestion("Success",
-                                       f"Video generated successfully!\n\nPath: {video_path}\n\nDo you want to open it?",
-                                       icon="info")
-        if result == "yes":
-            self.open_file(video_path)
 
     def clear_input_button_click(self):
         self.text_input.delete("1.0", tk.END)
@@ -1046,8 +1056,11 @@ class SimpleVideoGeneratorUI:
             return
         self.image_canvas.delete("all")
         self.photo_references = []
+        self.image_vars = []  # Clear previous image variables
+
         image_frame = tk.Frame(self.image_canvas, bg="white")
         self.image_canvas.create_window(0, 0, window=image_frame, anchor="nw")
+
         title_label = tk.Label(
             image_frame,
             text=f"{len(self.selected_images)} Images Selected",
@@ -1055,89 +1068,78 @@ class SimpleVideoGeneratorUI:
             bg="white",
             fg=self.colors["text"]
         )
-        title_label.grid(row=0, column=0, columnspan=3, pady=15)
+        title_label.grid(row=0, column=0, columnspan=4, pady=15)
+
+        # Display images with checkboxes in a grid
         for i, img_path in enumerate(self.selected_images):
             try:
-                row = (i // 3) + 1
-                col = i % 3
+                row = (i // 5) + 1  # 4 images per row
+                col = i % 5
+
+                # Create a container for each image
                 img_container = tk.Frame(
                     image_frame,
                     bg="white",
-                    padx=10,
-                    pady=10,
                     relief="solid",
                     borderwidth=1,
-                    highlightbackground="#dfe6e9",
-                    highlightthickness=1
+                    width=150,
+                    height=180
                 )
-                img_container.grid(row=row, column=col, padx=10, pady=10)
-                var = tk.IntVar(value=1)
-                checkbox = tk.Checkbutton(img_container, variable=var, bg="white")
-                checkbox.grid(row=0, column=0, sticky="nw")
-                
-                # Store the path with the checkbox for later reference
-                checkbox.img_path = img_path
-                checkbox.var = var
-                
-                # Add command to update selection
-                checkbox.config(command=lambda v=var, p=img_path: self.update_image_selection(v, p))
-                
+                img_container.grid(row=row, column=col, padx=5, pady=5)
+                img_container.grid_propagate(False)  # Force the frame to keep its size
+
+                # Create IntVar and store it with the path
+                var = tk.IntVar(value=1)  # Default to selected
+
+                # Create checkbox with the variable
+                checkbox = tk.Checkbutton(
+                    img_container,
+                    variable=var,
+                    bg="white",
+                    command=lambda v=var, p=img_path: self.update_image_selection(v, p)
+                )
+                checkbox.grid(row=0, column=0, sticky="nw", padx=2, pady=2)
+
+                # Store the variable and path
+                self.image_vars.append((var, img_path))
+
+                # Load and display the image
                 img = Image.open(img_path)
-                img.thumbnail((150, 150))
+                img.thumbnail((120, 120))  # Slightly smaller thumbnails to fit more in a row
                 photo = ImageTk.PhotoImage(img)
                 self.photo_references.append(photo)
-                img_label = tk.Label(img_container, image=photo, bg="white")
-                img_label.grid(row=1, column=0, pady=5)
+
+                # Create a frame to center the image
+                img_frame = tk.Frame(img_container, bg="white")
+                img_frame.grid(row=1, column=0, sticky="nsew")
+                img_container.grid_rowconfigure(1, weight=1)
+                img_container.grid_columnconfigure(0, weight=1)
+
+                img_label = tk.Label(img_frame, image=photo, bg="white")
+                img_label.pack(expand=True, fill="both", padx=5, pady=2)
+
+                # Display filename below the image
                 filename = os.path.basename(img_path)
-                if len(filename) > 20:
-                    filename = filename[:17] + "..."
-                name_label = tk.Label(img_container, text=filename, bg="white", fg=self.colors["text"], font=("Helvetica", 9))
-                name_label.grid(row=2, column=0)
+                if len(filename) > 15:
+                    filename = filename[:12] + "..."
+                name_label = tk.Label(
+                    img_container,
+                    text=filename,
+                    bg="white",
+                    fg=self.colors["text"],
+                    font=("Helvetica", 9)
+                )
+                name_label.grid(row=2, column=0, padx=5, pady=(0, 5))
+
             except Exception as e:
                 self.log(f"Error displaying image {i+1}: {e}")
+
         image_frame.update_idletasks()
         self.image_canvas.config(scrollregion=self.image_canvas.bbox("all"))
-
-    def log(self, message):
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        formatted_message = f"[{timestamp}] {message}"
-        self.log_text.config(state="normal")
-        self.log_text.insert(tk.END, formatted_message + "\n")
-        self.log_text.see(tk.END)
-        self.log_text.config(state="disabled")
-        print(formatted_message)
-
-    def update_image_progress(self, value, message=None):
-        self.image_progress_bar["value"] = value
-        self.image_progress_label.config(text=f"{value}%")
-        if message:
-            self.log(message)
-
-    def update_image_selection(self, var, path):
-        """Update selected images when a checkbox is clicked"""
-        if var.get() == 1:
-            if path not in self.selected_images:
-                self.selected_images.append(path)
-        else:
-            if path in self.selected_images:
-                self.selected_images.remove(path)
-        
-        print(f"Selected images: {len(self.selected_images)}")
-
-    def toggle_advanced_options(self):
-        """Show or hide advanced enhancement options"""
-        if self.show_advanced.get():
-            self.advanced_frame.pack(fill=tk.X, padx=5, pady=2)
-            # Ensure the window is large enough to show everything
-            current_height = self.root.winfo_height()
-            if current_height < 700:  # Minimum height to show all controls
-                screen_height = self.root.winfo_screenheight()
-                new_height = min(700, screen_height - 100)  # Don't make it larger than screen
-                self.root.geometry(f"{self.root.winfo_width()}x{new_height}")
-        else:
-            self.advanced_frame.pack_forget()
+        self.log(f"Displayed {len(self.selected_images)} selected images")
 
 def main():
+    """Main function to run the GUI application"""
     root = tk.Tk()
     root.title("Video Generator")
     root.configure(bg="#ffffff")
@@ -1149,12 +1151,8 @@ def main():
     center_y = int(screen_height / 2 - window_height / 2)
     root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
     root.minsize(800, 600)
-    app = SimpleVideoGeneratorUI(root)
+    app = VideoGeneratorGUI(root)
     root.mainloop()
 
 if __name__ == "__main__":
     main()
-
-
-
-

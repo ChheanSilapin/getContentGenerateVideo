@@ -1,5 +1,7 @@
 """
 UI package for the Video Generator application
 """
-# Import the UI class directly into the ui namespace
-from .ui_dialog import Ui_dialog
+# Import the UI components
+from .image_selector import ImageSelector
+from .text_redirector import TextRedirector
+from .gui import VideoGeneratorGUI

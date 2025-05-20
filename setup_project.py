@@ -25,7 +25,7 @@ def create_empty_file(file_path, content=""):
     directory = os.path.dirname(file_path)
     if directory and not os.path.exists(directory):
         os.makedirs(directory, exist_ok=True)
-    
+
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(content)
     print(f"Created file: {file_path}")
@@ -50,7 +50,7 @@ def install_module(module_name):
 def main():
     """Main function"""
     print("=== Video Generator Project Setup ===")
-    
+
     # Required directories
     required_dirs = [
         "models",
@@ -58,7 +58,7 @@ def main():
         "ui",
         "output"
     ]
-    
+
     # Required files
     required_files = [
         "models/__init__.py",
@@ -69,13 +69,16 @@ def main():
         "services/video_service.py",
         "services/subtitle_service.py",
         "ui/__init__.py",
+        "ui/image_selector.py",
+        "ui/text_redirector.py",
         "Final_Video.py",
         "create_video.py",
         "generate_ass.py",
         "voice_ai.py",
-        "config.py"
+        "config.py",
+        "simple_ui.py"
     ]
-    
+
     # Required modules
     required_modules = [
         "moviepy",
@@ -83,7 +86,7 @@ def main():
         "requests",
         "bs4"
     ]
-    
+
     # Check and create directories
     print("\nChecking directories...")
     for directory in required_dirs:
@@ -91,7 +94,7 @@ def main():
             print(f"✓ Directory exists: {directory}")
         else:
             print(f"✗ Failed to create directory: {directory}")
-    
+
     # Check files
     print("\nChecking files...")
     missing_files = []
@@ -101,7 +104,7 @@ def main():
         else:
             print(f"✗ File missing: {file_path}")
             missing_files.append(file_path)
-    
+
     # Create missing files with placeholder content
     if missing_files:
         print("\nCreating missing files with placeholder content...")
@@ -111,7 +114,7 @@ def main():
                 print(f"✓ Created placeholder file: {file_path}")
             else:
                 print(f"✗ Failed to create file: {file_path}")
-    
+
     # Check modules
     print("\nChecking required Python modules...")
     missing_modules = []
@@ -121,7 +124,7 @@ def main():
         else:
             print(f"✗ Module missing: {module_name}")
             missing_modules.append(module_name)
-    
+
     # Install missing modules
     if missing_modules:
         print("\nInstalling missing modules...")
@@ -131,7 +134,7 @@ def main():
                 print(f"✓ Installed module: {module_name}")
             else:
                 print(f"✗ Failed to install module: {module_name}")
-    
+
     # Create a minimal voice_ai.py if it doesn't exist
     if "voice_ai.py" in missing_files:
         voice_ai_content = '''"""
@@ -145,11 +148,11 @@ import subprocess
 def generateAudio(text, output_file):
     """
     Generate audio from text
-    
+
     Args:
         text: Text to convert to speech
         output_file: Path to output audio file
-        
+
     Returns:
         bool: True if successful, False otherwise
     """
@@ -158,7 +161,7 @@ def generateAudio(text, output_file):
         output_dir = os.path.dirname(output_file)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-        
+
         # Use system text-to-speech
         if platform.system() == "Windows":
             # Use PowerShell's text-to-speech
@@ -170,7 +173,7 @@ def generateAudio(text, output_file):
         else:  # Linux
             # Try using espeak
             subprocess.run(["espeak", "-w", output_file, text], check=True)
-            
+
         # Check if the file was created
         if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
             print(f"Audio generated successfully: {output_file}")
@@ -178,13 +181,13 @@ def generateAudio(text, output_file):
         else:
             print(f"Audio file not created or empty: {output_file}")
             return False
-                
+
     except Exception as e:
         print(f"Error generating audio: {e}")
         return False
 '''
         create_empty_file("voice_ai.py", voice_ai_content)
-    
+
     # Create a minimal config.py if it doesn't exist
     if "config.py" in missing_files:
         config_content = '''"""
@@ -208,7 +211,7 @@ GUI_WINDOW_SIZE = "800x800"
 GUI_TITLE = "Video Generator"
 '''
         create_empty_file("config.py", config_content)
-    
+
     # Create a minimal models/video_generator.py if it doesn't exist
     if "models/video_generator.py" in missing_files:
         video_generator_content = '''"""
@@ -229,74 +232,74 @@ class VideoGeneratorModel:
         self.selected_images = []
         self.processing_option = "cpu"  # cpu or gpu
         self.output_folder = ""
-        
+
     def update_progress(self, progress, message=""):
         """Update progress (to be overridden by UI)"""
         print(f"Progress: {progress}% - {message}")
-        
+
     def generate_video(self, stop_event=None):
         """
         Generate a video from text and images
-        
+
         Args:
             stop_event: Threading event to stop the process
-            
+
         Returns:
             tuple: (subtitle_path, video_path, output_dir)
         """
         # Create output directory
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
+
         # Use custom output folder if provided
         if self.output_folder and os.path.isdir(self.output_folder):
             output_dir = os.path.join(self.output_folder, f"video_{timestamp}")
         else:
             output_dir = os.path.join("output", f"video_{timestamp}")
-        
+
         os.makedirs(output_dir, exist_ok=True)
         print(f"Created output directory: {output_dir}")
-        
+
         # Placeholder implementation
         print("This is a placeholder implementation. Replace with actual code.")
         self.update_progress(100, "Placeholder implementation completed")
-        
+
         # Return placeholder paths
         subtitle_path = os.path.join(output_dir, "subtitles.ass")
         video_path = os.path.join(output_dir, "video.mp4")
-        
+
         # Create empty files
         with open(subtitle_path, "w") as f:
             f.write("[Script Info]\\nTitle: Generated Subtitle\\nScriptType: v4.00+\\n")
         with open(video_path, "w") as f:
             f.write("Placeholder video file")
-            
+
         return subtitle_path, video_path, output_dir
-        
+
     def finalize_video(self, subtitlePath, videoPath, output_dir, stop_event=None):
         """
         Finalize the video by merging video and subtitles
-        
+
         Args:
             subtitlePath: Path to subtitle file
             videoPath: Path to video file
             output_dir: Output directory
             stop_event: Threading event to stop the process
-            
+
         Returns:
             str: Path to final video
         """
         print("This is a placeholder implementation. Replace with actual code.")
         self.update_progress(100, "Placeholder implementation completed")
-        
+
         # Return placeholder path
         final_output = os.path.join(output_dir, "final_output.mp4")
         with open(final_output, "w") as f:
             f.write("Placeholder final video file")
-            
+
         return final_output
 '''
         create_empty_file("models/video_generator.py", video_generator_content)
-    
+
     # Create a minimal create_video.py if it doesn't exist
     if "create_video.py" in missing_files:
         create_video_content = '''"""
@@ -308,7 +311,7 @@ import sys
 def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False):
     """
     Create a slideshow video from images
-    
+
     Args:
         folderName: Folder containing images
         title: Title of the video
@@ -318,7 +321,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
         zoomFactor: Zoom factor for the slideshow
         frameRarte: Frame rate for the video
         use_gpu_encoding: Whether to use GPU for encoding
-        
+
     Returns:
         str: Path to output video file if successful, None otherwise
     """
@@ -327,11 +330,11 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
         print(f"Title: {title}")
         print(f"Audio file: {audioFile}")
         print(f"Output video: {outputVideo}")
-        
+
         # Create a placeholder video file
         with open(outputVideo, "w") as f:
             f.write("Placeholder video file")
-            
+
         print(f"Created placeholder video: {outputVideo}")
         return outputVideo
     except Exception as e:
@@ -341,28 +344,28 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
 def downloadImage(website_url, folder_name, placeholder_count=3):
     """
     Download images from a website
-    
+
     Args:
         website_url: URL of the website
         folder_name: Folder to save images
         placeholder_count: Number of placeholder images to create if download fails
-        
+
     Returns:
         str: Path to folder containing images
     """
     try:
         print(f"Downloading images from {website_url}")
-        
+
         # Create folder if it doesn't exist
         if not os.path.exists(folder_name):
             os.makedirs(folder_name, exist_ok=True)
-            
+
         # Create placeholder images
         for i in range(placeholder_count):
             img_path = os.path.join(folder_name, f"{i}.jpg")
             with open(img_path, "w") as f:
                 f.write(f"Placeholder image {i}")
-                
+
         print(f"Created {placeholder_count} placeholder images in {folder_name}")
         return folder_name
     except Exception as e:
@@ -370,7 +373,7 @@ def downloadImage(website_url, folder_name, placeholder_count=3):
         return None
 '''
         create_empty_file("create_video.py", create_video_content)
-    
+
     # Create a minimal generate_ass.py if it doesn't exist
     if "generate_ass.py" in missing_files:
         generate_ass_content = '''"""
@@ -382,26 +385,26 @@ import sys
 def process_local_video(video_path, output_type="ass", maxChar=40, output_file="subtitles.ass", audio_file=None):
     """
     Generate subtitles for a video
-    
+
     Args:
         video_path: Path to video file
         output_type: Output format (ass, srt, etc.)
         maxChar: Maximum characters per line
         output_file: Path to output subtitle file
         audio_file: Path to audio file
-        
+
     Returns:
         str: Path to output subtitle file if successful, None otherwise
     """
     try:
         print(f"Generating subtitles for {video_path}")
         print(f"Output file: {output_file}")
-        
+
         # Create output directory if it doesn't exist
         output_dir = os.path.dirname(output_file)
         if output_dir and not os.path.exists(output_dir):
             os.makedirs(output_dir, exist_ok=True)
-            
+
         # Create a placeholder subtitle file
         with open(output_file, "w") as f:
             f.write("[Script Info]\\nTitle: Generated Subtitle\\nScriptType: v4.00+\\n\\n")
@@ -409,7 +412,7 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             f.write("Style: Default,Arial,20,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1\\n\\n")
             f.write("[Events]\\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\\n")
             f.write("Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,This is a sample subtitle\\n")
-            
+
         print(f"Created placeholder subtitle file: {output_file}")
         return output_file
     except Exception as e:
@@ -417,7 +420,7 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
         return None
 '''
         create_empty_file("generate_ass.py", generate_ass_content)
-    
+
     # Create a minimal Final_Video.py if it doesn't exist
     if "Final_Video.py" in missing_files:
         final_video_content = '''"""
@@ -429,12 +432,12 @@ import sys
 def merge_video_subtitle(video_path, subtitle_path, output_file):
     """
     Merge video and subtitles into final output
-    
+
     Args:
         video_path: Path to video file
         subtitle_path: Path to subtitle file
         output_file: Path to output file
-        
+
     Returns:
         str: Path to output file if successful, None otherwise
     """
@@ -443,11 +446,11 @@ def merge_video_subtitle(video_path, subtitle_path, output_file):
         print(f"Video: {video_path}")
         print(f"Subtitles: {subtitle_path}")
         print(f"Output: {output_file}")
-        
+
         # Create a placeholder output file
         with open(output_file, "w") as f:
             f.write("Placeholder final video file")
-            
+
         print(f"Created placeholder final video: {output_file}")
         return output_file
     except Exception as e:
@@ -455,7 +458,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file):
         return None
 '''
         create_empty_file("Final_Video.py", final_video_content)
-    
+
     print("\nSetup complete!")
     print("You can now run the application with: python main.py")
 
