@@ -159,17 +159,57 @@ def copy_selected_images(image_paths, output_folder):
     try:
         ensure_directory_exists(output_folder)
 
-        for i, img_path in enumerate(image_paths):
-            if os.path.exists(img_path):
-                # Use a numbered filename to ensure order
-                ext = os.path.splitext(img_path)[1].lower()
-                if not ext:
-                    ext = ".jpg"  # Default extension
-                dest_path = os.path.join(output_folder, f"{i}{ext}")
-                shutil.copy2(img_path, dest_path)
-                print(f"Copied image {i+1}/{len(image_paths)}: {os.path.basename(img_path)} -> {os.path.basename(dest_path)}")
+        # Track if we successfully copied at least one image
+        copied_at_least_one = False
 
-        return True
+        for i, img_path in enumerate(image_paths):
+            try:
+                if os.path.exists(img_path):
+                    # Use a numbered filename to ensure order
+                    ext = os.path.splitext(img_path)[1].lower()
+                    if not ext:
+                        ext = ".jpg"  # Default extension
+                    dest_path = os.path.join(output_folder, f"{i}{ext}")
+                    shutil.copy2(img_path, dest_path)
+                    print(f"Copied image {i+1}/{len(image_paths)}: {os.path.basename(img_path)} -> {os.path.basename(dest_path)}")
+                    copied_at_least_one = True
+                elif img_path.startswith(('http://', 'https://')):
+                    # It's a URL, try to download it
+                    print(f"Image path is a URL, attempting to download: {img_path}")
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                    }
+                    response = requests.get(img_path, headers=headers, timeout=10)
+                    response.raise_for_status()
+
+                    # Determine file extension from content type or URL
+                    content_type = response.headers.get('content-type', '')
+                    if 'image/jpeg' in content_type or 'image/jpg' in content_type:
+                        ext = '.jpg'
+                    elif 'image/png' in content_type:
+                        ext = '.png'
+                    elif 'image/gif' in content_type:
+                        ext = '.gif'
+                    elif 'image/webp' in content_type:
+                        ext = '.webp'
+                    else:
+                        # Try to get extension from URL
+                        url_ext = os.path.splitext(img_path)[1].lower()
+                        ext = url_ext if url_ext in SUPPORTED_IMAGE_EXTENSIONS else '.jpg'
+
+                    dest_path = os.path.join(output_folder, f"{i}{ext}")
+                    with open(dest_path, "wb") as f:
+                        f.write(response.content)
+                    print(f"Downloaded image {i+1}/{len(image_paths)} from URL: {img_path} -> {os.path.basename(dest_path)}")
+                    copied_at_least_one = True
+                else:
+                    print(f"Image not found: {img_path}")
+            except Exception as e:
+                print(f"Error processing image {i+1}: {e}")
+                # Continue with next image instead of failing completely
+
+        # Return success only if we copied at least one image
+        return copied_at_least_one
     except Exception as e:
         print(f"Error copying images: {e}")
         traceback.print_exc()

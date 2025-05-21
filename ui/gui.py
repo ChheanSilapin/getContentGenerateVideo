@@ -491,32 +491,32 @@ class VideoGeneratorGUI:
         self.apply_ffmpeg = tk.BooleanVar(value=False)  # FFmpeg enhancements off by default
 
         # Create a grid layout for checkboxes - replace ttk.Checkbutton with tk.Checkbutton using Unicode characters
-        tk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction, 
+        tk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
                       font=("Helvetica", 10)).grid(row=0, column=0, sticky=tk.W, padx=20, pady=5)
-        
+
         tk.Checkbutton(basic_frame, text="Audio option", variable=self.audio_option,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
                       font=("Helvetica", 10)).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
-        
+
         # Replace the remaining checkbuttons similarly
         tk.Checkbutton(basic_frame, text="Framing", variable=self.framing,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
                       font=("Helvetica", 10)).grid(row=1, column=0, sticky=tk.W, padx=20, pady=5)
-        
+
         tk.Checkbutton(basic_frame, text="Motion Graphics", variable=self.motion_graphics,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
                       font=("Helvetica", 10)).grid(row=1, column=1, sticky=tk.W, padx=20, pady=5)
-        
+
         tk.Checkbutton(basic_frame, text="Noise Reduction", variable=self.noise_reduction,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
                       font=("Helvetica", 10)).grid(row=2, column=0, sticky=tk.W, padx=20, pady=5)
-        
+
         tk.Checkbutton(basic_frame, text="FFmpeg Enhancements", variable=self.apply_ffmpeg,
                       bg=self.colors["background"], selectcolor=self.colors["background"],
                       indicatoron=True, onvalue=True, offvalue=False,
@@ -714,14 +714,24 @@ class VideoGeneratorGUI:
         self.model.text_input = text
         self.model.processing_option = self.cpu_gpu.get().lower()
         if self.selected_images:
-            self.model.image_source = "3"
-            self.model.selected_images = self.selected_images
-            self.model.website_url = ""
-            self.model.local_folder = ""
+            # Check if images were downloaded from a URL
+            if url:
+                self.model.image_source = "1"  # Website URL
+                self.model.selected_images = self.selected_images
+                self.model.website_url = url
+                self.model.local_folder = ""
+            else:
+                self.model.image_source = "3"  # Selected images
+                self.model.selected_images = self.selected_images
+                self.model.website_url = ""
+                self.model.local_folder = ""
         elif url:
+            # No images selected but URL provided - this shouldn't happen normally
+            # as we redirect to image selection first
             self.model.image_source = "1"
             self.model.website_url = url
             self.model.local_folder = ""
+            self.model.selected_images = []
 
         self.log(f"Starting video generation with {self.cpu_gpu.get()}")
         self.log(f"Text: {text[:50]}..." if len(text) > 50 else f"Text: {text}")
@@ -976,10 +986,19 @@ class VideoGeneratorGUI:
             return
         self.model.text_input = text
         self.model.processing_option = self.cpu_gpu.get().lower()
-        self.model.image_source = "3"
-        self.model.selected_images = self.selected_images
-        self.model.website_url = ""
-        self.model.local_folder = ""
+
+        # Check if images were downloaded from a URL
+        url = self.website_url.get().strip()
+        if url:
+            self.model.image_source = "1"  # Website URL
+            self.model.selected_images = self.selected_images
+            self.model.website_url = url
+            self.model.local_folder = ""
+        else:
+            self.model.image_source = "3"  # Selected images
+            self.model.selected_images = self.selected_images
+            self.model.website_url = ""
+            self.model.local_folder = ""
 
         # Update option options in the model
         self.update_option_options()
@@ -1068,7 +1087,7 @@ class VideoGeneratorGUI:
         self.stop_button.config(state=tk.DISABLED)
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
-        
+
         # Reset batch progress if it exists
         if hasattr(self, 'batch_progress_bar'):
             self.batch_progress_bar["value"] = 0
@@ -1079,15 +1098,15 @@ class VideoGeneratorGUI:
         # Update main progress bar
         self.progress_bar["value"] = value
         self.progress_label.config(text=f"{value}%")
-        
+
         # Always update batch progress bar during batch processing
         if hasattr(self, 'batch_progress_bar'):
             self.batch_progress_bar["value"] = value
             self.batch_progress_label.config(text=f"{value}%")
-        
+
         if message:
             self.log(message)
-        
+
         # Force UI update
         self.root.update_idletasks()
 
@@ -1241,13 +1260,13 @@ class VideoGeneratorGUI:
         # Add progress section
         progress_frame = ttk.LabelFrame(batch_frame, text="Batch Progress", padding=10)
         progress_frame.pack(fill=tk.X, pady=10)
-        
+
         self.batch_progress_bar = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, mode='determinate')
         self.batch_progress_bar.pack(fill=tk.X, padx=5, pady=5)
-        
+
         self.batch_progress_label = ttk.Label(progress_frame, text="0%", font=("Helvetica", 10))
         self.batch_progress_label.pack(pady=5)
-        
+
         # Buttons frame
         buttons_frame = ttk.Frame(batch_frame)
         buttons_frame.pack(fill=tk.X, pady=10)
@@ -1340,13 +1359,13 @@ class VideoGeneratorGUI:
             return
 
         self.log(f"Starting batch processing of {len(self.model.batch_jobs)} jobs")
-        
+
         # Reset progress bars
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
         self.batch_progress_bar["value"] = 0
         self.batch_progress_label.config(text="0%")
-        
+
         self.generate_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         self.stop_event = threading.Event()
@@ -1360,9 +1379,9 @@ class VideoGeneratorGUI:
             # Make sure the progress callback is set
             def progress_callback(value, message=None):
                 self.root.after(0, lambda v=value, m=message: self.update_progress_ui(v, m))
-            
+
             self.model.set_progress_callback(progress_callback)
-            
+
             # Process the batch
             results = self.model.process_batch(self.stop_event)
 

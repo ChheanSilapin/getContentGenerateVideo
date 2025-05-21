@@ -160,6 +160,12 @@ class VideoGeneratorModel:
 
             print(f"Using {len(self.selected_images)} selected images from website")
             self.update_progress(35, f"Copying {len(self.selected_images)} selected images")
+
+            # Make sure the images directory exists
+            if not os.path.exists(images_dir):
+                os.makedirs(images_dir, exist_ok=True)
+
+            # Copy the selected images to the images directory
             if not copy_selected_images(self.selected_images, images_dir):
                 print("ERROR: Failed to copy selected images.")
                 self.update_progress(0, "Failed to copy selected images")
@@ -323,7 +329,7 @@ class VideoGeneratorModel:
             elif self.image_source == "3":  # Selected images
                 # Check if images were selected from local files (not URLs)
                 has_downloaded_images = any(img.startswith(('http://', 'https://')) for img in self.selected_images)
-                
+
                 # If all images were local files, remove the images directory
                 if not has_downloaded_images:
                     if os.path.exists(images_dir):
@@ -384,11 +390,11 @@ class VideoGeneratorModel:
         for i, job in enumerate(self.batch_jobs):
             if stop_event and stop_event.is_set():
                 break
-            
+
             # Calculate overall progress percentage
             overall_progress = int((i / total_jobs) * 100)
             self.update_progress(overall_progress, f"Starting job {i+1}/{total_jobs}")
-            
+
             # Set up the current job
             self.text_input = job["text_input"]
             self.image_source = job["image_source"]
@@ -396,14 +402,14 @@ class VideoGeneratorModel:
             self.website_url = job["website_url"]
             self.local_folder = job["local_folder"]
             self.processing_option = "cpu"  # Default to CPU for batch processing
-            
+
             # Process the job
             try:
                 job["status"] = "processing"
-                
+
                 # Create a wrapper for the progress callback to show both job progress and overall progress
                 original_callback = self.progress_callback
-                
+
                 def job_progress_callback(value, message=None):
                     # Calculate combined progress: base progress for completed jobs + partial progress for current job
                     job_weight = 100 / total_jobs  # Each job contributes this much to total progress
@@ -413,17 +419,17 @@ class VideoGeneratorModel:
                     current_job_progress = int((value / 100) * job_weight)
                     # Combined progress
                     combined_progress = base_progress + current_job_progress
-                    
+
                     job_message = f"Job {i+1}/{total_jobs}: {message}" if message else f"Job {i+1}/{total_jobs}"
                     if original_callback:
                         original_callback(combined_progress, job_message)
-                
+
                 # Temporarily replace the callback
                 self.progress_callback = job_progress_callback
-                
+
                 # Generate the video
                 subtitle_path, video_path, output_dir = self.generate_video(stop_event)
-                
+
                 if subtitle_path and video_path and output_dir:
                     final_video = self.finalize_video(subtitle_path, video_path, output_dir, stop_event)
                     results.append((job, final_video))
@@ -439,18 +445,18 @@ class VideoGeneratorModel:
                     if original_callback:
                         job_complete_progress = int((i + 1) * (100 / total_jobs))
                         original_callback(job_complete_progress, f"Failed job {i+1}/{total_jobs}")
-                
+
                 # Restore the original callback
                 self.progress_callback = original_callback
-                
+
             except Exception as e:
                 print(f"Error processing job {i+1}: {e}")
                 results.append((job, None))
                 job["status"] = "failed"
-                
+
                 # Restore the original callback
                 self.progress_callback = original_callback
-                
+
             # Update the current job index
             self.current_job_index = i + 1
 
