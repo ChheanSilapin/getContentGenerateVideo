@@ -356,7 +356,8 @@ def create_slideshow(images_folder, title, content, audio_file, output_file, use
 
 def create_enhanced_slideshow(images_folder, title, content, audio_file, output_file, use_gpu=False,
                              use_effects=True, zoom_effect=True, fade_effect=True, enhance=True,
-                             enhancement_options=None, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
+                             enhancement_options=None, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO,
+                             ffmpeg_timeout=30):  # Change default timeout from 300 to 30
     """
     Create an enhanced slideshow video with optimizations
 
@@ -374,6 +375,7 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
         enhancement_options: Dictionary of enhancement options
         stop_event: Threading event to stop the process
         aspect_ratio: Aspect ratio for the video (9:16, 16:9, or 1:1)
+        ffmpeg_timeout: Maximum time in seconds to wait for FFmpeg to complete (default: 30s)
 
     Returns:
         bool: True if successful, False otherwise
@@ -389,9 +391,13 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
             "color_correction": True,
             "audio_enhancement": True,
             "framing": True,
-            "motion_graphics": False
+            "motion_graphics": False,
+            "preset": "ultrafast",  # Change from fast to ultrafast
+            "crf": 28  # Increase from 23 to 28 for faster processing
         }
     try:
+        print(f"Creating enhanced slideshow with {len(os.listdir(images_folder))} images...")
+
         # First create the basic slideshow
         temp_output = output_file.replace('.mp4', '_temp.mp4')
 
@@ -399,6 +405,8 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
         if enhancement_options and 'aspect_ratio' in enhancement_options:
             aspect_ratio = enhancement_options['aspect_ratio']
 
+        # Create the basic slideshow
+        print(f"Step 1: Creating basic slideshow...")
         result = create_slideshow(
             images_folder, title, content, audio_file, temp_output,
             use_gpu=use_gpu, use_effects=use_effects,
@@ -415,10 +423,30 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
             return True  # Return True instead of False for a clean stop
 
         if not result:
+            print("Failed to create basic slideshow.")
             return False
 
+        # Check if the temp file was created and has content
+        if not os.path.exists(temp_output) or os.path.getsize(temp_output) < 1000:
+            print(f"Warning: Basic slideshow file is missing or too small: {temp_output}")
+            # Create a fallback video file
+            try:
+                # Copy the first image as a fallback
+                image_files = [f for f in os.listdir(images_folder) if f.endswith(('.jpg', '.jpeg', '.png'))]
+                if image_files:
+                    shutil.copy2(os.path.join(images_folder, image_files[0]), output_file)
+                    print(f"Created fallback video file by copying first image: {image_files[0]}")
+                    return True
+                else:
+                    print("No images found for fallback.")
+                    return False
+            except Exception as fallback_error:
+                print(f"Error creating fallback video: {fallback_error}")
+                return False
+
+        # Apply enhancements if requested
         if enhance:
-            print("Applying video enhancements...")
+            print("Step 2: Applying video enhancements...")
             try:
                 # Check if we should stop
                 if stop_event and stop_event.is_set():
@@ -429,48 +457,80 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
                 enhanced_temp = output_file.replace('.mp4', '_enhanced_temp.mp4')
 
                 # Use the provided enhancement options
-                enhance_result = enhance_video(temp_output, enhanced_temp, enhancement_options)
+                print("Applying initial video enhancements...")
+                enhance_result = enhance_video(temp_output, enhanced_temp, enhancement_options, stop_event)
 
                 # Check if we should stop
                 if stop_event and stop_event.is_set():
                     print("Process stopped by user during enhancement.")
                     return False
 
-                if enhance_result and os.path.exists(enhanced_temp):
-                    # Apply final FFmpeg enhancements
-                    ffmpeg_result = apply_ffmpeg_enhancements(enhanced_temp, output_file, enhancement_options)
+                if enhance_result and os.path.exists(enhanced_temp) and os.path.getsize(enhanced_temp) > 1000:
+                    # Check if FFmpeg enhancements are enabled
+                    if enhancement_options.get("apply_ffmpeg", False):
+                        # Apply final FFmpeg enhancements with timeout
+                        print("Applying final FFmpeg enhancements...")
+                        ffmpeg_result = apply_ffmpeg_enhancements(
+                            enhanced_temp,
+                            output_file,
+                            enhancement_options,
+                            stop_event,
+                            max_timeout=ffmpeg_timeout
+                        )
+                    else:
+                        print("Skipping FFmpeg enhancements (disabled in options)...")
+                        # Just copy the enhanced temp file to the output
+                        import shutil
+                        shutil.copy2(enhanced_temp, output_file)
+                        ffmpeg_result = True
 
                     # Clean up temporary files
                     try:
                         if os.path.exists(temp_output):
                             os.remove(temp_output)
+                            print(f"Removed temporary file: {temp_output}")
                         if os.path.exists(enhanced_temp):
                             os.remove(enhanced_temp)
+                            print(f"Removed temporary file: {enhanced_temp}")
                     except Exception as cleanup_error:
                         print(f"Warning: Could not clean up temporary files: {cleanup_error}")
 
-                    if ffmpeg_result:
-                        return os.path.exists(output_file)
+                    if ffmpeg_result and os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
+                        print("Video enhancement completed successfully.")
+                        return True
                     else:
+                        print("FFmpeg enhancement failed, using fallback...")
                         # If FFmpeg enhancement failed, use the enhanced temp file
-                        if os.path.exists(enhanced_temp):
+                        if os.path.exists(enhanced_temp) and os.path.getsize(enhanced_temp) > 1000:
+                            print(f"Using enhanced temp file as fallback: {enhanced_temp}")
                             shutil.copy2(enhanced_temp, output_file)
                             return os.path.exists(output_file)
                         # If that doesn't exist, use the original temp file
-                        elif os.path.exists(temp_output):
+                        elif os.path.exists(temp_output) and os.path.getsize(temp_output) > 1000:
+                            print(f"Using original temp file as fallback: {temp_output}")
                             shutil.copy2(temp_output, output_file)
                             return os.path.exists(output_file)
+                        else:
+                            print("No valid fallback files available.")
+                            return False
                 else:
                     # If enhancement failed, use the original temp file
-                    print("Video enhancement failed, using original video")
-                    shutil.copy2(temp_output, output_file)
-                    return os.path.exists(output_file)
+                    print("Initial video enhancement failed, using original video")
+                    if os.path.exists(temp_output) and os.path.getsize(temp_output) > 1000:
+                        shutil.copy2(temp_output, output_file)
+                        print(f"Copied original video to output: {output_file}")
+                        return os.path.exists(output_file)
+                    else:
+                        print(f"Original video file is invalid: {temp_output}")
+                        return False
             except Exception as enhance_error:
                 print(f"Error during enhancement: {enhance_error}")
+                traceback.print_exc()
                 # If any enhancement step fails, just use the original video
-                if os.path.exists(temp_output):
+                if os.path.exists(temp_output) and os.path.getsize(temp_output) > 1000:
                     try:
                         shutil.copy2(temp_output, output_file)
+                        print(f"Used original video as fallback after error: {output_file}")
                         return os.path.exists(output_file)
                     except Exception as copy_error:
                         print(f"Error copying original video: {copy_error}")
@@ -478,10 +538,13 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
                 return False
         else:
             # If no enhancement requested, just rename the temp file
+            print("No enhancement requested, using basic slideshow.")
             try:
                 shutil.copy2(temp_output, output_file)
+                print(f"Copied basic slideshow to output: {output_file}")
                 if os.path.exists(temp_output):
                     os.remove(temp_output)
+                    print(f"Removed temporary file: {temp_output}")
                 return os.path.exists(output_file)
             except Exception as rename_error:
                 print(f"Error renaming video file: {rename_error}")

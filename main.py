@@ -9,7 +9,13 @@ import platform
 import traceback
 
 # Add the current directory to the path
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(current_dir)
+# Also add the parent directory to the path
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+print(f"Added to Python path: {current_dir}")
+print(f"Added to Python path: {parent_dir}")
 
 # Try to import the local moviepy_patch module
 try:
@@ -18,7 +24,28 @@ except ImportError:
     print("Note: moviepy_patch module not found, continuing without it.")
 
 # Import from utils
-from utils.helpers import ensure_directory_exists
+try:
+    from utils.helpers import ensure_directory_exists
+except ImportError:
+    # Try a direct import
+    sys.path.insert(0, os.path.join(current_dir, 'utils'))
+    try:
+        from helpers import ensure_directory_exists
+        print("Imported helpers module directly")
+    except ImportError as e:
+        print(f"Error importing helpers module: {e}")
+
+        # Define a fallback function
+        def ensure_directory_exists(directory_path):
+            """Fallback implementation of ensure_directory_exists"""
+            try:
+                if not os.path.exists(directory_path):
+                    os.makedirs(directory_path, exist_ok=True)
+                    print(f"Created directory: {directory_path}")
+                return True
+            except Exception as e:
+                print(f"Error creating directory {directory_path}: {e}")
+                return False
 
 def check_required_files():
     """Check if all required files exist"""

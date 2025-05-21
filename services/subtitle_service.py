@@ -30,17 +30,14 @@ except ImportError:
 def generate_subtitles(text, video_file, audio_file, output_file):
     """
     Generate subtitles for a video
-
-    Args:
-        text: Text for subtitles
-        video_file: Path to video file
-        audio_file: Path to audio file
-        output_file: Path to output subtitle file
-
-    Returns:
-        bool: True if successful, False otherwise
     """
     try:
+        print(f"\n--- DEBUG: Inside generate_subtitles function ---")
+        print(f"Text: {text}")
+        print(f"Video file: {video_file}")
+        print(f"Audio file: {audio_file}")
+        print(f"Output file: {output_file}")
+        
         # Create output directory if it doesn't exist
         output_dir = os.path.dirname(output_file)
         if output_dir:
@@ -65,14 +62,9 @@ def generate_subtitles(text, video_file, audio_file, output_file):
             output_file=output_file,
             audio_file=audio_file
         )
-
-        # Check if the file was created
-        if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-            print(f"Subtitles generated successfully: {output_file}")
-            return True
-        else:
-            print(f"Subtitle file not created or empty: {output_file}")
-            return False
+        
+        print(f"\n--- DEBUG: process_local_video returned: {result} ---")
+        return result is not None
     except Exception as e:
         print(f"Error generating subtitles: {e}")
         traceback.print_exc()

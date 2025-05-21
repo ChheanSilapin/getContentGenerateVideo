@@ -123,6 +123,12 @@ class VideoGeneratorGUI:
         style.configure("TLabelframe.Label", font=("Helvetica", 11, "bold"), background=self.colors["background"])
         style.configure("TProgressbar", thickness=20, background=self.colors["success"])
 
+        # Configure checkbutton style to use checkmarks instead of X
+        style.configure("TCheckbutton", background=self.colors["background"], foreground=self.colors["text"])
+        style.map("TCheckbutton",
+                 indicatorcolor=[("selected", self.colors["success"]), ("!selected", "white")],
+                 indicatorrelief=[("pressed", "sunken"), ("!pressed", "raised")])
+
         # Initialize the model
         self.model = VideoGeneratorModel()
 
@@ -482,13 +488,39 @@ class VideoGeneratorGUI:
         self.framing = tk.BooleanVar(value=True)
         self.motion_graphics = tk.BooleanVar(value=False)
         self.noise_reduction = tk.BooleanVar(value=True)
+        self.apply_ffmpeg = tk.BooleanVar(value=False)  # FFmpeg enhancements off by default
 
-        # Create a grid layout for checkboxes
-        ttk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction).grid(row=0, column=0, sticky=tk.W, padx=20, pady=5)
-        ttk.Checkbutton(basic_frame, text="Audio option", variable=self.audio_option).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
-        ttk.Checkbutton(basic_frame, text="Framing", variable=self.framing).grid(row=1, column=0, sticky=tk.W, padx=20, pady=5)
-        ttk.Checkbutton(basic_frame, text="Motion Graphics", variable=self.motion_graphics).grid(row=1, column=1, sticky=tk.W, padx=20, pady=5)
-        ttk.Checkbutton(basic_frame, text="Noise Reduction", variable=self.noise_reduction).grid(row=2, column=0, sticky=tk.W, padx=20, pady=5)
+        # Create a grid layout for checkboxes - replace ttk.Checkbutton with tk.Checkbutton using Unicode characters
+        tk.Checkbutton(basic_frame, text="Color Correction", variable=self.color_correction, 
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=0, column=0, sticky=tk.W, padx=20, pady=5)
+        
+        tk.Checkbutton(basic_frame, text="Audio option", variable=self.audio_option,
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=0, column=1, sticky=tk.W, padx=20, pady=5)
+        
+        # Replace the remaining checkbuttons similarly
+        tk.Checkbutton(basic_frame, text="Framing", variable=self.framing,
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=1, column=0, sticky=tk.W, padx=20, pady=5)
+        
+        tk.Checkbutton(basic_frame, text="Motion Graphics", variable=self.motion_graphics,
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=1, column=1, sticky=tk.W, padx=20, pady=5)
+        
+        tk.Checkbutton(basic_frame, text="Noise Reduction", variable=self.noise_reduction,
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=2, column=0, sticky=tk.W, padx=20, pady=5)
+        
+        tk.Checkbutton(basic_frame, text="FFmpeg Enhancements", variable=self.apply_ffmpeg,
+                      bg=self.colors["background"], selectcolor=self.colors["background"],
+                      indicatoron=True, onvalue=True, offvalue=False,
+                      font=("Helvetica", 10)).grid(row=2, column=1, sticky=tk.W, padx=20, pady=5)
 
         # Advanced options section
         advanced_frame = ttk.LabelFrame(main_frame, text="Advanced Options", padding=10)
@@ -531,19 +563,6 @@ class VideoGeneratorGUI:
 
         ttk.Label(right_frame, text="Sharpness:").grid(row=3, column=0, sticky=tk.W, pady=5)
         ttk.Scale(right_frame, from_=0.0, to=2.0, variable=self.sharpness, length=200).grid(row=3, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
-
-        # Help text
-        help_frame = ttk.Frame(main_frame)
-        help_frame.pack(fill=tk.X, padx=5, pady=10)
-
-        help_text = ttk.Label(
-            help_frame,
-            text="These settings control how your video will be enhanced. Basic options can be toggled on/off, while advanced options allow fine-tuning.",
-            font=("Helvetica", 9),
-            foreground=self.colors["light_text"],
-            wraplength=600
-        )
-        help_text.pack(fill=tk.X)
 
         # Apply button
         button_frame = ttk.Frame(main_frame)
@@ -986,6 +1005,7 @@ class VideoGeneratorGUI:
             "framing": self.framing.get(),
             "motion_graphics": self.motion_graphics.get(),
             "noise_reduction": self.noise_reduction.get(),
+            "apply_ffmpeg": self.apply_ffmpeg.get(),  # Add FFmpeg enhancement option
 
             # Advanced options
             "color_correction_intensity": self.color_intensity.get(),
@@ -1020,6 +1040,7 @@ class VideoGeneratorGUI:
         self.framing.set(True)
         self.motion_graphics.set(False)
         self.noise_reduction.set(True)
+        self.apply_ffmpeg.set(False)  # FFmpeg enhancements off by default
 
         # Reset aspect ratio to default (9:16)
         self.aspect_ratio.set("9:16")
@@ -1047,12 +1068,28 @@ class VideoGeneratorGUI:
         self.stop_button.config(state=tk.DISABLED)
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
+        
+        # Reset batch progress if it exists
+        if hasattr(self, 'batch_progress_bar'):
+            self.batch_progress_bar["value"] = 0
+            self.batch_progress_label.config(text="0%")
 
     def update_progress_ui(self, value, message=None):
+        """Update the progress bar and log message"""
+        # Update main progress bar
         self.progress_bar["value"] = value
         self.progress_label.config(text=f"{value}%")
+        
+        # Always update batch progress bar during batch processing
+        if hasattr(self, 'batch_progress_bar'):
+            self.batch_progress_bar["value"] = value
+            self.batch_progress_label.config(text=f"{value}%")
+        
         if message:
             self.log(message)
+        
+        # Force UI update
+        self.root.update_idletasks()
 
     def clear_input_button_click(self):
         self.text_input.delete("1.0", tk.END)
@@ -1201,6 +1238,16 @@ class VideoGeneratorGUI:
         self.jobs_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         jobs_scroll.config(command=self.jobs_listbox.yview)
 
+        # Add progress section
+        progress_frame = ttk.LabelFrame(batch_frame, text="Batch Progress", padding=10)
+        progress_frame.pack(fill=tk.X, pady=10)
+        
+        self.batch_progress_bar = ttk.Progressbar(progress_frame, orient=tk.HORIZONTAL, mode='determinate')
+        self.batch_progress_bar.pack(fill=tk.X, padx=5, pady=5)
+        
+        self.batch_progress_label = ttk.Label(progress_frame, text="0%", font=("Helvetica", 10))
+        self.batch_progress_label.pack(pady=5)
+        
         # Buttons frame
         buttons_frame = ttk.Frame(batch_frame)
         buttons_frame.pack(fill=tk.X, pady=10)
@@ -1293,8 +1340,13 @@ class VideoGeneratorGUI:
             return
 
         self.log(f"Starting batch processing of {len(self.model.batch_jobs)} jobs")
+        
+        # Reset progress bars
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
+        self.batch_progress_bar["value"] = 0
+        self.batch_progress_label.config(text="0%")
+        
         self.generate_button.config(state=tk.DISABLED)
         self.stop_button.config(state=tk.NORMAL)
         self.stop_event = threading.Event()
@@ -1305,6 +1357,13 @@ class VideoGeneratorGUI:
     def process_batch_thread(self):
         """Process batch jobs in a separate thread"""
         try:
+            # Make sure the progress callback is set
+            def progress_callback(value, message=None):
+                self.root.after(0, lambda v=value, m=message: self.update_progress_ui(v, m))
+            
+            self.model.set_progress_callback(progress_callback)
+            
+            # Process the batch
             results = self.model.process_batch(self.stop_event)
 
             if self.stop_event.is_set():

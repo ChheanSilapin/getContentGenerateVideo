@@ -77,8 +77,12 @@ class VideoGeneratorModel:
             "saturation": 1.2,
             "sharpness": 1.0,
             "noise_reduction": True,
+            "apply_ffmpeg": False,  # Disable FFmpeg enhancements by default
             "aspect_ratio": DEFAULT_ASPECT_RATIO  # Add aspect ratio to enhancement options
         }
+
+        # Ensure enhancement_options is properly initialized
+        self.option_options = self.enhancement_options.copy()
 
     def set_progress_callback(self, callback):
         """Set a callback function for progress updates"""
@@ -244,12 +248,15 @@ class VideoGeneratorModel:
             self.update_progress(0, "Failed to create video")
             return None, None, None
 
+        print("\n--- DEBUG: Video creation completed, about to update progress ---")
         self.update_progress(70, "Video created successfully")
+        print("\n--- DEBUG: Progress updated, about to start subtitle generation ---")
 
         # Step 4: Generate subtitles
         print("\n--- Step 4: Generating Subtitles ---")
         self.update_progress(75, "Generating subtitles...")
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
+        print(f"\n--- DEBUG: About to call generate_subtitles with: {self.text_input}, {video_file}, {audio_file}, {subtitle_file} ---")
         if not generate_subtitles(self.text_input, video_file, audio_file, subtitle_file):
             print("ERROR: Failed to generate subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
@@ -300,30 +307,8 @@ class VideoGeneratorModel:
     def _organize_output_folder(self, output_dir):
         """
         Organize the output folder based on image source
-
-        Args:
-            output_dir: Output directory
         """
         try:
-            # Keep only the final video and downloaded images
-            # Remove intermediate files but preserve the images directory
-
-            # Always keep the final output video
-            final_video = os.path.join(output_dir, "final_output.mp4")
-
-            # Files to remove (intermediate files)
-            files_to_remove = [
-                os.path.join(output_dir, "slideshow.mp4"),  # Intermediate video
-                os.path.join(output_dir, "subtitles.ass"),  # Subtitle file
-                os.path.join(output_dir, "voice.mp3")       # Voice file
-            ]
-
-            # Remove intermediate files
-            for file_path in files_to_remove:
-                if os.path.exists(file_path):
-                    os.remove(file_path)
-                    print(f"Removed intermediate file: {file_path}")
-
             # Handle images based on source
             images_dir = os.path.join(output_dir, "images")
             if self.image_source == "1":  # Website URL
@@ -336,22 +321,17 @@ class VideoGeneratorModel:
                     shutil.rmtree(images_dir)
                     print(f"Removed images directory (local folder source): {images_dir}")
             elif self.image_source == "3":  # Selected images
-                # Keep selected images if they were downloaded, remove if they were from local folder
-                # This is determined by checking if the images are in the selected_images list
-                # and if they have a web URL pattern
-
-                # Check if any selected image has a URL pattern
+                # Check if images were selected from local files (not URLs)
                 has_downloaded_images = any(img.startswith(('http://', 'https://')) for img in self.selected_images)
-
+                
+                # If all images were local files, remove the images directory
                 if not has_downloaded_images:
-                    # If all images were local, remove the images directory
                     if os.path.exists(images_dir):
                         import shutil
                         shutil.rmtree(images_dir)
                         print(f"Removed images directory (local selected images): {images_dir}")
                 else:
                     print(f"Keeping downloaded selected images in: {images_dir}")
-
         except Exception as e:
             print(f"Error organizing output folder: {e}")
 
@@ -399,33 +379,83 @@ class VideoGeneratorModel:
         """Process all jobs in the batch queue"""
         results = []
         self.current_job_index = 0
+        total_jobs = len(self.batch_jobs)
 
         for i, job in enumerate(self.batch_jobs):
             if stop_event and stop_event.is_set():
                 break
-
-            self.current_job_index = i
-            # Update model with current job parameters
+            
+            # Calculate overall progress percentage
+            overall_progress = int((i / total_jobs) * 100)
+            self.update_progress(overall_progress, f"Starting job {i+1}/{total_jobs}")
+            
+            # Set up the current job
             self.text_input = job["text_input"]
             self.image_source = job["image_source"]
-            self.selected_images = job["selected_images"]
+            self.selected_images = job["selected_images"].copy() if job["selected_images"] else []
             self.website_url = job["website_url"]
             self.local_folder = job["local_folder"]
-
-            # Update progress with job information
-            self.update_progress(0, f"Starting job {i+1}/{len(self.batch_jobs)}")
-
+            self.processing_option = "cpu"  # Default to CPU for batch processing
+            
             # Process the job
-            subtitle_path, video_path, output_dir = self.generate_video(stop_event)
-            if subtitle_path and video_path and output_dir:
-                final_video = self.finalize_video(subtitle_path, video_path, output_dir, stop_event)
-                job["status"] = "completed" if final_video else "failed"
-                job["output_path"] = final_video if final_video else None
-                results.append((job, final_video))
-            else:
-                job["status"] = "failed"
+            try:
+                job["status"] = "processing"
+                
+                # Create a wrapper for the progress callback to show both job progress and overall progress
+                original_callback = self.progress_callback
+                
+                def job_progress_callback(value, message=None):
+                    # Calculate combined progress: base progress for completed jobs + partial progress for current job
+                    job_weight = 100 / total_jobs  # Each job contributes this much to total progress
+                    # Base progress from completed jobs
+                    base_progress = int(i * job_weight)
+                    # Current job contribution (scaled by job weight)
+                    current_job_progress = int((value / 100) * job_weight)
+                    # Combined progress
+                    combined_progress = base_progress + current_job_progress
+                    
+                    job_message = f"Job {i+1}/{total_jobs}: {message}" if message else f"Job {i+1}/{total_jobs}"
+                    if original_callback:
+                        original_callback(combined_progress, job_message)
+                
+                # Temporarily replace the callback
+                self.progress_callback = job_progress_callback
+                
+                # Generate the video
+                subtitle_path, video_path, output_dir = self.generate_video(stop_event)
+                
+                if subtitle_path and video_path and output_dir:
+                    final_video = self.finalize_video(subtitle_path, video_path, output_dir, stop_event)
+                    results.append((job, final_video))
+                    job["status"] = "completed"
+                    # Update progress to show this job is complete
+                    if original_callback:
+                        job_complete_progress = int((i + 1) * (100 / total_jobs))
+                        original_callback(job_complete_progress, f"Completed job {i+1}/{total_jobs}")
+                else:
+                    results.append((job, None))
+                    job["status"] = "failed"
+                    # Update progress to show this job is complete but failed
+                    if original_callback:
+                        job_complete_progress = int((i + 1) * (100 / total_jobs))
+                        original_callback(job_complete_progress, f"Failed job {i+1}/{total_jobs}")
+                
+                # Restore the original callback
+                self.progress_callback = original_callback
+                
+            except Exception as e:
+                print(f"Error processing job {i+1}: {e}")
                 results.append((job, None))
+                job["status"] = "failed"
+                
+                # Restore the original callback
+                self.progress_callback = original_callback
+                
+            # Update the current job index
+            self.current_job_index = i + 1
 
+        # Final progress update
+        self.update_progress(100, f"Batch processing completed: {len([r for _, r in results if r])} of {total_jobs} successful")
         return results
 
     def _cleanup_on_stop(self):
