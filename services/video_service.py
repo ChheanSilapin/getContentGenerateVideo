@@ -6,6 +6,7 @@ import sys
 import shutil
 import subprocess
 import traceback
+import numpy as np
 from PIL import Image
 from moviepy.editor import ImageClip, ColorClip, concatenate_videoclips, CompositeVideoClip, AudioFileClip
 
@@ -46,6 +47,200 @@ except ImportError:
         except Exception as e:
             print(f"Error in fallback merge_video_subtitle: {e}")
             return None
+
+def process_image_for_slideshow(img, target_width, target_height, fit_method="smart", zoom_effect=True):
+    """
+    Process an image for slideshow with different fitting methods
+
+    Args:
+        img: PIL Image or ImageClip object
+        target_width: Target width
+        target_height: Target height
+        fit_method: How to fit the image - "smart", "contain", "cover", or "stretch"
+                    "smart" aggressively fills the frame to eliminate black backgrounds
+        zoom_effect: Whether to apply zoom effect
+
+    Returns:
+        Processed ImageClip
+    """
+    from moviepy.editor import ImageClip
+    import numpy as np
+
+    # Create a fallback image with a neutral gray background in case of errors
+    fallback_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+
+    try:
+        # Handle different input types
+        if isinstance(img, Image.Image):  # It's already a PIL Image
+            pil_img = img
+        elif hasattr(img, 'img') and isinstance(img.img, Image.Image):  # It's an ImageClip with PIL image
+            pil_img = img.img
+        elif hasattr(img, 'img') and isinstance(img.img, np.ndarray):  # It's an ImageClip with numpy array
+            # Convert numpy array back to PIL Image
+            print(f"Converting numpy array to PIL Image, shape: {img.img.shape}")
+            pil_img = Image.fromarray(img.img.astype('uint8'))
+        elif isinstance(img, np.ndarray):  # It's a numpy array
+            # Convert numpy array to PIL Image
+            print(f"Converting direct numpy array to PIL Image, shape: {img.shape}")
+            pil_img = Image.fromarray(img.astype('uint8'))
+        elif hasattr(img, 'filename') and os.path.exists(img.filename):  # It has a filename attribute
+            # Try to load from filename
+            print(f"Loading image from filename: {img.filename}")
+            pil_img = Image.open(img.filename)
+        else:
+            print(f"Warning: Unknown image type: {type(img)}, using fallback")
+            return ImageClip(np.array(fallback_img))
+
+        # Validate that pil_img is a valid PIL Image
+        if not isinstance(pil_img, Image.Image):
+            print(f"Warning: Invalid PIL image object: {type(pil_img)}, using fallback")
+            return ImageClip(np.array(fallback_img))
+
+        # Get original image dimensions
+        # Handle case where size might not be a tuple
+        try:
+            if hasattr(pil_img, 'size'):
+                if isinstance(pil_img.size, tuple) and len(pil_img.size) == 2:
+                    img_width, img_height = pil_img.size
+                else:
+                    print(f"Warning: Image size is not a valid tuple: {pil_img.size}, using fallback")
+                    return ImageClip(np.array(fallback_img))
+            else:
+                print(f"Warning: Image has no size attribute, using fallback")
+                return ImageClip(np.array(fallback_img))
+        except Exception as e:
+            print(f"Error getting image dimensions: {e}, using fallback")
+            return ImageClip(np.array(fallback_img))
+
+        # Ensure dimensions are valid
+        if img_width <= 0 or img_height <= 0:
+            print(f"Warning: Invalid image dimensions: {img_width}x{img_height}, using fallback")
+            return ImageClip(np.array(fallback_img))
+
+        # Calculate aspect ratios
+        img_aspect = img_width / img_height
+        target_aspect = target_width / target_height
+
+        # Process based on fit method
+        if fit_method == "smart":
+            # Automatically choose the best fit method based on aspect ratios
+            aspect_ratio_difference = abs(img_aspect - target_aspect)
+
+            # More aggressive approach to fill the frame and eliminate black background
+            if aspect_ratio_difference < 0.1:  # Very similar aspect ratios
+                # Use stretch with slight modifications to avoid distortion
+                new_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+            else:
+                # Use cover method for most cases to eliminate black background
+                # Calculate scaling factor to cover the entire frame (may crop)
+                width_ratio = target_width / img_width
+                height_ratio = target_height / img_height
+                scale_factor = max(width_ratio, height_ratio) * 1.05  # 5% larger to ensure full coverage
+
+                # Calculate new dimensions
+                new_width = int(img_width * scale_factor)
+                new_height = int(img_height * scale_factor)
+
+                # Resize the image
+                resized_pil = pil_img.resize((new_width, new_height), Image.LANCZOS)
+
+                # Calculate crop position to center the image
+                left = (new_width - target_width) // 2
+                top = (new_height - target_height) // 2
+                right = left + target_width
+                bottom = top + target_height
+
+                # Ensure crop coordinates are valid
+                left = max(0, left)
+                top = max(0, top)
+                right = min(new_width, right)
+                bottom = min(new_height, bottom)
+
+                # Crop the image
+                new_img = resized_pil.crop((left, top, right, bottom))
+
+                # Ensure the cropped image has the correct dimensions
+                if new_img.size != (target_width, target_height):
+                    # If dimensions are off, create a new image with correct dimensions
+                    correct_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+                    correct_img.paste(new_img, (0, 0))
+                    new_img = correct_img
+
+        elif fit_method == "contain":
+            # Calculate scaling factor to fit image within the frame without cropping
+            width_ratio = target_width / img_width
+            height_ratio = target_height / img_height
+            scale_factor = min(width_ratio, height_ratio) * 0.95  # 95% of max size for a small margin
+
+            new_width = int(img_width * scale_factor)
+            new_height = int(img_height * scale_factor)
+
+            # Resize the image
+            resized_pil = pil_img.resize((new_width, new_height), Image.LANCZOS)
+
+            # Create a new image with the target dimensions and neutral gray background
+            new_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+
+            # Paste the resized image in the center
+            paste_x = (target_width - new_width) // 2
+            paste_y = (target_height - new_height) // 2
+            new_img.paste(resized_pil, (paste_x, paste_y))
+
+        elif fit_method == "cover":
+            # Calculate scaling factor to cover the entire frame (may crop)
+            width_ratio = target_width / img_width
+            height_ratio = target_height / img_height
+            scale_factor = max(width_ratio, height_ratio) * 1.05  # 5% larger to ensure full coverage
+
+            # Calculate new dimensions
+            new_width = int(img_width * scale_factor)
+            new_height = int(img_height * scale_factor)
+
+            # Resize the image
+            resized_pil = pil_img.resize((new_width, new_height), Image.LANCZOS)
+
+            # Calculate crop position to center the image
+            left = (new_width - target_width) // 2
+            top = (new_height - target_height) // 2
+            right = left + target_width
+            bottom = top + target_height
+
+            # Ensure crop coordinates are valid
+            left = max(0, left)
+            top = max(0, top)
+            right = min(new_width, right)
+            bottom = min(new_height, bottom)
+
+            # Crop the image
+            new_img = resized_pil.crop((left, top, right, bottom))
+
+            # Ensure the cropped image has the correct dimensions
+            if new_img.size != (target_width, target_height):
+                # If dimensions are off, create a new image with correct dimensions
+                correct_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+                correct_img.paste(new_img, (0, 0))
+                new_img = correct_img
+
+        else:  # "stretch" or any other value
+            # Stretch the image to fit the target dimensions
+            new_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+
+        # Convert back to ImageClip
+        result_clip = ImageClip(np.array(new_img))
+
+        # Apply zoom effect if requested
+        if zoom_effect:
+            from moviepy.video.fx.resize import resize
+            result_clip = resize(result_clip, lambda t: 1 + 0.05 * t)
+
+        return result_clip
+
+    except Exception as e:
+        print(f"Error in process_image_for_slideshow: {e}")
+        import traceback
+        traceback.print_exc()
+        # Return a fallback black clip
+        return ImageClip(np.array(fallback_img))
 
 def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False, stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
     """
@@ -132,103 +327,86 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
                 img_path = os.path.join(folderName, filename)
 
                 try:
-                    # Create a black background with target dimensions
-                    bg = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=3)
+                    # Create a neutral gray background with target dimensions
+                    bg = ColorClip(size=(target_width, target_height), color=(128, 128, 128), duration=3)
 
                     # Load the image and convert to RGB
                     try:
                         # First try to open with PIL to check channels
                         pil_img = Image.open(img_path)
+
+                        # Verify that the image was loaded correctly
+                        if not hasattr(pil_img, 'size') or not isinstance(pil_img.size, tuple) or len(pil_img.size) != 2:
+                            print(f"Warning: Image {filename} has invalid size attribute: {getattr(pil_img, 'size', None)}")
+                            # Create a fallback image
+                            pil_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+
                         # Convert to RGB mode to ensure 3 channels
                         if pil_img.mode != 'RGB':
                             print(f"Converting image {filename} from {pil_img.mode} to RGB")
-                            pil_img = pil_img.convert('RGB')
-                            # Save the converted image
-                            converted_path = os.path.join(folderName, f"converted_{filename}")
-                            pil_img.save(converted_path)
-                            img = ImageClip(converted_path)
+                            try:
+                                pil_img = pil_img.convert('RGB')
+                            except Exception as convert_error:
+                                print(f"Error converting image to RGB: {convert_error}")
+                                # Create a fallback image
+                                pil_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+
+                        # Save the converted image
+                        converted_path = os.path.join(folderName, f"converted_{filename}")
+                        pil_img.save(converted_path)
+
+                        # Verify the image was saved correctly
+                        if os.path.exists(converted_path) and os.path.getsize(converted_path) > 0:
+                            # Create ImageClip directly from the PIL image to avoid conversion issues
+                            img = ImageClip(np.array(pil_img))
                         else:
-                            img = ImageClip(img_path)
+                            print(f"Warning: Converted image file is missing or empty: {converted_path}")
+                            # Create a fallback image
+                            fallback_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+                            fallback_path = os.path.join(folderName, f"fallback_{filename}")
+                            fallback_img.save(fallback_path)
+                            img = ImageClip(np.array(fallback_img))
+
                     except Exception as pil_error:
-                        print(f"Error with PIL: {pil_error}, trying direct ImageClip")
-                        img = ImageClip(img_path)
-
-                    # Get original image dimensions
-                    img_width, img_height = img.size
-
-                    # Calculate scaling factor to fit image within the frame without cropping
-                    width_ratio = target_width / img_width
-                    height_ratio = target_height / img_height
-
-                    # Use the smaller ratio to ensure the entire image fits
-                    scale_factor = min(width_ratio, height_ratio) * 0.9  # 90% of max size for a small margin
-
-                    # Apply zoom effect - start slightly smaller and zoom in
-                    # Use a hash of the filename instead of trying to parse as integer
-                    # This ensures consistent effects for the same file while avoiding parsing errors
-                    img_hash = hash(filename) % 4  # Get a number 0-3 based on filename hash
-
-                    # Choose effect type based on hash value
-                    effect_type = img_hash
-
-                    if effect_type == 0:
-                        # Zoom in effect
-                        start_scale = scale_factor * 0.8
-                        end_scale = scale_factor * 1.1
-
-                        def zoom(t):
-                            current_scale = start_scale + (end_scale - start_scale) * t / 3
-                            new_w = int(img_width * current_scale)
-                            new_h = int(img_height * current_scale)
-                            return new_w, new_h
-
-                        resized_img = img.resize(zoom)
-                    elif effect_type == 1:
-                        # Zoom out effect
-                        start_scale = scale_factor * 1.1
-                        end_scale = scale_factor * 0.9
-
-                        def zoom_out(t):
-                            current_scale = start_scale + (end_scale - start_scale) * t / 3
-                            new_w = int(img_width * current_scale)
-                            new_h = int(img_height * current_scale)
-                            return new_w, new_h
-
-                        resized_img = img.resize(zoom_out)
-                    elif effect_type == 2:
-                        # Pan from left to right
-                        new_width = int(img_width * scale_factor)
-                        new_height = int(img_height * scale_factor)
-
-                        # First resize the image
-                        from moviepy.video.fx.resize import resize
-                        resized_img = resize(img, width=new_width, height=new_height)
-
-                        # Then apply the pan effect
-                        from moviepy.video.fx.scroll import scroll
-                        resized_img = scroll(resized_img, w=target_width, h=target_height, x_speed=10, y_speed=0)
-                    else:
-                        # Simple fade in/out with fixed size
-                        new_width = int(img_width * scale_factor)
-                        new_height = int(img_height * scale_factor)
-
-                        # Use the resize method with proper parameters
+                        print(f"Error with PIL for image {filename}: {pil_error}")
                         try:
-                            resized_img = img.resize((new_width, new_height))
-                        except Exception as resize_error:
-                            print(f"Error resizing with resize method: {resize_error}")
-                            # Alternative approach using fx.resize
-                            from moviepy.video.fx.resize import resize
-                            resized_img = resize(img, width=new_width, height=new_height)
+                            # Try to open the image directly with PIL and convert to ImageClip
+                            try:
+                                direct_pil_img = Image.open(img_path).convert('RGB')
+                                img = ImageClip(np.array(direct_pil_img))
+                            except Exception as direct_pil_error:
+                                print(f"Error with direct PIL loading: {direct_pil_error}")
+                                # Try direct ImageClip as a fallback
+                                img = ImageClip(img_path)
+                        except Exception as clip_error:
+                            print(f"Error creating ImageClip: {clip_error}, using neutral gray image")
+                            # Create a neutral gray image as a last resort
+                            fallback_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+                            fallback_path = os.path.join(folderName, f"fallback_{filename}")
+                            fallback_img.save(fallback_path)
+                            img = ImageClip(np.array(fallback_img))
+
+                    # Get the fit method from environment variables or use default
+                    fit_method = os.environ.get("IMAGE_FIT_METHOD", "smart")
+
+                    # Process the image using our new function
+                    resized_img = process_image_for_slideshow(
+                        img,
+                        target_width,
+                        target_height,
+                        fit_method=fit_method,
+                        zoom_effect=os.environ.get("USE_ZOOM", "1") == "1"
+                    )
 
                     # Set duration and position the image in the center
                     final_img = resized_img.set_duration(3).set_position(("center", "center"))
 
-                    # Apply fade in/out effect
-                    from moviepy.video.fx.fadein import fadein
-                    from moviepy.video.fx.fadeout import fadeout
-                    final_img = fadein(final_img, 0.5)
-                    final_img = fadeout(final_img, 0.5)
+                    # Apply fade in/out effect if enabled
+                    if os.environ.get("USE_FADE", "1") == "1":
+                        from moviepy.video.fx.fadein import fadein
+                        from moviepy.video.fx.fadeout import fadeout
+                        final_img = fadein(final_img, 0.5)
+                        final_img = fadeout(final_img, 0.5)
 
                     # Composite the image on the background
                     final_clip = CompositeVideoClip([bg, final_img])
@@ -239,7 +417,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
                     traceback.print_exc()
                     # Create a fallback clip with error message
                     try:
-                        bg = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=3)
+                        bg = ColorClip(size=(target_width, target_height), color=(128, 128, 128), duration=3)
                         image_clips.append(bg)
                     except Exception as bg_error:
                         print(f"Failed to create fallback clip: {bg_error}")
@@ -257,7 +435,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     # If no images were processed successfully, create a blank clip
     if not image_clips:
         print("No images were processed successfully. Creating a blank video.")
-        blank = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=3)
+        blank = ColorClip(size=(target_width, target_height), color=(128, 128, 128), duration=3)
         image_clips = [blank]
 
     # Concatenate all image clips
@@ -276,7 +454,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
             print(f"Audio ({audio.duration}s) is longer than video ({video.duration}s). Extending video duration.")
             # This shouldn't happen now with our looping, but just in case
             # Create a blank clip to extend the video
-            blank = ColorClip(size=(target_width, target_height), color=(0, 0, 0), duration=audio.duration - video.duration)
+            blank = ColorClip(size=(target_width, target_height), color=(128, 128, 128), duration=audio.duration - video.duration)
             video = concatenate_videoclips([video, blank])
     except Exception as e:
         print(f"Error loading audio: {e}")

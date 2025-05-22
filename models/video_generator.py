@@ -224,6 +224,13 @@ class VideoGeneratorModel:
         enhancement_options = getattr(self, 'enhancement_options', {}).copy()
         enhancement_options['aspect_ratio'] = aspect_ratio
 
+        # Set environment variables for image fitting
+        if 'image_fit_method' in enhancement_options:
+            os.environ["IMAGE_FIT_METHOD"] = enhancement_options["image_fit_method"]
+            print(f"Setting image fit method to: {enhancement_options['image_fit_method']}")
+        else:
+            os.environ["IMAGE_FIT_METHOD"] = "contain"  # Default
+
         # Pass the processing option, effect settings, and aspect ratio to the create_enhanced_slideshow function
         result = create_enhanced_slideshow(
             images_dir,

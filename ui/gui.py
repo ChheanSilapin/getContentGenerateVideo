@@ -534,6 +534,7 @@ class VideoGeneratorGUI:
         self.brightness = tk.DoubleVar(value=0.05)
         self.saturation = tk.DoubleVar(value=1.2)
         self.sharpness = tk.DoubleVar(value=1.0)
+        self.image_fit_method = tk.StringVar(value="contain")
 
         # Left column
         left_frame = ttk.Frame(advanced_frame)
@@ -547,6 +548,20 @@ class VideoGeneratorGUI:
 
         ttk.Label(left_frame, text="Volume Boost:").grid(row=2, column=0, sticky=tk.W, pady=5)
         ttk.Scale(left_frame, from_=0.8, to=1.5, variable=self.volume_boost, length=200).grid(row=2, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+
+        ttk.Label(left_frame, text="Image Fit Method:").grid(row=5, column=0, sticky=tk.W, pady=5)
+        fit_method_frame = ttk.Frame(left_frame)
+        fit_method_frame.grid(row=5, column=1, sticky=tk.W+tk.E, pady=5, padx=10)
+
+        fit_methods = [
+            ("Contain (Show All)", "contain"),
+            ("Cover (Crop to Fill)", "cover"),
+            ("Stretch", "stretch")
+        ]
+
+        for i, (text, value) in enumerate(fit_methods):
+            tk.Radiobutton(fit_method_frame, text=text, variable=self.image_fit_method, 
+                          value=value, bg=self.colors["background"]).grid(row=0, column=i, padx=5)
 
         # Right column
         right_frame = ttk.Frame(advanced_frame)
@@ -1017,6 +1032,10 @@ class VideoGeneratorGUI:
 
     def update_option_options(self):
         """Update the model with current option options"""
+        # Get the current image fit method
+        fit_method = self.image_fit_method.get()
+        print(f"Selected image fit method: {fit_method}")
+        
         # Update basic options
         self.model.option_options = {
             "color_correction": self.color_correction.get(),
@@ -1034,10 +1053,14 @@ class VideoGeneratorGUI:
             "brightness": self.brightness.get(),
             "saturation": self.saturation.get(),
             "sharpness": self.sharpness.get(),
+            "image_fit_method": fit_method,
 
             # Aspect ratio
             "aspect_ratio": self.aspect_ratio.get()
         }
+
+        # Also set the environment variable directly for immediate effect
+        os.environ["IMAGE_FIT_METHOD"] = fit_method
 
         # Update the model's aspect ratio property
         self.model.aspect_ratio = self.aspect_ratio.get()
@@ -1072,6 +1095,7 @@ class VideoGeneratorGUI:
         self.brightness.set(0.05)
         self.saturation.set(1.2)
         self.sharpness.set(1.0)
+        self.image_fit_method.set("contain")
 
         # Log the changes
         self.log("option options reset to defaults with 9:16 aspect ratio")
