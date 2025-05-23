@@ -752,6 +752,105 @@ def merge_video_with_subtitles(video_path, subtitle_path, output_file):
 
 from services.video_optimization import enhance_video, apply_ffmpeg_enhancements
 
+def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_original=True, original_volume=0.3):
+    """
+    Add voice-over audio to a video while preserving the original video duration
+
+    Args:
+        video_file: Path to the input video file
+        audio_file: Path to the generated audio file
+        output_file: Path to the output video file
+        mix_with_original: Whether to mix with original audio or replace it (mute original if False)
+        original_volume: Volume level for original audio when mixing (0.0 to 1.0)
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
+
+        print(f"Loading video: {video_file}")
+        video = VideoFileClip(video_file)
+
+        print(f"Loading generated audio: {audio_file}")
+        new_audio = AudioFileClip(audio_file)
+
+        print(f"Original video duration: {video.duration}s")
+        print(f"Generated audio duration: {new_audio.duration}s")
+
+        # Handle different scenarios for audio and video duration
+        if new_audio.duration <= video.duration:
+            # Audio is shorter than or equal to video - this is the common case
+            print("Audio is shorter than video - adding as voice-over")
+
+            if video.audio is not None and mix_with_original:
+                # Mix the new audio with existing video audio
+                print(f"Mixing new audio with existing video audio (original at {original_volume*100}% volume)")
+                original_audio = video.audio.volumex(original_volume)
+                mixed_audio = CompositeAudioClip([original_audio, new_audio])
+                final_video = video.set_audio(mixed_audio)
+            else:
+                # No existing audio or mute original audio mode, just add the new audio
+                if mix_with_original:
+                    print("Adding new audio to video (no existing audio)")
+                else:
+                    print("Replacing original audio with new voice-over (original audio muted)")
+                final_video = video.set_audio(new_audio)
+        else:
+            # Audio is longer than video - trim audio to match video duration
+            print("Audio is longer than video")
+            print(f"Trimming audio from {new_audio.duration}s to {video.duration}s")
+            trimmed_audio = new_audio.subclip(0, video.duration)
+
+            if video.audio is not None and mix_with_original:
+                # Mix with existing audio
+                print(f"Mixing trimmed audio with existing video audio (original at {original_volume*100}% volume)")
+                original_audio = video.audio.volumex(original_volume)
+                mixed_audio = CompositeAudioClip([original_audio, trimmed_audio])
+                final_video = video.set_audio(mixed_audio)
+            else:
+                # Just add the trimmed audio (mute original)
+                if mix_with_original:
+                    print("Adding trimmed audio to video (no existing audio)")
+                else:
+                    print("Replacing original audio with trimmed voice-over (original audio muted)")
+                final_video = video.set_audio(trimmed_audio)
+
+            trimmed_audio.close()
+
+        # Write the final video with compatible parameters
+        print(f"Writing video with voice-over to: {output_file}")
+        try:
+            # Try with newer MoviePy parameters first
+            final_video.write_videofile(
+                output_file,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp-audio.m4a',
+                remove_temp=True
+            )
+        except TypeError:
+            # Fallback for older MoviePy versions
+            final_video.write_videofile(
+                output_file,
+                codec='libx264',
+                audio_codec='aac'
+            )
+
+        # Clean up
+        video.close()
+        new_audio.close()
+        final_video.close()
+
+        print("Voice-over added successfully")
+        return True
+
+    except Exception as e:
+        print(f"Error adding voice-over to video: {e}")
+        import traceback
+        traceback.print_exc()
+        return False
+
 def _clean_up_temp_files(*file_paths):
     """
     Clean up temporary files created during video generation

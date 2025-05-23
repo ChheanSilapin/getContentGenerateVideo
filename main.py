@@ -78,6 +78,7 @@ def create_gui():
 
         root = tk.Tk()
         root.title("Video Generator")
+        root.iconbitmap('app_icon.ico')
 
         # Set window size and position it in the center of the screen
         window_width = 900
@@ -109,6 +110,15 @@ def run_console_mode():
     """Run the application in console mode"""
     print("\n=== VIDEO GENERATION SYSTEM (CONSOLE MODE) ===")
     print("This program will create a video with subtitles from text and images.")
+
+    # Safely get input with error handling
+    def safe_input(prompt):
+        try:
+            return input(prompt)
+        except Exception as e:
+            print(f"Error getting input: {e}")
+            print("Please run this application from a command prompt or use the GUI mode.")
+            return None
 
     # Check if required modules are installed
     try:
