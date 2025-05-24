@@ -27,17 +27,17 @@ class VideoEntry:
         self.entry_frame = ttk.LabelFrame(
             self.parent_frame,
             text=f"🎥 Video {self.entry_id}",
-            padding=12
+            padding=8
         )
-        self.entry_frame.pack(fill="x", padx=8, pady=6)
+        self.entry_frame.pack(fill="x", padx=6, pady=4)
 
         # Video file selection section
         file_section = ttk.Frame(self.entry_frame)
-        file_section.pack(fill="x", pady=(0, 10))
+        file_section.pack(fill="x", pady=(0, 6))
 
         # File label with icon
         file_label_frame = ttk.Frame(file_section)
-        file_label_frame.pack(fill="x", pady=(0, 5))
+        file_label_frame.pack(fill="x", pady=(0, 3))
 
         ttk.Label(
             file_label_frame,
@@ -70,7 +70,7 @@ class VideoEntry:
 
         # Prompt label with icon
         prompt_label_frame = ttk.Frame(prompt_section)
-        prompt_label_frame.pack(fill="x", pady=(0, 5))
+        prompt_label_frame.pack(fill="x", pady=(0, 3))
 
         ttk.Label(
             prompt_label_frame,
@@ -84,13 +84,13 @@ class VideoEntry:
 
         prompt_text = tk.Text(
             prompt_input_frame,
-            height=3,
+            height=2,
             wrap="word",
             font=("Helvetica", 10),
             relief="solid",
             borderwidth=1,
-            padx=8,
-            pady=6
+            padx=6,
+            pady=4
         )
         prompt_text.pack(side="left", fill="x", expand=True, padx=(0, 12))
 
@@ -245,9 +245,9 @@ class VideoTab:
         audio_frame = ttk.LabelFrame(
             parent,
             text="🔊 Audio Settings",
-            padding=10
+            padding=8
         )
-        audio_frame.pack(fill="x", pady=(0, 10))
+        audio_frame.pack(fill="x", pady=(0, 8))
 
         # Settings grid container
         settings_container = ttk.Frame(audio_frame)
@@ -255,7 +255,7 @@ class VideoTab:
 
         # Mute original audio checkbox with better styling
         mute_frame = ttk.Frame(settings_container)
-        mute_frame.pack(fill="x", pady=(0, 10))
+        mute_frame.pack(fill="x", pady=(0, 6))
 
         mute_checkbox = ttk.Checkbutton(
             mute_frame,
@@ -271,7 +271,7 @@ class VideoTab:
 
         # Volume label with icon
         volume_label_frame = ttk.Frame(volume_section)
-        volume_label_frame.pack(fill="x", pady=(0, 8))
+        volume_label_frame.pack(fill="x", pady=(0, 4))
 
         ttk.Label(
             volume_label_frame,
@@ -351,27 +351,37 @@ class VideoTab:
         canvas_frame = ttk.Frame(parent)
         canvas_frame.pack(fill="both", expand=True, pady=(0, 10))
 
-        # Canvas with better styling - reduced height for better fit
+        # Canvas with better styling - much smaller height for compact fit
         self.scroll_canvas = tk.Canvas(
             canvas_frame,
-            height=200,
-            bg="#ffffff",
-            highlightthickness=2,
+            height=120,
+            bg="#f0f0f0",
+            highlightthickness=1,
             highlightbackground="#e1e8ed",
             relief="solid",
             borderwidth=1
         )
 
         scrollbar = ttk.Scrollbar(canvas_frame, orient="vertical", command=self.scroll_canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.scroll_canvas)
+        self.scrollable_frame = ttk.Frame(self.scroll_canvas, style="Card.TFrame")
 
         self.scrollable_frame.bind(
             "<Configure>",
             lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
         )
 
-        self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        # Create window and configure it to fill the canvas width
+        canvas_window = self.scroll_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
         self.scroll_canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Bind canvas resize to update the scrollable frame width
+        def configure_scroll_region(event):
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+            # Make the scrollable frame fill the canvas width
+            canvas_width = event.width
+            self.scroll_canvas.itemconfig(canvas_window, width=canvas_width)
+
+        self.scroll_canvas.bind('<Configure>', configure_scroll_region)
 
         self.scroll_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")

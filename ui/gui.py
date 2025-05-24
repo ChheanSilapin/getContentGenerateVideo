@@ -430,7 +430,7 @@ class VideoGeneratorGUI:
 
         # Always update batch progress bar during batch processing
         if self.batch_tab_component:
-            self.batch_tab_component.update_batch_progress(value, None)  # Don't pass message to avoid duplicate logging
+            self.batch_tab_component.update_batch_progress(value, None)  # Don't pass a message to avoid duplicate logging
 
         if message:
             self.log(message)

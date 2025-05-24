@@ -21,28 +21,28 @@ ICON_FILE = "app_icon.ico"  # Updated to match your icon file name
 def download_ffmpeg(target_dir):
     """Download and extract FFmpeg binaries"""
     print(f"Downloading FFmpeg from {FFMPEG_URL}...")
-    
+
     # Create a temporary directory for the download
     with tempfile.TemporaryDirectory() as temp_dir:
         zip_path = os.path.join(temp_dir, "ffmpeg.zip")
-        
+
         # Download the file
         urllib.request.urlretrieve(FFMPEG_URL, zip_path)
-        
+
         # Extract the zip file
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(temp_dir)
-        
+
         # Find the bin directory in the extracted files
         ffmpeg_dir = None
         for root, dirs, files in os.walk(temp_dir):
             if "bin" in dirs:
                 ffmpeg_dir = os.path.join(root, "bin")
                 break
-        
+
         if not ffmpeg_dir:
             raise Exception("Could not find FFmpeg binaries in the downloaded package")
-        
+
         # Copy the FFmpeg binaries to the target directory
         for file in ["ffmpeg.exe", "ffplay.exe", "ffprobe.exe"]:
             src = os.path.join(ffmpeg_dir, file)
@@ -58,10 +58,10 @@ def build_installer():
     # Ensure output directories exist
     os.makedirs("build", exist_ok=True)
     os.makedirs("dist", exist_ok=True)
-    
+
     # Download FFmpeg to the current directory
     download_ffmpeg(".")
-    
+
     # Create spec file for PyInstaller
     spec_content = f"""
 # -*- mode: python ; coding: utf-8 -*-
@@ -80,6 +80,7 @@ a = Analysis(
         ('config.py', '.'),
         ('README.md', '.'),
         ('requirements.txt', '.'),
+        ('{ICON_FILE}', '.'),
         ('models', 'models'),
         ('services', 'services'),
         ('ui', 'ui'),
@@ -132,14 +133,14 @@ coll = COLLECT(
     name='{APP_NAME}',
 )
     """
-    
+
     with open("video_generator.spec", "w") as f:
         f.write(spec_content)
-    
+
     # Run PyInstaller
     print("Building executable with PyInstaller...")
     subprocess.run([sys.executable, "-m", "PyInstaller", "video_generator.spec"], check=True)
-    
+
     # Create NSIS installer script without icon references
     nsis_script = f"""
 ; Video Generator Installer Script
@@ -169,19 +170,19 @@ InstallDirRegKey HKCU "Software\\{APP_NAME}" ""
 ; Installer Sections
 Section "Install"
     SetOutPath "$INSTDIR"
-    
+
     ; Add files
     File /r "dist\\{APP_NAME}\\*.*"
-    
+
     ; Create uninstaller
     WriteUninstaller "$INSTDIR\\Uninstall.exe"
-    
+
     ; Create shortcuts
     CreateDirectory "$SMPROGRAMS\\{APP_NAME}"
     CreateShortcut "$SMPROGRAMS\\{APP_NAME}\\{APP_NAME}.lnk" "$INSTDIR\\{APP_NAME}.exe"
     CreateShortcut "$SMPROGRAMS\\{APP_NAME}\\Uninstall.lnk" "$INSTDIR\\Uninstall.exe"
     CreateShortcut "$DESKTOP\\{APP_NAME}.lnk" "$INSTDIR\\{APP_NAME}.exe"
-    
+
     ; Write registry keys
     WriteRegStr HKCU "Software\\{APP_NAME}" "" $INSTDIR
     WriteRegStr HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{APP_NAME}" "DisplayName" "{APP_NAME}"
@@ -195,51 +196,51 @@ Section "Uninstall"
     ; Remove files and directories
     Delete "$INSTDIR\\Uninstall.exe"
     RMDir /r "$INSTDIR"
-    
+
     ; Remove shortcuts
     Delete "$SMPROGRAMS\\{APP_NAME}\\{APP_NAME}.lnk"
     Delete "$SMPROGRAMS\\{APP_NAME}\\Uninstall.lnk"
     RMDir "$SMPROGRAMS\\{APP_NAME}"
     Delete "$DESKTOP\\{APP_NAME}.lnk"
-    
+
     ; Remove registry keys
     DeleteRegKey HKCU "Software\\{APP_NAME}"
     DeleteRegKey HKLM "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{APP_NAME}"
 SectionEnd
     """
-    
+
     with open("installer.nsi", "w") as f:
         f.write(nsis_script)
-    
+
     # Check if NSIS is installed
     nsis_path = "C:\\Program Files (x86)\\NSIS\\makensis.exe"
     if not os.path.exists(nsis_path):
         print("NSIS not found. Please install NSIS from https://nsis.sourceforge.io/Download")
         print("After installing NSIS, run: makensis installer.nsi")
         return
-    
+
     # Build the installer
     print("Building installer with NSIS...")
     subprocess.run([nsis_path, "installer.nsi"], check=True)
-    
+
     print(f"Installer created: dist/{APP_NAME}_Setup_{APP_VERSION}.exe")
 
 def create_portable_package():
     """Create a portable ZIP package that users can extract and run directly"""
     print("Creating portable package...")
-    
+
     # Create a directory for the portable version
     portable_dir = "dist/Video_Generator_Portable"
     if os.path.exists(portable_dir):
         shutil.rmtree(portable_dir)
     os.makedirs(portable_dir)
-    
+
     # Copy the executable and FFmpeg files
     shutil.copy2("dist/Video Generator.exe", os.path.join(portable_dir, "Video Generator.exe"))
     for file in ["ffmpeg.exe", "ffplay.exe", "ffprobe.exe"]:
         if os.path.exists(file):
             shutil.copy2(file, os.path.join(portable_dir, file))
-    
+
     # Create a README file
     readme_content = """# Video Generator (Portable Version)
 
@@ -254,7 +255,7 @@ def create_portable_package():
 """
     with open(os.path.join(portable_dir, "README.txt"), "w") as f:
         f.write(readme_content)
-    
+
     # Create a batch file to run the application
     batch_content = """@echo off
 echo Starting Video Generator...
@@ -266,7 +267,7 @@ if errorlevel 1 (
 """
     with open(os.path.join(portable_dir, "Run_Video_Generator.bat"), "w") as f:
         f.write(batch_content)
-    
+
     # Create the ZIP file
     zip_path = "dist/Video_Generator_Portable.zip"
     print(f"Creating ZIP file: {zip_path}")
@@ -275,7 +276,7 @@ if errorlevel 1 (
             for file in files:
                 file_path = os.path.join(root, file)
                 zipf.write(file_path, os.path.relpath(file_path, portable_dir))
-    
+
     print(f"Portable package created: {zip_path}")
     return zip_path
 

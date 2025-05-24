@@ -1,31 +1,27 @@
-
 # -*- mode: python ; coding: utf-8 -*-
 
 block_cipher = None
 
 a = Analysis(
-    ['main.py'],
+    ['test_file_check.py'],
     pathex=['.'],
-    binaries=[
-        ('ffmpeg.exe', '.'),
-        ('ffplay.exe', '.'),
-        ('ffprobe.exe', '.')
-    ],
+    binaries=[],
     datas=[
         ('config.py', '.'),
-        ('README.md', '.'),
-        ('requirements.txt', '.'),
-        ('app_icon.ico', '.'),
         ('models', 'models'),
         ('services', 'services'),
         ('ui', 'ui'),
         ('utils', 'utils')
     ],
-    hiddenimports=['PIL._tkinter_finder'],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=[
+        'torch', 'torchvision', 'torchaudio', 'transformers', 'diffusers',
+        'scipy', 'sklearn', 'pandas', 'matplotlib', 'cv2', 'PIL',
+        'numpy', 'spacy', 'datasets', 'librosa', 'soundfile'
+    ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -41,29 +37,17 @@ exe = EXE(
     a.zipfiles,
     a.datas,
     [],
-    name='Video Generator',
+    name='test_file_check',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     runtime_tmpdir=None,
-    console=True,  # Set to True to show console for debugging
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='app_icon.ico' if os.path.exists('app_icon.ico') else None,
-)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='Video Generator',
 )

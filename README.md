@@ -22,16 +22,16 @@ This application creates videos with subtitles from text and images.
    ```
 3. Create a virtual environment:
    ```
-   python -m venv venv
+   python -m venv video_generator_env
    ```
 4. Activate the virtual environment:
    - On Windows:
      ```
-     venv\Scripts\activate
+     video_generator_env\Scripts\activate
      ```
    - On macOS/Linux:
      ```
-     source venv/bin/activate
+     source video_generator_env/bin/activate
      ```
 5. Install the required packages:
    ```

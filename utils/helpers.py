@@ -15,7 +15,7 @@ from config import SUPPORTED_IMAGE_EXTENSIONS
 
 def get_title_content(text):
     """
-    Extract title and content from text
+    Extract title and content from a text
 
     Args:
         text: Input text
@@ -98,7 +98,7 @@ def is_image_file(file_path):
         file_path: Path to file
 
     Returns:
-        bool: True if file is an image, False otherwise
+        bool: True if a file is an image, False otherwise
     """
     return get_file_extension(file_path) in SUPPORTED_IMAGE_EXTENSIONS
 

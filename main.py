@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 """
 Video Generator - Main Entry Point
-Creates videos with subtitles from text and images
+Creates videos with subtitles from a text and images
 """
-import sys
 import os
-import platform
+import sys
 import traceback
 
 # Add the current directory to the path
@@ -47,8 +46,24 @@ except ImportError:
                 print(f"Error creating directory {directory_path}: {e}")
                 return False
 
+def get_base_path():
+    """Get the base path for the application, handling PyInstaller executable"""
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        # PyInstaller extracts files to sys._MEIPASS
+        if hasattr(sys, '_MEIPASS'):
+            return sys._MEIPASS
+        else:
+            # Fallback to executable directory
+            return os.path.dirname(sys.executable)
+    else:
+        # Running as script
+        return os.path.dirname(os.path.abspath(__file__))
+
 def check_required_files():
     """Check if all required files exist"""
+    base_path = get_base_path()
+
     required_files = [
         "models/video_generator.py",
         "services/audio_service.py",
@@ -64,7 +79,8 @@ def check_required_files():
 
     missing_files = []
     for file in required_files:
-        if not os.path.exists(file):
+        full_path = os.path.join(base_path, file)
+        if not os.path.exists(full_path):
             missing_files.append(file)
 
     return missing_files
@@ -78,7 +94,12 @@ def create_gui():
 
         root = tk.Tk()
         root.title("Video Generator")
-        root.iconbitmap('app_icon.ico')
+
+        # Set icon using the correct path
+        base_path = get_base_path()
+        icon_path = os.path.join(base_path, 'app_icon.ico')
+        if os.path.exists(icon_path):
+            root.iconbitmap(icon_path)
 
         # Set window size and position it in the center of the screen
         window_width = 900
