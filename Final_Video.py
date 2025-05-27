@@ -76,46 +76,72 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Error copying video: {e}")
             return None
 
-    # Convert Windows paths to use forward slashes for FFmpeg compatibility
-    # This fixes the path parsing issue where backslashes cause problems
-    subtitle_path_escaped = subtitle_path.replace('\\', '/')
+    # Use the working method: copy subtitle to current working directory with simple name
+    print("Using the proven working method for subtitle embedding...")
 
-    # Try to merge with subtitles using more compatible codec settings
-    # Use different methods with proper path escaping
-    methods = [
-        f'subtitles={subtitle_path_escaped}',  # Try standard subtitles first
-        f'ass={subtitle_path_escaped}',  # Then try ASS format
-        f'subtitles={subtitle_path_escaped}:force_style=\'FontSize=24,Outline=1,Shadow=1,MarginV=80\''  # Increased margin for phone ratio
-    ]
+    try:
+        # Copy subtitle to current working directory with simple name
+        current_dir = os.getcwd()
+        local_subtitle_path = os.path.join(current_dir, "temp_subtitle.ass")
+        shutil.copy2(subtitle_path, local_subtitle_path)
+        print(f"Created local subtitle file: {local_subtitle_path}")
+        temp_subtitle_path = local_subtitle_path
+    except Exception as e:
+        print(f"Error creating local subtitle file: {e}")
+        # Fall back to original path
+        temp_subtitle_path = subtitle_path
 
+    # Use the proven working method: local file with simple filename
     success = False
-    for method in methods:
-        # Use subprocess with list of arguments to avoid shell escaping issues
+
+    # Remove any existing output file to ensure clean start
+    if os.path.exists(output_file):
+        try:
+            os.remove(output_file)
+        except Exception as e:
+            print(f"Warning: Could not remove existing output file: {e}")
+
+    try:
+        # Use just the filename (no path) - this is what works!
         cmd = [
-            ffmpeg_cmd, '-i', video_path,
-            '-vf', method,
+            ffmpeg_cmd, '-y',
+            '-i', video_path,
+            '-vf', 'subtitles=temp_subtitle.ass',
             '-c:v', 'libx264', '-crf', '23', '-preset', 'medium',
             '-c:a', 'aac', '-b:a', '128k',
+            '-movflags', '+faststart',
             output_file
         ]
-        print(f"Trying subtitle method: {method}")
+
+        print(f"Using working method with local file: {' '.join(cmd)}")
+
+        # Change to the directory containing the subtitle file
+        original_cwd = os.getcwd()
+        current_dir = os.path.dirname(temp_subtitle_path)
+        if current_dir:
+            os.chdir(current_dir)
+
         try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
 
             # Verify the output file exists and has content
             if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
-                print(f"Final video saved to {output_file}")
+                print(f"SUCCESS: Video with subtitles saved to {output_file}")
+                print(f"Output file size: {os.path.getsize(output_file)} bytes")
                 success = True
-                break
             else:
-                print(f"WARNING: Output file is too small or doesn't exist")
-        except subprocess.TimeoutExpired:
-            print(f"Method timed out: {method}")
-        except subprocess.CalledProcessError as e:
-            print(f"Method failed: {e}")
+                print(f"WARNING: Method produced small or no output file")
+
+        finally:
+            # Always restore original working directory
+            os.chdir(original_cwd)
+
+    except Exception as e:
+        print(f"Subtitle embedding failed: {e}")
+        if hasattr(e, 'stderr') and e.stderr:
             print(f"Error output: {e.stderr}")
-        except Exception as e:
-            print(f"Unexpected error with method {method}: {e}")
+        import traceback
+        traceback.print_exc()
 
     # If all subtitle methods failed, try to use the original video
     if not success:
@@ -153,6 +179,14 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         except Exception as copy_e:
             print(f"Error copying original video: {copy_e}")
             return None
+
+    # Clean up temporary subtitle file if it was created
+    if temp_subtitle_path != subtitle_path and os.path.exists(temp_subtitle_path):
+        try:
+            os.remove(temp_subtitle_path)
+            print(f"Cleaned up temporary subtitle file: {temp_subtitle_path}")
+        except Exception as e:
+            print(f"Warning: Could not remove temporary subtitle file: {e}")
 
     # Final verification
     if os.path.exists(output_file):

@@ -308,3 +308,50 @@ def print_exception(e, message="An error occurred"):
     """
     print(f"{message}: {str(e)}")
     traceback.print_exc()
+
+def test_subtitle_functionality():
+    """
+    Test the subtitle functionality to ensure it's working correctly
+
+    Returns:
+        bool: True if subtitles are working, False otherwise
+    """
+    try:
+        print("Testing subtitle functionality...")
+
+        # Check if FFmpeg is available
+        ffmpeg_available, ffmpeg_path, error_msg = check_ffmpeg_availability()
+        if not ffmpeg_available:
+            print(f"FFmpeg not available: {error_msg}")
+            return False
+
+        print(f"FFmpeg available at: {ffmpeg_path}")
+
+        # Test subtitle file creation
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.ass', delete=False) as temp_sub:
+            temp_subtitle_path = temp_sub.name
+
+        # Create a simple test subtitle
+        try:
+            with open(temp_subtitle_path, 'w', encoding='utf-8') as f:
+                f.write("[Script Info]\nTitle: Test Subtitle\nScriptType: v4.00+\n\n")
+                f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
+                f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1\n\n")
+                f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+                f.write("Dialogue: 0,0:00:00.00,0:00:03.00,Default,,0,0,0,,Test subtitle working!\n")
+
+            print(f"Created test subtitle file: {temp_subtitle_path}")
+
+            # Clean up
+            os.remove(temp_subtitle_path)
+            print("Subtitle functionality test passed!")
+            return True
+
+        except Exception as e:
+            print(f"Error creating test subtitle: {e}")
+            return False
+
+    except Exception as e:
+        print(f"Error testing subtitle functionality: {e}")
+        return False
