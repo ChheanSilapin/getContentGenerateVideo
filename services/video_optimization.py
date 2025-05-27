@@ -8,9 +8,26 @@ import subprocess
 import time
 import shutil
 import traceback
+import sys
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, AudioClip
 from moviepy.audio.fx.all import volumex, audio_normalize
 from scipy.signal import butter, lfilter
+
+# Add utils to path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)
+utils_dir = os.path.join(project_root, 'utils')
+if utils_dir not in sys.path:
+    sys.path.insert(0, utils_dir)
+
+try:
+    from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
+except ImportError:
+    # Fallback if import fails
+    def get_ffmpeg_path():
+        return 'ffmpeg'
+    def check_ffmpeg_availability():
+        return False, 'ffmpeg', 'Import failed'
 
 def enhance_video(input_video, output_video, options=None, stop_event=None):
     """
@@ -402,9 +419,21 @@ def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=Non
         # Use a simpler preset for faster processing
         preset = enhancement_options.get("preset", "medium")  # Changed from 'slow' to 'medium'
 
+        # Check FFmpeg availability first
+        ffmpeg_available, ffmpeg_path, error_msg = check_ffmpeg_availability()
+        if not ffmpeg_available:
+            print(f"FFmpeg not available: {error_msg}")
+            print("Skipping FFmpeg enhancements, using original video")
+            try:
+                shutil.copy2(input_video, output_video)
+                return output_video
+            except Exception as e:
+                print(f"Error copying original video: {e}")
+                return None
+
         # FFmpeg command with filters - simplified for better compatibility
         cmd = [
-            'ffmpeg', '-y', '-i', input_video,  # Added -y to overwrite output
+            ffmpeg_path, '-y', '-i', input_video,  # Added -y to overwrite output
             # Video filters
             '-vf', vf_arg,
             # Audio filters - simplified

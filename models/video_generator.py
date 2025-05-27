@@ -4,6 +4,7 @@ VideoGeneratorModel - Core model for video generation process
 import os
 import sys
 from datetime import datetime
+from version import __version__
 
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -118,7 +119,9 @@ class VideoGeneratorModel:
         if self.output_folder and os.path.isdir(self.output_folder):
             output_dir = os.path.join(self.output_folder, f"video_{timestamp}")
         else:
-            output_dir = os.path.join("output", f"video_{timestamp}")
+            # Use the output directory set by main.py, or fallback to default
+            base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
+            output_dir = os.path.join(base_output_dir, f"video_{timestamp}")
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"Created output directory: {output_dir}")
@@ -596,7 +599,9 @@ class VideoGeneratorModel:
             if self.output_folder and os.path.isdir(self.output_folder):
                 output_dir = os.path.join(self.output_folder, f"video_{video_name}_{timestamp}")
             else:
-                output_dir = os.path.join("output", f"video_{video_name}_{timestamp}")
+                # Use the output directory set by main.py, or fallback to default
+                base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
+                output_dir = os.path.join(base_output_dir, f"video_{video_name}_{timestamp}")
 
             os.makedirs(output_dir, exist_ok=True)
             print(f"Created output directory: {output_dir}")
@@ -804,3 +809,6 @@ class VideoGeneratorModel:
                     print(f"Removed output directory after stop: {self.current_output_dir}")
             except Exception as e:
                 print(f"Warning: Could not clean up output directory: {e}")
+
+def show_version():
+    return f"Video Generator v{__version__}"

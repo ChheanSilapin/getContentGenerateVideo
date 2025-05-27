@@ -2,6 +2,22 @@ import subprocess
 import os
 import traceback
 import shutil
+import sys
+
+# Add utils to path for imports
+current_dir = os.path.dirname(os.path.abspath(__file__))
+utils_dir = os.path.join(current_dir, 'utils')
+if utils_dir not in sys.path:
+    sys.path.insert(0, utils_dir)
+
+try:
+    from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
+except ImportError:
+    # Fallback if import fails
+    def get_ffmpeg_path():
+        return 'ffmpeg'
+    def check_ffmpeg_availability():
+        return False, 'ffmpeg', 'Import failed'
 
 def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp4"):
     """Merge video and subtitle into a final output video"""
@@ -47,9 +63,25 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     except Exception as e:
         print(f"Failed to create backup: {e}")
 
+    # Check FFmpeg availability first
+    ffmpeg_available, ffmpeg_cmd, error_msg = check_ffmpeg_availability()
+    if not ffmpeg_available:
+        print(f"FFmpeg not available: {error_msg}")
+        print("Skipping subtitle embedding, using original video")
+        try:
+            shutil.copy2(video_path, output_file)
+            print(f"Copied original video to {output_file}")
+            return output_file
+        except Exception as e:
+            print(f"Error copying video: {e}")
+            return None
+
+    # Convert Windows paths to use forward slashes for FFmpeg compatibility
+    # This fixes the path parsing issue where backslashes cause problems
+    subtitle_path_escaped = subtitle_path.replace('\\', '/')
+
     # Try to merge with subtitles using more compatible codec settings
-    ffmpeg_cmd = "ffmpeg"
-    subtitle_path_escaped = subtitle_path.replace("\\", "/")
+    # Use different methods with proper path escaping
     methods = [
         f'subtitles={subtitle_path_escaped}',  # Try standard subtitles first
         f'ass={subtitle_path_escaped}',  # Then try ASS format
@@ -58,11 +90,17 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
 
     success = False
     for method in methods:
-        # Use more compatible codec settings (H.264 video, AAC audio)
-        cmd = f'{ffmpeg_cmd} -i "{video_path}" -vf "{method}" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k "{output_file}"'
+        # Use subprocess with list of arguments to avoid shell escaping issues
+        cmd = [
+            ffmpeg_cmd, '-i', video_path,
+            '-vf', method,
+            '-c:v', 'libx264', '-crf', '23', '-preset', 'medium',
+            '-c:a', 'aac', '-b:a', '128k',
+            output_file
+        ]
         print(f"Trying subtitle method: {method}")
         try:
-            result = subprocess.run(cmd, check=True, shell=True, capture_output=True, text=True)
+            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
 
             # Verify the output file exists and has content
             if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
@@ -71,32 +109,49 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 break
             else:
                 print(f"WARNING: Output file is too small or doesn't exist")
+        except subprocess.TimeoutExpired:
+            print(f"Method timed out: {method}")
         except subprocess.CalledProcessError as e:
             print(f"Method failed: {e}")
             print(f"Error output: {e.stderr}")
+        except Exception as e:
+            print(f"Unexpected error with method {method}: {e}")
 
     # If all subtitle methods failed, try to use the original video
     if not success:
         print("All subtitle embedding methods failed. Using original video.")
+        if ffmpeg_available:
+            try:
+                # Convert the original video to a more compatible format
+                cmd = [
+                    ffmpeg_cmd, '-i', video_path,
+                    '-c:v', 'libx264', '-crf', '23', '-preset', 'medium',
+                    '-c:a', 'aac', '-b:a', '128k',
+                    output_file
+                ]
+                print(f"Trying to convert original video: {' '.join(cmd)}")
+                result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+                print(f"Final video saved to {output_file}")
+                return output_file
+            except Exception as e:
+                print(f"Error converting video: {e}")
+
+        # Last resort: try to use the backup or original video
+        if os.path.exists(backup_video):
+            try:
+                shutil.copy2(backup_video, output_file)
+                print(f"Copied backup video to {output_file}")
+                return output_file
+            except Exception as backup_e:
+                print(f"Error copying backup video: {backup_e}")
+
+        # Final fallback: copy original video directly
         try:
-            # Convert the original video to a more compatible format
-            cmd = f'{ffmpeg_cmd} -i "{video_path}" -c:v libx264 -crf 23 -preset medium -c:a aac -b:a 128k "{output_file}"'
-            print(f"Trying to convert original video: {cmd}")
-            result = subprocess.run(cmd, check=True, shell=True, capture_output=True, text=True)
-            print(f"Final video saved to {output_file}")
+            shutil.copy2(video_path, output_file)
+            print(f"Copied original video to {output_file}")
             return output_file
-        except Exception as e:
-            print(f"Error converting video: {e}")
-
-            # Last resort: try to use the backup
-            if os.path.exists(backup_video):
-                try:
-                    shutil.copy2(backup_video, output_file)
-                    print(f"Copied backup video to {output_file}")
-                    return output_file
-                except Exception as backup_e:
-                    print(f"Error copying backup video: {backup_e}")
-
+        except Exception as copy_e:
+            print(f"Error copying original video: {copy_e}")
             return None
 
     # Final verification

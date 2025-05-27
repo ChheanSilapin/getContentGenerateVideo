@@ -8,10 +8,166 @@ import re
 import emoji
 import shutil
 import traceback
+import subprocess
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 from config import SUPPORTED_IMAGE_EXTENSIONS
+
+def get_app_data_dir():
+    """
+    Get the application data directory where we can safely write files
+
+    Returns:
+        str: Path to writable application data directory
+    """
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        if platform.system() == "Windows":
+            # Try AppData\Local first (more appropriate for app data)
+            try:
+                appdata_local = os.environ.get('LOCALAPPDATA')
+                if appdata_local:
+                    app_data_dir = os.path.join(appdata_local, "Video Generator")
+                    os.makedirs(app_data_dir, exist_ok=True)
+                    # Test write permissions
+                    test_file = os.path.join(app_data_dir, "test_write.tmp")
+                    with open(test_file, 'w') as f:
+                        f.write("test")
+                    os.remove(test_file)
+                    return app_data_dir
+            except Exception as e:
+                print(f"Could not use AppData\\Local: {e}")
+
+            # Fallback to Documents folder
+            try:
+                documents_path = os.path.join(os.path.expanduser("~"), "Documents")
+                app_data_dir = os.path.join(documents_path, "Video Generator")
+                os.makedirs(app_data_dir, exist_ok=True)
+                # Test write permissions
+                test_file = os.path.join(app_data_dir, "test_write.tmp")
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                os.remove(test_file)
+                return app_data_dir
+            except Exception as e:
+                print(f"Could not use Documents folder: {e}")
+        else:
+            # Use home directory on other systems
+            app_data_dir = os.path.join(os.path.expanduser("~"), ".video_generator")
+    else:
+        # Running as script - use current directory
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        app_data_dir = os.path.dirname(script_dir)  # Go up one level from utils/
+
+    # Ensure the directory exists
+    try:
+        os.makedirs(app_data_dir, exist_ok=True)
+        # Test write permissions
+        test_file = os.path.join(app_data_dir, "test_write.tmp")
+        with open(test_file, 'w') as f:
+            f.write("test")
+        os.remove(test_file)
+    except Exception as e:
+        print(f"Warning: Could not create app data directory {app_data_dir}: {e}")
+        # Fallback to temp directory
+        import tempfile
+        app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
+        try:
+            os.makedirs(app_data_dir, exist_ok=True)
+        except Exception as e2:
+            print(f"Error: Could not create temp directory {app_data_dir}: {e2}")
+            # Last resort - use current directory
+            app_data_dir = os.getcwd()
+
+    return app_data_dir
+
+def get_output_directory():
+    """
+    Get the safe output directory for video files
+
+    Returns:
+        str: Path to output directory
+    """
+    # Check if the output directory was set by main.py
+    output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR')
+    if output_dir and os.path.exists(output_dir):
+        return output_dir
+
+    # Fallback to app data directory
+    app_data_dir = get_app_data_dir()
+    output_dir = os.path.join(app_data_dir, "output")
+
+    # Ensure it exists
+    try:
+        os.makedirs(output_dir, exist_ok=True)
+    except Exception as e:
+        print(f"Warning: Could not create output directory {output_dir}: {e}")
+        # Last resort - use temp directory
+        import tempfile
+        output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+        except Exception:
+            output_dir = tempfile.gettempdir()
+
+    return output_dir
+
+def check_ffmpeg_availability():
+    """
+    Check if FFmpeg is available and working
+
+    Returns:
+        tuple: (is_available: bool, ffmpeg_path: str, error_message: str)
+    """
+    ffmpeg_path = get_ffmpeg_path()
+
+    try:
+        # Try to run ffmpeg -version to check if it's working
+        result = subprocess.run([ffmpeg_path, '-version'],
+                              capture_output=True, text=True, timeout=10)
+        if result.returncode == 0:
+            return True, ffmpeg_path, None
+        else:
+            return False, ffmpeg_path, f"FFmpeg returned error code {result.returncode}"
+    except FileNotFoundError:
+        return False, ffmpeg_path, "FFmpeg executable not found"
+    except subprocess.TimeoutExpired:
+        return False, ffmpeg_path, "FFmpeg check timed out"
+    except Exception as e:
+        return False, ffmpeg_path, f"Error checking FFmpeg: {str(e)}"
+
+def get_ffmpeg_path():
+    """
+    Get the path to FFmpeg executable, prioritizing bundled version
+
+    Returns:
+        str: Path to FFmpeg executable
+    """
+    # Check if running as PyInstaller executable
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller extracts files to sys._MEIPASS
+            bundled_ffmpeg = os.path.join(sys._MEIPASS, 'ffmpeg.exe')
+            if os.path.exists(bundled_ffmpeg):
+                return bundled_ffmpeg
+
+        # Fallback: check in executable directory
+        exe_dir = os.path.dirname(sys.executable)
+        exe_dir_ffmpeg = os.path.join(exe_dir, 'ffmpeg.exe')
+        if os.path.exists(exe_dir_ffmpeg):
+            return exe_dir_ffmpeg
+
+    # Check in current script directory (for development)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)  # Go up one level from utils/
+    local_ffmpeg = os.path.join(project_root, 'ffmpeg.exe')
+    if os.path.exists(local_ffmpeg):
+        return local_ffmpeg
+
+    # Fallback to system PATH
+    return 'ffmpeg'
 
 def get_title_content(text):
     """

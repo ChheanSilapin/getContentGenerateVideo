@@ -77,8 +77,20 @@ htmlcov/
 # Testing
 .pytest_cache/
 .tox/
+test_*.py
+*_test.py
+tests/
+
+# Development files
+setup_project.py
+clean_cache.py
+build_installer.py
+simple_ui.py
 
 # Local configuration
 config.local.py
 local_settings.py
+
+# Memory bank (development notes)
+memory-bank/
 

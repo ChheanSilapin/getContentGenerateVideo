@@ -24,17 +24,27 @@ except ImportError:
 
 # Import from utils
 try:
-    from utils.helpers import ensure_directory_exists
+    from utils.helpers import ensure_directory_exists, get_app_data_dir
 except ImportError:
     # Try a direct import
     sys.path.insert(0, os.path.join(current_dir, 'utils'))
     try:
-        from helpers import ensure_directory_exists
+        from helpers import ensure_directory_exists, get_app_data_dir
         print("Imported helpers module directly")
     except ImportError as e:
         print(f"Error importing helpers module: {e}")
 
-        # Define a fallback function
+        # Define fallback functions
+        def get_app_data_dir():
+            """Fallback implementation of get_app_data_dir"""
+            import tempfile
+            app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
+            try:
+                os.makedirs(app_data_dir, exist_ok=True)
+            except Exception:
+                app_data_dir = os.getcwd()
+            return app_data_dir
+
         def ensure_directory_exists(directory_path):
             """Fallback implementation of ensure_directory_exists"""
             try:
@@ -165,17 +175,18 @@ def run_console_mode():
     print("pip install moviepy pillow requests beautifulsoup4 emoji")
 
 def check_and_create_directories():
-    """Check and create required directories"""
-    required_dirs = [
-        "output",
-        "models",
-        "services",
-        "ui",
-        "utils"
-    ]
+    """Check and create required directories in the app data directory"""
+    # Get the app data directory where we can safely write
+    app_data_dir = get_app_data_dir()
+    print(f"Using app data directory: {app_data_dir}")
 
-    for directory in required_dirs:
-        ensure_directory_exists(directory)
+    # Only create the output directory in the app data directory
+    # The other directories (models, services, ui, utils) are part of the application bundle
+    output_dir = os.path.join(app_data_dir, "output")
+    ensure_directory_exists(output_dir)
+
+    # Set the output directory as an environment variable so other modules can use it
+    os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
 
 if __name__ == "__main__":
     print("Starting Video Generator...")

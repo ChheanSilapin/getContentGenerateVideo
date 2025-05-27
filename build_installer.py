@@ -13,7 +13,10 @@ import tempfile
 
 # Configuration
 APP_NAME = "Video Generator"
-APP_VERSION = "1.0.0"
+try:
+    from version import __version__ as APP_VERSION
+except ImportError:
+    APP_VERSION = "1.0.0"  # Default fallback version
 FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 MAIN_SCRIPT = "main.py"
 ICON_FILE = "app_icon.ico"  # Updated to match your icon file name
@@ -283,5 +286,6 @@ if errorlevel 1 (
 if __name__ == "__main__":
     build_installer()
     create_portable_package()
+
 
 
