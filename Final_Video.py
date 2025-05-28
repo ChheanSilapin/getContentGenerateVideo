@@ -4,20 +4,33 @@ import traceback
 import shutil
 import sys
 
-# Add utils to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-utils_dir = os.path.join(current_dir, 'utils')
-if utils_dir not in sys.path:
-    sys.path.insert(0, utils_dir)
+# Use centralized path management
+try:
+    from utils.path_manager import add_utils_to_path
+    add_utils_to_path()
+except ImportError:
+    # Fallback path setup
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    utils_dir = os.path.join(current_dir, 'utils')
+    if utils_dir not in sys.path:
+        sys.path.insert(0, utils_dir)
 
+# Import FFmpeg utilities from centralized location
 try:
     from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
 except ImportError:
-    # Fallback if import fails
-    def get_ffmpeg_path():
-        return 'ffmpeg'
-    def check_ffmpeg_availability():
-        return False, 'ffmpeg', 'Import failed'
+    # Use fallback manager if available
+    try:
+        from utils.fallback_manager import get_helpers_with_fallback
+        helpers = get_helpers_with_fallback()
+        get_ffmpeg_path = helpers.get_ffmpeg_path
+        check_ffmpeg_availability = helpers.check_ffmpeg_availability
+    except ImportError:
+        # Final fallback
+        def get_ffmpeg_path():
+            return 'ffmpeg'
+        def check_ffmpeg_availability():
+            return False, 'ffmpeg', 'Import failed'
 
 def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp4"):
     """Merge video and subtitle into a final output video"""
@@ -80,16 +93,35 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     print("Using the proven working method for subtitle embedding...")
 
     try:
-        # Copy subtitle to current working directory with simple name
-        current_dir = os.getcwd()
-        local_subtitle_path = os.path.join(current_dir, "temp_subtitle.ass")
+        # For bundled executables, use a writable temporary directory
+        import tempfile
+        import sys
+        
+        if getattr(sys, 'frozen', False):
+            # Running as bundled executable - use output directory for temp files
+            temp_dir = os.path.dirname(output_file)
+        else:
+            # Running as script - use current directory
+            temp_dir = os.getcwd()
+            
+        local_subtitle_path = os.path.join(temp_dir, "temp_subtitle.ass")
         shutil.copy2(subtitle_path, local_subtitle_path)
         print(f"Created local subtitle file: {local_subtitle_path}")
         temp_subtitle_path = local_subtitle_path
     except Exception as e:
         print(f"Error creating local subtitle file: {e}")
-        # Fall back to original path
-        temp_subtitle_path = subtitle_path
+        # Fall back to using system temp directory
+        try:
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            local_subtitle_path = os.path.join(temp_dir, "temp_subtitle.ass")
+            shutil.copy2(subtitle_path, local_subtitle_path)
+            print(f"Created temp subtitle file in system temp: {local_subtitle_path}")
+            temp_subtitle_path = local_subtitle_path
+        except Exception as temp_e:
+            print(f"Error creating temp subtitle file: {temp_e}")
+            # Final fallback to original path
+            temp_subtitle_path = subtitle_path
 
     # Use the proven working method: local file with simple filename
     success = False
@@ -102,14 +134,29 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Warning: Could not remove existing output file: {e}")
 
     try:
-        # Use just the filename (no path) - this is what works!
+        # Use the full path to the subtitle file for better reliability
+        subtitle_filename = os.path.basename(temp_subtitle_path)
+        subtitle_dir = os.path.dirname(temp_subtitle_path)
+        
         cmd = [
             ffmpeg_cmd, '-y',
             '-i', video_path,
-            '-vf', 'subtitles=temp_subtitle.ass',
-            '-c:v', 'libx264', '-crf', '23', '-preset', 'medium',
-            '-c:a', 'aac', '-b:a', '128k',
-            '-movflags', '+faststart',
+            '-vf', f'subtitles={subtitle_filename}',
+            # Video encoding with maximum compatibility
+            '-c:v', 'libx264', 
+            '-profile:v', 'baseline',  # Use baseline profile for maximum compatibility
+            '-level', '3.0',           # Use level 3.0 for wide device support
+            '-crf', '23', 
+            '-preset', 'medium',
+            '-pix_fmt', 'yuv420p',     # Ensure compatible pixel format
+            # Audio encoding with maximum compatibility (removed aac_low profile)
+            '-c:a', 'aac', 
+            '-b:a', '128k',
+            '-ar', '44100',            # Standard sample rate
+            '-ac', '2',                # Stereo audio
+            # Container optimization
+            '-movflags', '+faststart', # Enable fast start for web playback
+            '-f', 'mp4',               # Explicitly specify MP4 format
             output_file
         ]
 
@@ -117,9 +164,11 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
 
         # Change to the directory containing the subtitle file
         original_cwd = os.getcwd()
-        current_dir = os.path.dirname(temp_subtitle_path)
-        if current_dir:
-            os.chdir(current_dir)
+        if subtitle_dir and os.path.exists(subtitle_dir):
+            os.chdir(subtitle_dir)
+            print(f"Changed working directory to: {subtitle_dir}")
+        else:
+            print(f"Warning: Subtitle directory not found, staying in: {original_cwd}")
 
         try:
             result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
@@ -151,8 +200,20 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 # Convert the original video to a more compatible format
                 cmd = [
                     ffmpeg_cmd, '-i', video_path,
-                    '-c:v', 'libx264', '-crf', '23', '-preset', 'medium',
-                    '-c:a', 'aac', '-b:a', '128k',
+                    # Video encoding with maximum compatibility
+                    '-c:v', 'libx264', 
+                    '-profile:v', 'baseline', 
+                    '-level', '3.0',
+                    '-crf', '23', 
+                    '-preset', 'medium',
+                    '-pix_fmt', 'yuv420p',
+                    # Audio encoding with maximum compatibility
+                    '-c:a', 'aac', 
+                    '-b:a', '128k',
+                    '-ar', '44100',
+                    '-ac', '2',
+                    # Container optimization
+                    '-f', 'mp4',
                     output_file
                 ]
                 print(f"Trying to convert original video: {' '.join(cmd)}")

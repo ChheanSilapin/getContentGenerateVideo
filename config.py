@@ -37,5 +37,31 @@ DEFAULT_ASPECT_RATIO = "9:16"
 SUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
 
 # GUI settings
-GUI_WINDOW_SIZE = "800x800"
+GUI_WINDOW_SIZE = "900x780"
 GUI_TITLE = "Video Generator"
+GUI_MIN_WIDTH = 800
+GUI_MIN_HEIGHT = 600
+GUI_RESIZABLE = True
+GUI_CENTER_ON_SCREEN = True
+
+# GUI Colors
+GUI_COLORS = {
+    "primary": "#2c3e50",      # Dark blue-gray
+    "secondary": "#3498db",    # Blue
+    "accent": "#e74c3c",       # Red
+    "success": "#2ecc71",      # Green
+    "background": "#ecf0f1",   # Light gray
+    "text": "#34495e",         # Dark text
+    "light_text": "#7f8c8d"    # Gray text
+}
+
+# GUI Fonts
+# GUI Fonts
+GUI_FONTS = {
+    "default": ("Cascadia Code", 12),
+    "button": ("Cascadia Code", 12),
+    "label": ("Cascadia Code", 12),
+    "heading": ("Cascadia Code", 12, "bold"),
+    "console": ("Cascadia Code", 12),
+    "tab": ("Cascadia Code", 12)  # Add this line for tab headers
+}

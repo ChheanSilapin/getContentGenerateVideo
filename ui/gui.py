@@ -18,7 +18,7 @@ class UIComponentFactory:
     def __init__(self, colors):
         self.colors = colors
 
-    def create_styled_button(self, parent, text, command, bg_color=None, width=12, **kwargs):
+    def create_styled_button(self, parent, text, command, bg_color=None, width=8, **kwargs):
         """Create a consistently styled button"""
         bg_color = bg_color or self.colors["secondary"]
         hover_color = kwargs.pop('hover_color', self.colors["primary"])
@@ -28,7 +28,7 @@ class UIComponentFactory:
             text=text,
             bg=bg_color,
             fg="white",
-            font=("Helvetica", 11, "bold"),
+            font=GUI_FONTS["button"],  # Use config font
             relief="flat",
             width=width,
             command=command,
@@ -42,17 +42,17 @@ class UIComponentFactory:
 
     def create_progress_section(self, parent, title="Progress"):
         """Create a consistent progress section with bar and label"""
-        frame = ttk.LabelFrame(parent, text=title, padding=10)
+        frame = ttk.LabelFrame(parent, text=title, padding=2)  # Minimal padding for 800x800
 
         progress_bar = ttk.Progressbar(frame, orient="horizontal", mode='determinate')
-        progress_bar.pack(fill="x", padx=5, pady=5)
+        progress_bar.pack(fill="x", padx=1, pady=1)  # Minimal padding
 
-        progress_label = ttk.Label(frame, text="0%", font=("Helvetica", 10))
-        progress_label.pack(pady=5)
+        progress_label = ttk.Label(frame, text="0%", font=GUI_FONTS["label"])  # Use config font
+        progress_label.pack(pady=0)  # No padding
 
         return frame, progress_bar, progress_label
 
-    def create_labeled_frame(self, parent, title, padding=10):
+    def create_labeled_frame(self, parent, title, padding=2):  # Minimal default padding for 800x800
         """Create a consistently styled labeled frame"""
         return ttk.LabelFrame(parent, text=title, padding=padding)
 
@@ -64,6 +64,8 @@ try:
     except ImportError:
         print("OpenCV (cv2) not available. Some features may be limited.")
 
+    # Import config
+    from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS
     from models.video_generator import VideoGeneratorModel
     from ui.image_selector import ImageSelector
     from ui.text_redirector import TextRedirector
@@ -74,6 +76,29 @@ try:
     from ui.batch_tab import BatchTab
 except ImportError as e:
     print(f"Error importing required modules: {e}")
+    # Set fallback values if config import fails
+    GUI_WINDOW_SIZE = "800x800"
+    GUI_TITLE = "Video Generator"
+    GUI_MIN_WIDTH = 800
+    GUI_MIN_HEIGHT = 600
+    GUI_RESIZABLE = True
+    GUI_CENTER_ON_SCREEN = True
+    GUI_COLORS = {
+        "primary": "#2c3e50",
+        "secondary": "#3498db",
+        "accent": "#e74c3c",
+        "success": "#2ecc71",
+        "background": "#ecf0f1",
+        "text": "#34495e",
+        "light_text": "#7f8c8d"
+    }
+    GUI_FONTS = {
+        "default": ("Cascadia Code", 8),
+        "button": ("Cascadia Code", 8, "bold"),
+        "label": ("Cascadia Code", 8),
+        "heading": ("Cascadia Code", 9, "bold"),
+        "console": ("Consolas", 8)
+    }
     # Create a fallback model class if import fails
     class VideoGeneratorModel:
         """Fallback model class when the real one can't be imported"""
@@ -153,16 +178,8 @@ class VideoGeneratorGUI:
         self.root = root
         self.root.configure(bg="#ffffff")  # Set root background
 
-        # Define modern color scheme
-        self.colors = {
-            "primary": "#2c3e50",      # Dark blue-gray
-            "secondary": "#3498db",    # Blue
-            "accent": "#e74c3c",       # Red
-            "success": "#2ecc71",      # Green
-            "background": "#ecf0f1",   # Light gray
-            "text": "#34495e",         # Dark text
-            "light_text": "#7f8c8d"    # Gray text
-        }
+        # Use colors from config instead of hardcoded values
+        self.colors = GUI_COLORS
 
         # Initialize UI component factory
         self.ui_factory = UIComponentFactory(self.colors)
@@ -199,7 +216,7 @@ class VideoGeneratorGUI:
 
         # Create notebook (tabbed interface)
         self.notebook = ttk.Notebook(root)
-        self.notebook.pack(fill="both", expand=True, padx=15, pady=15)
+        self.notebook.pack(fill="both", expand=True, padx=2, pady=2)  # Minimal padding for 800x800 window
 
         # Create tabs
         self.input_tab = ttk.Frame(self.notebook)
@@ -209,13 +226,13 @@ class VideoGeneratorGUI:
         self.log_tab = ttk.Frame(self.notebook)
         self.batch_tab = ttk.Frame(self.notebook)
 
-        # Add tabs to notebook
-        self.notebook.add(self.input_tab, text=" Input ")
-        self.notebook.add(self.image_tab, text=" Images ")
-        self.notebook.add(self.video_tab, text=" Video ")
-        self.notebook.add(self.option_tab, text=" Option ")
-        self.notebook.add(self.batch_tab, text=" Batch Processing ")
-        self.notebook.add(self.log_tab, text=" Log ")
+        # Add tabs to notebook with shorter names for small screens
+        self.notebook.add(self.input_tab, text="Input")
+        self.notebook.add(self.image_tab, text="Images")
+        self.notebook.add(self.video_tab, text="Video")
+        self.notebook.add(self.option_tab, text="Options")
+        self.notebook.add(self.batch_tab, text="Batch")
+        self.notebook.add(self.log_tab, text="Log")
 
         # Set up tabs (log tab first since other tabs may need to log messages)
         self.setup_log_tab()
@@ -229,18 +246,21 @@ class VideoGeneratorGUI:
         """Configure ttk styles for consistent appearance"""
         style = ttk.Style()
         style.theme_use("clam")  # Modern theme
-        style.configure("TButton", font=("Helvetica", 10), padding=8)
-        style.configure("TLabel", font=("Helvetica", 10), background=self.colors["background"], foreground=self.colors["text"])
+        style.configure("TButton", font=GUI_FONTS["button"], padding=3)  # Use config font
+        style.configure("TLabel", font=GUI_FONTS["label"], background=self.colors["background"], foreground=self.colors["text"])  # Use config font
         style.configure("TFrame", background=self.colors["background"])
         style.configure("TLabelframe", background=self.colors["background"], foreground=self.colors["text"])
-        style.configure("TLabelframe.Label", font=("Helvetica", 11, "bold"), background=self.colors["background"])
-        style.configure("TProgressbar", thickness=20, background=self.colors["success"])
+        style.configure("TLabelframe.Label", font=GUI_FONTS["heading"], background=self.colors["background"])  # Use config font
+        style.configure("TProgressbar", thickness=10, background=self.colors["success"])  # Thinner for 800x800
 
         # Configure checkbutton style to use checkmarks instead of X
-        style.configure("TCheckbutton", background=self.colors["background"], foreground=self.colors["text"])
+        style.configure("TCheckbutton", background=self.colors["background"], foreground=self.colors["text"], font=GUI_FONTS["label"])  # Use config font
         style.map("TCheckbutton",
                  indicatorcolor=[("selected", self.colors["success"]), ("!selected", "white")],
                  indicatorrelief=[("pressed", "sunken"), ("!pressed", "raised")])
+        
+        # Configure notebook tabs to be very compact for 800x800
+        style.configure("TNotebook.Tab", padding=[4, 1], font=GUI_FONTS["tab"])  # Tab padding and font
 
     def setup_input_tab(self):
         """Set up the input tab using the InputTab component"""
@@ -271,13 +291,13 @@ class VideoGeneratorGUI:
         self.log_text = tk.Text(
             self.log_tab,
             wrap="word",
-            font=("Consolas", 11),
+            font=GUI_FONTS["console"],  # Use config font
             bg="#f8f9fa",
             fg=self.colors["text"],
             borderwidth=1,
             relief="solid"
         )
-        self.log_text.pack(fill="both", expand=True, padx=10, pady=10, side="left")
+        self.log_text.pack(fill="both", expand=True, padx=1, pady=1, side="left")  # Minimal padding for 800x800
 
         scrollbar = ttk.Scrollbar(self.log_tab, command=self.log_text.yview)
         scrollbar.pack(side="right", fill="y")
@@ -464,16 +484,53 @@ class VideoGeneratorGUI:
 def main():
     """Main function to run the GUI application"""
     root = tk.Tk()
-    root.title("Video Generator")
+    root.title(GUI_TITLE)
     root.configure(bg="#ffffff")
-    window_width = 900
-    window_height = 650
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    center_x = int(screen_width / 2 - window_width / 2)
-    center_y = int(screen_height / 2 - window_height / 2)
-    root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
-    root.minsize(800, 600)
+    
+    # Set icon using the correct path
+    try:
+        import sys
+        # Get the base path for the application
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller executable
+            if hasattr(sys, '_MEIPASS'):
+                base_path = sys._MEIPASS
+            else:
+                base_path = os.path.dirname(sys.executable)
+        else:
+            # Running as script
+            base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        icon_path = os.path.join(base_path, 'app_icon.ico')
+        if os.path.exists(icon_path):
+            root.iconbitmap(icon_path)
+    except Exception as e:
+        print(f"Could not set icon: {e}")
+    
+    # Use all window settings from config
+    root.geometry(GUI_WINDOW_SIZE)
+    root.minsize(GUI_MIN_WIDTH, GUI_MIN_HEIGHT)
+    root.resizable(GUI_RESIZABLE, GUI_RESIZABLE)
+    
+    # Center the window if configured to do so
+    if GUI_CENTER_ON_SCREEN:
+        root.update_idletasks()  # Ensure geometry is calculated
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        
+        # Parse window size from config
+        width_str, height_str = GUI_WINDOW_SIZE.split('x')
+        window_width = int(width_str)
+        window_height = int(height_str)
+        
+        center_x = int(screen_width / 2 - window_width / 2)
+        center_y = int(screen_height / 2 - window_height / 2)
+        root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+    
+    # Make window responsive
+    root.grid_rowconfigure(0, weight=1)
+    root.grid_columnconfigure(0, weight=1)
+    
     VideoGeneratorGUI(root)
     root.mainloop()
 

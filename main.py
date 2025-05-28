@@ -1,220 +1,199 @@
 #!/usr/bin/env python3
 """
-Video Generator - Main Entry Point
-Creates videos with subtitles from a text and images
+Video Generator - Optimized Main Entry Point
+Creates videos with subtitles from text and images
+Optimized for fast startup and standalone operation
 """
 import os
 import sys
-import traceback
 
-# Add the current directory to the path
+# Add the current directory to the path for standalone operation
 current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-# Also add the parent directory to the path
-parent_dir = os.path.dirname(current_dir)
-sys.path.append(parent_dir)
-print(f"Added to Python path: {current_dir}")
-print(f"Added to Python path: {parent_dir}")
+sys.path.insert(0, current_dir)
 
-# Try to import the local moviepy_patch module
-try:
-    import moviepy_patch
-except ImportError:
-    print("Note: moviepy_patch module not found, continuing without it.")
+def check_critical_files():
+    """Quick check for critical files before heavy imports"""
+    critical_files = ['config.py']
+    missing = []
+    
+    for file in critical_files:
+        if not os.path.exists(os.path.join(current_dir, file)):
+            missing.append(file)
+    
+    return missing
 
-# Import from utils
-try:
-    from utils.helpers import ensure_directory_exists, get_app_data_dir
-except ImportError:
-    # Try a direct import
-    sys.path.insert(0, os.path.join(current_dir, 'utils'))
-    try:
-        from helpers import ensure_directory_exists, get_app_data_dir
-        print("Imported helpers module directly")
-    except ImportError as e:
-        print(f"Error importing helpers module: {e}")
-
-        # Define fallback functions
-        def get_app_data_dir():
-            """Fallback implementation of get_app_data_dir"""
-            import tempfile
-            app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
-            try:
-                os.makedirs(app_data_dir, exist_ok=True)
-            except Exception:
-                app_data_dir = os.getcwd()
-            return app_data_dir
-
-        def ensure_directory_exists(directory_path):
-            """Fallback implementation of ensure_directory_exists"""
-            try:
-                if not os.path.exists(directory_path):
-                    os.makedirs(directory_path, exist_ok=True)
-                    print(f"Created directory: {directory_path}")
-                return True
-            except Exception as e:
-                print(f"Error creating directory {directory_path}: {e}")
-                return False
-
-def get_base_path():
-    """Get the base path for the application, handling PyInstaller executable"""
+def setup_environment():
+    """Setup environment for standalone operation"""
+    # Set up paths for bundled FFmpeg
     if getattr(sys, 'frozen', False):
-        # Running as PyInstaller executable
-        # PyInstaller extracts files to sys._MEIPASS
-        if hasattr(sys, '_MEIPASS'):
-            return sys._MEIPASS
-        else:
-            # Fallback to executable directory
-            return os.path.dirname(sys.executable)
-    else:
-        # Running as script
-        return os.path.dirname(os.path.abspath(__file__))
+        # Running as PyInstaller bundle
+        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+        
+        # Add bundle directory to PATH for FFmpeg
+        current_path = os.environ.get('PATH', '')
+        if bundle_dir not in current_path:
+            os.environ['PATH'] = bundle_dir + os.pathsep + current_path
+    
+    # Create output directory in user's documents if needed
+    try:
+        import tempfile
+        output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
+        os.makedirs(output_dir, exist_ok=True)
+        os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
+    except Exception:
+        pass  # Will use current directory as fallback
 
-def check_required_files():
-    """Check if all required files exist"""
-    base_path = get_base_path()
+def check_ffmpeg_availability():
+    """Check if FFmpeg is available (bundled or system-installed)"""
+    import subprocess
+    try:
+        # Try to run ffmpeg to check if it's available
+        subprocess.run(['ffmpeg', '-version'], 
+                      capture_output=True, 
+                      timeout=5, 
+                      check=True)
+        return True
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+        return False
 
-    required_files = [
-        "models/video_generator.py",
-        "services/audio_service.py",
-        "services/image_service.py",
-        "services/video_service.py",
-        "services/subtitle_service.py",
-        "ui/gui.py",
-        "ui/image_selector.py",
-        "ui/text_redirector.py",
-        "utils/helpers.py",
-        "config.py"
-    ]
-
-    missing_files = []
-    for file in required_files:
-        full_path = os.path.join(base_path, file)
-        if not os.path.exists(full_path):
-            missing_files.append(file)
-
-    return missing_files
+def show_ffmpeg_warning():
+    """Show warning if FFmpeg is not available"""
+    try:
+        import tkinter as tk
+        from tkinter import messagebox
+        
+        root = tk.Tk()
+        root.withdraw()  # Hide the root window
+        
+        message = (
+            "FFmpeg not found!\n\n"
+            "Video generation requires FFmpeg to be installed.\n\n"
+            "Options:\n"
+            "1. Download FFmpeg from: https://ffmpeg.org/download.html\n"
+            "2. Add FFmpeg to your system PATH\n"
+            "3. Place ffmpeg.exe in the same folder as this application\n\n"
+            "The application will continue, but video generation may fail."
+        )
+        
+        messagebox.showwarning("FFmpeg Not Found", message)
+        root.destroy()
+        
+    except ImportError:
+        # Fallback to console message if tkinter not available
+        print("WARNING: FFmpeg not found!")
+        print("Video generation requires FFmpeg. Please install it from https://ffmpeg.org/download.html")
 
 def create_gui():
-    """Create and run the GUI application"""
+    """Create and run the GUI application with lazy imports"""
     try:
-        # Import the GUI module
+        from config import GUI_WINDOW_SIZE, GUI_TITLE
         import tkinter as tk
         from ui.gui import VideoGeneratorGUI
-
+        
         root = tk.Tk()
-        root.title("Video Generator")
-
-        # Set icon using the correct path
-        base_path = get_base_path()
-        icon_path = os.path.join(base_path, 'app_icon.ico')
-        if os.path.exists(icon_path):
-            root.iconbitmap(icon_path)
-
-        # Set window size and position it in the center of the screen
-        window_width = 900
-        window_height = 700
-        screen_width = root.winfo_screenwidth()
-        screen_height = root.winfo_screenheight()
-        center_x = int(screen_width/2 - window_width/2)
-        center_y = int(screen_height/2 - window_height/2)
-        root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
-
-        # Set a minimum size
-        root.minsize(800, 600)
-
-        # Create the application
-        app = VideoGeneratorGUI(root)
+        root.title(GUI_TITLE)
+        root.geometry(GUI_WINDOW_SIZE)
+        
+        VideoGeneratorGUI(root)
         root.mainloop()
+        
     except ImportError as e:
-        print(f"Tkinter import error: {e}")
+        error_msg = f"Import error: {e}\n\nSome required modules are missing."
+        print(error_msg)
+        
+        # Try to show GUI error if tkinter is available
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Import Error", error_msg)
+            root.destroy()
+        except ImportError:
+            pass
+        
         # Fall back to console mode
-        print("GUI framework not available. Falling back to console mode.")
+        print("Falling back to console mode...")
         run_console_mode()
+        
     except Exception as e:
-        print(f"Error starting GUI: {e}")
-        traceback.print_exc()
-        print("Falling back to console mode.")
+        error_msg = f"Error starting GUI: {e}"
+        print(error_msg)
+        
+        # Try to show GUI error
+        try:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            messagebox.showerror("Startup Error", error_msg)
+            root.destroy()
+        except:
+            pass
+        
+        print("Falling back to console mode...")
         run_console_mode()
 
 def run_console_mode():
-    """Run the application in console mode"""
-    print("\n=== VIDEO GENERATION SYSTEM (CONSOLE MODE) ===")
-    print("This program will create a video with subtitles from text and images.")
-
-    # Safely get input with error handling
-    def safe_input(prompt):
-        try:
-            return input(prompt)
-        except Exception as e:
-            print(f"Error getting input: {e}")
-            print("Please run this application from a command prompt or use the GUI mode.")
-            return None
-
-    # Check if required modules are installed
+    """Run the application in console mode as fallback"""
+    print("\n" + "="*50)
+    print("VIDEO GENERATOR (CONSOLE MODE)")
+    print("="*50)
+    print("This program creates videos with subtitles from text and images.")
+    print("\nNote: Console mode is limited. GUI mode is recommended.")
+    print("\nRequired components:")
+    print("- Python 3.8+ (you have this)")
+    print("- FFmpeg (for video processing)")
+    print("- Required Python packages (see requirements.txt)")
+    print("\nTo use GUI mode, ensure all dependencies are installed.")
+    print("\nPress Enter to exit...")
+    
     try:
-        import tkinter
-        print("Tkinter is installed but not being used in console mode.")
-    except ImportError:
-        print("Tkinter is not installed. You can install it with:")
-        print("  - Windows: Install Python with the 'tcl/tk and IDLE' option")
-        print("  - Linux: sudo apt-get install python3-tk")
-        print("  - macOS: brew install python-tk")
+        input()
+    except (EOFError, KeyboardInterrupt):
+        pass
 
-    print("\nConsole mode is not fully implemented yet.")
-    print("Please install the required packages and try again.")
-    print("\nRequired packages:")
-    print("  - tkinter (for GUI)")
-    print("  - moviepy")
-    print("  - pillow")
-    print("  - requests")
-    print("  - beautifulsoup4")
-    print("  - emoji")
-
-    print("\nYou can install these packages with:")
-    print("pip install moviepy pillow requests beautifulsoup4 emoji")
-
-def check_and_create_directories():
-    """Check and create required directories in the app data directory"""
-    # Get the app data directory where we can safely write
-    app_data_dir = get_app_data_dir()
-    print(f"Using app data directory: {app_data_dir}")
-
-    # Only create the output directory in the app data directory
-    # The other directories (models, services, ui, utils) are part of the application bundle
-    output_dir = os.path.join(app_data_dir, "output")
-    ensure_directory_exists(output_dir)
-
-    # Set the output directory as an environment variable so other modules can use it
-    os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
+def main():
+    """Main entry point with optimized startup"""
+    print("Starting Video Generator...")
+    
+    # Quick file check before any heavy imports
+    missing_files = check_critical_files()
+    if missing_files:
+        print(f"Error: Missing critical files: {', '.join(missing_files)}")
+        print("Please ensure all application files are present.")
+        input("Press Enter to exit...")
+        return
+    
+    # Setup environment for standalone operation
+    setup_environment()
+    
+    # Check FFmpeg availability (non-blocking)
+    if not check_ffmpeg_availability():
+        print("Warning: FFmpeg not detected")
+        # Show warning but don't block startup
+        try:
+            import threading
+            warning_thread = threading.Thread(target=show_ffmpeg_warning, daemon=True)
+            warning_thread.start()
+        except:
+            pass  # Continue without warning if threading fails
+    
+    # Check command line arguments
+    if len(sys.argv) > 1 and sys.argv[1] == "--console":
+        run_console_mode()
+    else:
+        # Start the GUI (with lazy imports)
+        create_gui()
 
 if __name__ == "__main__":
-    print("Starting Video Generator...")
-
-    # Check and create required directories
-    check_and_create_directories()
-
-    # Check for required files
-    missing_files = check_required_files()
-    if missing_files:
-        print("WARNING: The following required files are missing:")
-        for file in missing_files:
-            print(f"  - {file}")
-        print("\nThe application may not function correctly.")
-
-        # Ask user if they want to continue
-        response = input("Do you want to continue anyway? (y/n): ")
-        if not response.lower().startswith('y'):
-            print("Exiting.")
-            sys.exit(1)
-
     try:
-        # Check command line arguments
-        if len(sys.argv) > 1 and sys.argv[1] == "--console":
-            run_console_mode()
-        else:
-            # Start the GUI
-            create_gui()
+        main()
     except KeyboardInterrupt:
         print("\nProgram terminated by user (Ctrl+C)")
         sys.exit(0)
+    except Exception as e:
+        print(f"Fatal error: {e}")
+        print("Please check that all required files are present and try again.")
+        input("Press Enter to exit...")
+        sys.exit(1)

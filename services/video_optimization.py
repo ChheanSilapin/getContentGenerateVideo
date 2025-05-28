@@ -13,137 +13,162 @@ from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, Ima
 from moviepy.audio.fx.all import volumex, audio_normalize
 from scipy.signal import butter, lfilter
 
-# Add utils to path for imports
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-utils_dir = os.path.join(project_root, 'utils')
-if utils_dir not in sys.path:
-    sys.path.insert(0, utils_dir)
+# Use centralized path management
+try:
+    from utils.path_manager import add_utils_to_path
+    add_utils_to_path()
+except ImportError:
+    # Fallback path setup
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    utils_dir = os.path.join(project_root, 'utils')
+    if utils_dir not in sys.path:
+        sys.path.insert(0, utils_dir)
 
+# Import FFmpeg utilities from centralized location
 try:
     from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
 except ImportError:
-    # Fallback if import fails
-    def get_ffmpeg_path():
-        return 'ffmpeg'
-    def check_ffmpeg_availability():
-        return False, 'ffmpeg', 'Import failed'
+    # Use fallback manager if available
+    try:
+        from utils.fallback_manager import get_helpers_with_fallback
+        helpers = get_helpers_with_fallback()
+        get_ffmpeg_path = helpers.get_ffmpeg_path
+        check_ffmpeg_availability = helpers.check_ffmpeg_availability
+    except ImportError:
+        # Final fallback
+        def get_ffmpeg_path():
+            return 'ffmpeg'
+        def check_ffmpeg_availability():
+            return False, 'ffmpeg', 'Import failed'
 
 def enhance_video(input_video, output_video, options=None, stop_event=None):
     """
-    Enhance video with multiple optimization techniques
+    Enhance video quality with various improvements
 
     Args:
-        input_video: Path to input video
-        output_video: Path to output video
+        input_video: Path to input video file
+        output_video: Path to output enhanced video file
         options: Dictionary of enhancement options
         stop_event: Threading event to stop the process
 
     Returns:
-        str: Path to enhanced video
+        str: Path to enhanced video if successful, None otherwise
     """
-    if stop_event and stop_event.is_set():
-        print("Process stopped by user during video enhancement.")
-        return None
+    # Configure MoviePy for bundled executable (same as video_service.py)
+    import tempfile
+    import sys
+    
+    # Set up proper temporary directory for bundled executable
+    if getattr(sys, 'frozen', False):
+        # Running as bundled executable
+        temp_dir = os.path.join(os.path.dirname(output_video), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        # Set MoviePy temporary directory
+        os.environ['TMPDIR'] = temp_dir
+        os.environ['TEMP'] = temp_dir
+        os.environ['TMP'] = temp_dir
+        
+        # Configure FFmpeg paths for bundled executable
+        try:
+            from utils.helpers import get_ffmpeg_path
+            ffmpeg_path = get_ffmpeg_path()
+            if ffmpeg_path and os.path.exists(ffmpeg_path):
+                # Set FFmpeg path for MoviePy
+                try:
+                    from moviepy.config import change_settings
+                    change_settings({"FFMPEG_BINARY": ffmpeg_path})
+                    print(f"Enhancement: Using FFmpeg from: {ffmpeg_path}")
+                except ImportError:
+                    # Fallback: set environment variable for FFmpeg
+                    os.environ['FFMPEG_BINARY'] = ffmpeg_path
+                    print(f"Enhancement: Set FFmpeg path via environment: {ffmpeg_path}")
+        except Exception as e:
+            print(f"Warning: Could not configure FFmpeg path for enhancement: {e}")
 
+    # Default enhancement options
     if options is None:
         options = {
             "color_correction": True,
-            "background_replacement": False,
             "audio_enhancement": True,
-            "motion_graphics": False,
             "framing": True,
-            # Advanced options
-            "color_correction_intensity": 1.0,
-            "framing_crop_percent": 0.95,
-            "audio_volume_boost": 1.2,
-            "motion_graphics_opacity": 0.15,
-            # FFmpeg options
-            "contrast": 1.1,
-            "brightness": 0.05,
-            "saturation": 1.2,
-            "sharpness": 1.0,
-            "noise_reduction": True,
-            "preset": "medium",  # Use medium preset for faster processing
-            "crf": 23  # Use higher CRF for smaller file size
+            "motion_graphics": False,
+            "preset": "ultrafast",
+            "crf": 28
         }
 
     try:
         print(f"Starting video enhancement for {os.path.basename(input_video)}...")
 
-        # Check if input file exists and has content
-        if not os.path.exists(input_video) or os.path.getsize(input_video) < 1000:
-            print(f"Input video file is missing or too small: {input_video}")
+        # Check if we should stop
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user before enhancement.")
             return None
 
         # Load the video
-        try:
-            video = VideoFileClip(input_video)
-            print(f"Loaded video: {video.duration:.2f}s duration, {video.size} resolution")
-        except Exception as load_error:
-            print(f"Error loading video: {load_error}")
-            # Try to copy the input file as a fallback
+        video = VideoFileClip(input_video)
+        print(f"Loaded video: {video.duration:.2f}s duration, {video.size} resolution")
+
+        # Apply color correction if enabled
+        if options.get("color_correction", True):
+            print("Applying color correction...")
             try:
-                shutil.copy2(input_video, output_video)
-                print(f"Copied original video as fallback due to loading error")
-                return output_video
-            except Exception as copy_error:
-                print(f"Error copying original video: {copy_error}")
-                return None
+                video = apply_color_correction(video, intensity=1.2)
+            except Exception as color_error:
+                print(f"Error applying color correction: {color_error}")
+                # Continue without color correction
 
         # Check for stop event
         if stop_event and stop_event.is_set():
+            print("Process stopped by user during color correction.")
             video.close()
-            print("Process stopped by user during video loading.")
             return None
 
-        # Apply enhancements based on options
-        if options.get("color_correction"):
-            print("Applying color correction...")
-            intensity = options.get("color_correction_intensity", 1.0)
-            try:
-                video = apply_color_correction(video, intensity)
-            except Exception as cc_error:
-                print(f"Error during color correction: {cc_error}")
-                # Continue with original video
-
-            # Check for stop event
-            if stop_event and stop_event.is_set():
-                video.close()
-                print("Process stopped by user during color correction.")
-                return None
-
-        if options.get("background_replacement"):
-            print("Applying background replacement...")
-            try:
-                video = replace_background(video, options.get("background_color", "#000000"))
-            except Exception as bg_error:
-                print(f"Error during background replacement: {bg_error}")
-                # Continue with original video
-
-        if options.get("framing"):
+        # Apply framing optimization if enabled
+        if options.get("framing", True):
             print("Optimizing framing...")
             try:
-                crop_percent = options.get("framing_crop_percent", 0.95)
-                video = optimize_framing(video, crop_percent)
-            except Exception as frame_error:
-                print(f"Error during framing optimization: {frame_error}")
-                # Continue with original video
+                video = optimize_framing(video, crop_percent=0.98)
+            except Exception as framing_error:
+                print(f"Error optimizing framing: {framing_error}")
+                # Continue without framing optimization
 
-        if options.get("motion_graphics"):
+        # Check for stop event
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user during framing optimization.")
+            video.close()
+            return None
+
+        # Apply motion graphics if enabled
+        if options.get("motion_graphics", False):
             print("Adding motion graphics...")
             try:
-                opacity = options.get("motion_graphics_opacity", 0.15)
-                video = add_motion_graphics(video, opacity)
+                video = add_motion_graphics(video, opacity=0.1)
             except Exception as motion_error:
                 print(f"Error adding motion graphics: {motion_error}")
-                # Continue with original video
+                # Continue without motion graphics
 
-        # Process audio separately
-        if options.get("audio_enhancement") and video.audio is not None:
+        # Check for stop event
+        if stop_event and stop_event.is_set():
+            print("Process stopped by user during motion graphics.")
+            video.close()
+            return None
+
+        # Ensure video dimensions are even (divisible by 2) for H.264 compatibility
+        if hasattr(video, 'size'):
+            w, h = video.size
+            if w % 2 != 0 or h % 2 != 0:
+                # Adjust to even dimensions
+                new_w = w if w % 2 == 0 else w - 1
+                new_h = h if h % 2 == 0 else h - 1
+                print(f"Enhancement: Adjusting video dimensions from {w}x{h} to {new_w}x{new_h} for H.264 compatibility")
+                video = video.resize((new_w, new_h))
+
+        # Apply audio enhancement if enabled and audio exists
+        if options.get("audio_enhancement", True) and video.audio is not None:
             print("Enhancing audio...")
             try:
-                volume_boost = options.get("audio_volume_boost", 1.2)
+                volume_boost = options.get("volume_boost", 1.2)
                 enhanced_audio = enhance_audio(video.audio, volume_boost)
                 video = video.set_audio(enhanced_audio)
             except Exception as audio_error:
@@ -157,29 +182,64 @@ def enhance_video(input_video, output_video, options=None, stop_event=None):
             preset = options.get("preset", "medium")
             crf = options.get("crf", 23)
 
-            video.write_videofile(
-                output_video,
-                codec='libx264',
-                audio_codec='aac',
-                preset=preset,
-                bitrate=None,  # Let CRF control bitrate
-                ffmpeg_params=['-crf', str(crf)],
-                audio_bitrate='128k'  # Lower audio bitrate for faster processing
-            )
+            # Configure write parameters for bundled executable (same as video_service.py)
+            write_params = {
+                'codec': 'libx264',
+                'audio_codec': 'aac',
+                'preset': preset,
+                'bitrate': None,  # Let CRF control bitrate
+                'ffmpeg_params': [
+                    '-crf', str(crf),
+                    '-profile:v', 'baseline',  # Use baseline profile for maximum compatibility
+                    '-level', '3.0',           # Use level 3.0 for wide device support
+                    '-pix_fmt', 'yuv420p',     # Ensure compatible pixel format
+                    '-ar', '44100',            # Standard sample rate
+                    '-ac', '2',                # Stereo audio
+                    '-avoid_negative_ts', 'make_zero'
+                ],
+                'audio_bitrate': '128k',  # Lower audio bitrate for faster processing
+                'temp_audiofile': os.path.join(os.path.dirname(output_video), 'temp_audio_enhance.m4a'),
+                'remove_temp': True,
+                'verbose': False,
+                'logger': None
+            }
+            
+            # For bundled executables, use more conservative settings
+            if getattr(sys, 'frozen', False):
+                write_params.update({
+                    'preset': 'ultrafast',
+                    'ffmpeg_params': [
+                        '-crf', str(crf),
+                        '-profile:v', 'baseline',  # Maintain compatibility
+                        '-level', '3.0',           # Maintain compatibility
+                        '-pix_fmt', 'yuv420p',     # Maintain compatibility
+                        '-ar', '44100',            # Maintain compatibility
+                        '-ac', '2',                # Maintain compatibility
+                        '-avoid_negative_ts', 'make_zero'
+                    ]
+                })
+            
+            video.write_videofile(output_video, **write_params)
+            
         except Exception as write_error:
             print(f"Error writing enhanced video: {write_error}")
             traceback.print_exc()
 
-            # Try to copy the input file as a fallback
+            # Fallback to basic write
             try:
-                shutil.copy2(input_video, output_video)
-                print(f"Copied original video as fallback due to writing error")
-                video.close()
-                return output_video
-            except Exception as copy_error:
-                print(f"Error copying original video: {copy_error}")
-                video.close()
-                return None
+                video.write_videofile(output_video, codec='libx264', audio_codec='aac', verbose=False, logger=None)
+            except Exception as fallback_error:
+                print(f"Error with fallback enhanced video write: {fallback_error}")
+                # Try to copy the input file as a fallback
+                try:
+                    shutil.copy2(input_video, output_video)
+                    print(f"Copied original video as fallback due to writing error")
+                    video.close()
+                    return output_video
+                except Exception as copy_error:
+                    print(f"Error copying original video: {copy_error}")
+                    video.close()
+                    return None
 
         # Close the clips
         video.close()

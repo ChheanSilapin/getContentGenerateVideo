@@ -45,96 +45,100 @@ class InputTab:
     def setup_input_tab(self):
         """Set up the input tab with all its components"""
         # Main frame for input tab
-        main_frame = ttk.Frame(self.parent_frame, padding=10)
+        main_frame = ttk.Frame(self.parent_frame, padding=4)  # Increased padding
         main_frame.pack(fill="both", expand=True)
 
-        # Text input section
-        text_frame = ttk.LabelFrame(main_frame, text="Text Input", padding=10)
-        text_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        # Text input section - make it bigger to use space better
+        text_frame = ttk.LabelFrame(main_frame, text="Text Input",padding=8)  # Increased padding
+        text_frame.pack(fill="x", padx=2, pady=3)  # Increased spacing
 
         # Create a frame to contain the text widget and its scrollbar
         text_container = ttk.Frame(text_frame)
-        text_container.pack(fill="both", expand=True)
+        text_container.pack(fill="x")
 
-        # Text input with scrollbar
+        # Text input with scrollbar - increase size to use space better
         self.text_input = tk.Text(
             text_container,
             wrap='word',
-            height=8,
-            font=("Helvetica", 11),
+            height=7,  # Increased from 3 to 5 lines to use more space
+            font=("Cascadia Code", 12),  # Increased font size for better visibility
             borderwidth=1,
             relief="solid"
         )
-        self.text_input.pack(side="left", fill="both", expand=True)
+        self.text_input.pack(side="left", fill="x", expand=True)
 
         text_scrollbar = ttk.Scrollbar(text_container, command=self.text_input.yview)
         text_scrollbar.pack(side="right", fill="y")
         self.text_input.config(yscrollcommand=text_scrollbar.set)
 
-        # Image source section
-        image_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=10)
-        image_frame.pack(fill='x', padx=5, pady=5)
+        # Image source section - increase spacing
+        image_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=6)  # Increased padding
+        image_frame.pack(fill='x', padx=2, pady=3)  # Increased spacing
 
         # Website URL input
         url_frame = ttk.Frame(image_frame)
-        url_frame.pack(fill="x", padx=5, pady=5)
+        url_frame.pack(fill="x", padx=2, pady=2)  # Increased padding
 
-        url_label = ttk.Label(url_frame, text="Website URL:")
-        url_label.pack(side="left", padx=5)
+        url_label = ttk.Label(url_frame, text="Website URL:", font=("Cascadia Code", 11))  # Larger font
+        url_label.pack(side="left", padx=2)  # Increased padding
 
         self.website_url = tk.StringVar()
-        self.url_entry = ttk.Entry(url_frame, textvariable=self.website_url, width=40)
-        self.url_entry.pack(side="left", padx=5, fill="x", expand=True)
+        self.url_entry = ttk.Entry(url_frame, textvariable=self.website_url, width=30, font=("Cascadia Code", 11))  # Increased width and font
+        self.url_entry.pack(side="left", padx=2, fill="x", expand=True)  # Increased padding
 
         url_button = self.main_gui.ui_factory.create_styled_button(
-            url_frame, "Browse", self.url_button_click, width=8
+            url_frame, "Browse", self.url_button_click, width=10  # Increased width
         )
-        url_button.pack(side="left", padx=5)
+        url_button.pack(side="left", padx=2)  # Increased padding
 
-        # Processing options
-        options_frame = ttk.LabelFrame(main_frame, text="Processing Options", padding=10)
-        options_frame.pack(fill="x", padx=5, pady=5)
+        # Processing options - increase spacing
+        options_frame = ttk.LabelFrame(main_frame, text="Processing Options", padding=4)  # Increased padding
+        options_frame.pack(fill="x", padx=2, pady=3)  # Increased spacing
 
         cpu_gpu_frame = ttk.Frame(options_frame)
-        cpu_gpu_frame.pack(fill="x", padx=5, pady=5)
+        cpu_gpu_frame.pack(fill="x", padx=2, pady=2)  # Increased padding
 
-        cpu_gpu_label = ttk.Label(cpu_gpu_frame, text="Processing Unit:")
-        cpu_gpu_label.pack(side="left", padx=5)
+        cpu_gpu_label = ttk.Label(cpu_gpu_frame, text="Processing Unit:", font=("Cascadia Code", 11))  # Larger font
+        cpu_gpu_label.pack(side="left", padx=2)  # Increased padding
 
         self.cpu_gpu = tk.StringVar(value="CPU")
         cpu_radio = ttk.Radiobutton(cpu_gpu_frame, text="CPU", variable=self.cpu_gpu, value="CPU")
-        cpu_radio.pack(side="left", padx=10)
+        cpu_radio.pack(side="left", padx=7)  # Increased padding
 
         gpu_radio = ttk.Radiobutton(cpu_gpu_frame, text="GPU", variable=self.cpu_gpu, value="GPU")
-        gpu_radio.pack(side="left", padx=10)
+        gpu_radio.pack(side="left", padx=7)  # Increased padding
 
-        # Progress section
+        # Progress section - make it more prominent
         progress_frame, self.progress_bar, self.progress_label = self.main_gui.ui_factory.create_progress_section(
             main_frame, "Progress"
         )
-        progress_frame.pack(fill="x", padx=5, pady=5)
+        progress_frame.pack(fill="x", padx=2, pady=3)  # Increased spacing
 
-        # Button frame
-        button_frame = ttk.Frame(main_frame, padding=10)
-        button_frame.pack(fill="x")
+        # Add some flexible space before buttons
+        spacer_frame = ttk.Frame(main_frame)
+        spacer_frame.pack(fill="both", expand=True, pady=5)  # This will take up remaining space
 
-        # Action buttons
+        # Button frame with better layout - make it more prominent
+        button_frame = ttk.Frame(main_frame, padding=6)  # Increased padding
+        button_frame.pack(fill="x", pady=4)  # Increased vertical padding
+
+        # Action buttons with better spacing and larger size
         self.generate_button = self.main_gui.ui_factory.create_styled_button(
             button_frame, "Generate Video", self.start_button_click,
-            bg_color=self.main_gui.colors["success"], hover_color="#27ae60"
+            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=16  # Increased width
         )
-        self.generate_button.pack(side="left", padx=5)
+        self.generate_button.pack(side="left", padx=4)  # Increased padding
 
         self.stop_button = self.main_gui.ui_factory.create_styled_button(
             button_frame, "Stop", self.stop_button_click,
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", state="disabled"
+            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", state="disabled", width=11  # Increased width
         )
-        self.stop_button.pack(side="left", padx=5)
+        self.stop_button.pack(side="left", padx=4)  # Increased padding
 
         clear_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Clear All", self.clear_input_button_click
+            button_frame, "Clear All", self.clear_input_button_click, width=11  # Increased width
         )
-        clear_button.pack(side="left", padx=5)
+        clear_button.pack(side="left", padx=4)  # Increased padding
 
     def url_button_click(self):
         """Handle URL button click to open input dialog"""

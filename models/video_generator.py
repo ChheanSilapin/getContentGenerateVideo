@@ -17,28 +17,33 @@ from services.image_service import copy_selected_images
 from services.video_service import create_enhanced_slideshow
 from services.subtitle_service import generate_subtitles
 from Final_Video import merge_video_subtitle
-# Define get_title_content function directly to avoid import issues
-def get_title_content(text):
-    """
-    Extract title and content from text
 
-    Args:
-        text: Input text
+# Import title/content extraction from centralized location
+try:
+    from utils.helpers import get_title_content
+except ImportError:
+    # Fallback implementation if import fails
+    def get_title_content(text):
+        """
+        Extract title and content from text
 
-    Returns:
-        tuple: (title, content)
-    """
-    lines = text.strip().split('\n')
+        Args:
+            text: Input text
 
-    # If there's only one line, use it as both title and content
-    if len(lines) == 1:
-        return lines[0], lines[0]
+        Returns:
+            tuple: (title, content)
+        """
+        lines = text.strip().split('\n')
 
-    # Use the first line as title and the rest as content
-    title = lines[0]
-    content = '\n'.join(lines[1:])
+        # If there's only one line, use it as both title and content
+        if len(lines) == 1:
+            return lines[0], lines[0]
 
-    return title, content
+        # Use the first line as title and the rest as content
+        title = lines[0]
+        content = '\n'.join(lines[1:])
+
+        return title, content
 
 class VideoGeneratorModel:
     """Model for handling video generation"""
@@ -78,7 +83,9 @@ class VideoGeneratorModel:
             "sharpness": 1.0,
             "noise_reduction": True,
             "apply_ffmpeg": False,  # Disable FFmpeg enhancements by default
-            "aspect_ratio": DEFAULT_ASPECT_RATIO  # Add aspect ratio to enhancement options
+            "aspect_ratio": DEFAULT_ASPECT_RATIO,  # Add aspect ratio to enhancement options
+            "voice_emotion": "neutral",  # Added voice_emotion to enhancement options
+            "subtitle_style": "modern_glow"  # Added subtitle_style to enhancement options
         }
 
         # Ensure enhancement_options is properly initialized
@@ -137,7 +144,13 @@ class VideoGeneratorModel:
         print("\n--- Step 1: Generating Audio ---")
         self.update_progress(10, "Generating audio from text...")
         audio_file = os.path.join(output_dir, "voice.mp3")
-        if not generate_audio(self.text_input, audio_file):
+        
+        # Get voice emotion from enhancement options
+        enhancement_options = getattr(self, 'enhancement_options', {})
+        voice_emotion = enhancement_options.get('voice_emotion', 'neutral')
+        print(f"Using voice emotion: {voice_emotion}")
+        
+        if not generate_audio(self.text_input, audio_file, emotion=voice_emotion):
             print("ERROR: Failed to generate audio.")
             self.update_progress(0, "Failed to generate audio")
             return None, None, None
@@ -231,8 +244,8 @@ class VideoGeneratorModel:
             os.environ["IMAGE_FIT_METHOD"] = enhancement_options["image_fit_method"]
             print(f"Setting image fit method to: {enhancement_options['image_fit_method']}")
         else:
-            os.environ["IMAGE_FIT_METHOD"] = "contain"  # Default
-
+            os.environ["IMAGE_FIT_METHOD"] = "contain"  # Changed back to "contain" to show improved version
+ 
         # Pass the processing option, effect settings, and aspect ratio to the create_enhanced_slideshow function
         result = create_enhanced_slideshow(
             images_dir,
@@ -271,8 +284,13 @@ class VideoGeneratorModel:
         print("\n--- Step 4: Generating Subtitles ---")
         self.update_progress(75, "Generating subtitles...")
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
+        
+        # Get subtitle style from enhancement options
+        subtitle_style = self.enhancement_options.get("subtitle_style", "modern_glow")
+        print(f"Using subtitle style: {subtitle_style}")
+        
         print(f"\n--- DEBUG: About to call generate_subtitles with: {self.text_input}, {video_file}, {audio_file}, {subtitle_file} ---")
-        if not generate_subtitles(self.text_input, video_file, audio_file, subtitle_file):
+        if not generate_subtitles(self.text_input, video_file, audio_file, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None, None, None
@@ -321,31 +339,44 @@ class VideoGeneratorModel:
 
     def _organize_output_folder(self, output_dir):
         """
-        Organize the output folder - clean up images to keep only final video files
+        Organize the output folder - keep only final video and downloaded images (if from URL)
         """
         try:
-            # Always remove images directory to keep output folder clean
+            # Check if images were downloaded from URL - if so, keep them
             images_dir = os.path.join(output_dir, "images")
             if os.path.exists(images_dir):
-                import shutil
-                shutil.rmtree(images_dir)
-                print(f"Cleaned up images directory: {images_dir}")
+                if hasattr(self, 'website_url') and self.website_url:
+                    print(f"Keeping downloaded images from URL: {images_dir}")
+                else:
+                    import shutil
+                    shutil.rmtree(images_dir)
+                    print(f"Cleaned up images directory: {images_dir}")
 
-            # Also clean up intermediate files
+            # Clean up ALL intermediate files - keep only final_output.mp4
             intermediate_files = [
-                os.path.join(output_dir, "slideshow.mp4"),  # Intermediate video before subtitles
-                os.path.join(output_dir, "subtitles.ass"),  # Subtitle file
-                os.path.join(output_dir, "voice.mp3")       # Audio file
+                os.path.join(output_dir, "slideshow.mp4"),                    # Intermediate video
+                os.path.join(output_dir, "slideshow_temp.mp4"),               # Temp video
+                os.path.join(output_dir, "slideshow_enhanced_temp.mp4"),      # Enhanced temp video
+                os.path.join(output_dir, "original_video_backup.mp4"),        # Backup video
+                os.path.join(output_dir, "subtitles.ass"),                    # Subtitle file
+                os.path.join(output_dir, "voice.mp3"),                        # Audio file
+                os.path.join(output_dir, "voice.mp3.txt"),                    # Audio text file
+                os.path.join(output_dir, "temp_audio.mp3"),                   # Temp audio
+                os.path.join(output_dir, "temp_video.mp4"),                   # Any temp video
             ]
 
+            cleaned_count = 0
             for file_path in intermediate_files:
                 if os.path.exists(file_path):
                     try:
                         os.remove(file_path)
                         print(f"Cleaned up intermediate file: {os.path.basename(file_path)}")
+                        cleaned_count += 1
                     except Exception as e:
                         print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
 
+            print(f"✅ Output folder organized - removed {cleaned_count} intermediate files, keeping only final_output.mp4")
+            
         except Exception as e:
             print(f"Error organizing output folder: {e}")
 
@@ -648,7 +679,12 @@ class VideoGeneratorModel:
             print("\n--- Step 3: Generating Subtitles ---")
             self.update_progress(75, "Generating subtitles...")
             subtitle_file = os.path.join(output_dir, "subtitles.ass")
-            if not generate_subtitles(self.text_input, video_with_audio, audio_file, subtitle_file):
+            
+            # Get subtitle style from enhancement options
+            subtitle_style = self.enhancement_options.get("subtitle_style", "modern_glow")
+            print(f"Using subtitle style: {subtitle_style}")
+            
+            if not generate_subtitles(self.text_input, video_with_audio, audio_file, subtitle_file, subtitle_style):
                 print("ERROR: Failed to generate subtitles.")
                 self.update_progress(0, "Failed to generate subtitles")
                 return None

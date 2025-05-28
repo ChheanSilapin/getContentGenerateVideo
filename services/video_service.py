@@ -8,7 +8,7 @@ import subprocess
 import traceback
 import numpy as np
 from PIL import Image
-from moviepy.editor import ImageClip, ColorClip, concatenate_videoclips, CompositeVideoClip, AudioFileClip
+from moviepy.editor import ImageClip, ColorClip, concatenate_videoclips, CompositeVideoClip, AudioFileClip, AudioClip
 
 # Import from utils
 from utils.helpers import ensure_directory_exists
@@ -178,8 +178,34 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
             # Resize the image
             resized_pil = pil_img.resize((new_width, new_height), Image.LANCZOS)
 
-            # Create a new image with the target dimensions and neutral gray background
-            new_img = Image.new('RGB', (target_width, target_height), (128, 128, 128))
+            # Create a blurred background instead of gray bars
+            try:
+                # Create a blurred and darkened version of the original image as background
+                background = pil_img.resize((target_width, target_height), Image.LANCZOS)
+                
+                # Apply blur effect
+                from PIL import ImageFilter
+                background = background.filter(ImageFilter.GaussianBlur(radius=15))
+                
+                # Darken the background
+                from PIL import ImageEnhance
+                enhancer = ImageEnhance.Brightness(background)
+                background = enhancer.enhance(0.3)  # Make it 30% of original brightness
+                
+                new_img = background
+            except Exception as e:
+                print(f"Warning: Could not create blurred background, using gradient: {e}")
+                # Fallback: create a gradient background based on image colors
+                try:
+                    # Get dominant color from the image
+                    temp_img = pil_img.resize((1, 1), Image.LANCZOS)
+                    dominant_color = temp_img.getpixel((0, 0))
+                    
+                    # Create a gradient background
+                    new_img = Image.new('RGB', (target_width, target_height), dominant_color)
+                except:
+                    # Final fallback: use a dark background
+                    new_img = Image.new('RGB', (target_width, target_height), (32, 32, 32))
 
             # Paste the resized image in the center
             paste_x = (target_width - new_width) // 2
@@ -228,10 +254,36 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
         # Convert back to ImageClip
         result_clip = ImageClip(np.array(new_img))
 
-        # Apply zoom effect if requested
-        if zoom_effect:
+        # Apply zoom effect if requested (temporarily disabled to fix dimension issues)
+        if False:  # zoom_effect:
             from moviepy.video.fx.resize import resize
-            result_clip = resize(result_clip, lambda t: 1 + 0.05 * t)
+            # Apply zoom effect but ensure dimensions remain even
+            def zoom_resize_func(t):
+                zoom_factor = 1 + 0.05 * t
+                return zoom_factor
+            
+            # Apply resize with zoom factor
+            result_clip = resize(result_clip, zoom_resize_func)
+            
+            # After zoom, ensure dimensions are even
+            if hasattr(result_clip, 'size'):
+                w, h = result_clip.size
+                if w % 2 != 0 or h % 2 != 0:
+                    # Adjust to even dimensions
+                    new_w = w if w % 2 == 0 else w - 1  # Subtract 1 to keep within bounds
+                    new_h = h if h % 2 == 0 else h - 1
+                    print(f"Adjusting zoomed dimensions from {w}x{h} to {new_w}x{new_h} for H.264 compatibility")
+                    result_clip = result_clip.resize((new_w, new_h))
+        
+        # Final check: ensure the clip dimensions are even
+        if hasattr(result_clip, 'size'):
+            w, h = result_clip.size
+            if w % 2 != 0 or h % 2 != 0:
+                # Adjust to even dimensions
+                new_w = w if w % 2 == 0 else w - 1
+                new_h = h if h % 2 == 0 else h - 1
+                print(f"Adjusting dimensions from {w}x{h} to {new_w}x{new_h} for H.264 compatibility")
+                result_clip = result_clip.resize((new_w, new_h))
 
         return result_clip
 
@@ -265,6 +317,37 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     if stop_event and stop_event.is_set():
         print("Process stopped by user during slideshow creation.")
         return None
+
+    # Configure MoviePy for bundled executable
+    import tempfile
+    import sys
+    
+    # Set up proper temporary directory for bundled executable
+    if getattr(sys, 'frozen', False):
+        # Running as bundled executable
+        temp_dir = os.path.join(os.path.dirname(outputVideo), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+        # Set MoviePy temporary directory
+        os.environ['TMPDIR'] = temp_dir
+        os.environ['TEMP'] = temp_dir
+        os.environ['TMP'] = temp_dir
+        
+        # Configure FFmpeg paths for bundled executable
+        try:
+            from utils.helpers import get_ffmpeg_path
+            ffmpeg_path = get_ffmpeg_path()
+            if ffmpeg_path and os.path.exists(ffmpeg_path):
+                # Set FFmpeg path for MoviePy
+                try:
+                    from moviepy.config import change_settings
+                    change_settings({"FFMPEG_BINARY": ffmpeg_path})
+                    print(f"Using FFmpeg from: {ffmpeg_path}")
+                except ImportError:
+                    # Fallback: set environment variable for FFmpeg
+                    os.environ['FFMPEG_BINARY'] = ffmpeg_path
+                    print(f"Set FFmpeg path via environment: {ffmpeg_path}")
+        except Exception as e:
+            print(f"Warning: Could not configure FFmpeg path: {e}")
 
     image_clips = []
 
@@ -441,6 +524,16 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     # Concatenate all image clips
     video = concatenate_videoclips(image_clips, method="compose")
 
+    # Ensure video dimensions are even (divisible by 2) for H.264 compatibility
+    if hasattr(video, 'size'):
+        w, h = video.size
+        if w % 2 != 0 or h % 2 != 0:
+            # Adjust to even dimensions
+            new_w = w if w % 2 == 0 else w - 1
+            new_h = h if h % 2 == 0 else h - 1
+            print(f"Adjusting final video dimensions from {w}x{h} to {new_w}x{new_h} for H.264 compatibility")
+            video = video.resize((new_w, new_h))
+
     # Trim video to match audio duration exactly
     if video.duration > audio_duration:
         video = video.subclip(0, audio_duration)
@@ -467,8 +560,45 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     # Write the final video file with appropriate encoding
     print(f"Writing video to {outputVideo}")
 
-    # Always use CPU encoding for final output to ensure compatibility
-    video.write_videofile(outputVideo, fps=frameRarte, codec='libx264')
+    try:
+        # Configure write parameters for bundled executable with maximum compatibility
+        write_params = {
+            'fps': frameRarte,
+            'codec': 'libx264',
+            'audio_codec': 'aac',
+            'temp_audiofile': os.path.join(os.path.dirname(outputVideo), 'temp_audio.m4a'),
+            'remove_temp': True,
+            'verbose': False,
+            'logger': None,
+            # Add compatibility parameters
+            'ffmpeg_params': [
+                '-profile:v', 'baseline',  # Use baseline profile for maximum compatibility
+                '-level', '3.0',           # Use level 3.0 for wide device support
+                '-pix_fmt', 'yuv420p',     # Ensure compatible pixel format
+                '-ar', '44100',            # Standard sample rate
+                '-ac', '2',                # Stereo audio
+                '-avoid_negative_ts', 'make_zero'
+            ]
+        }
+        
+        # For bundled executables, use more conservative settings
+        if getattr(sys, 'frozen', False):
+            write_params.update({
+                'preset': 'ultrafast',
+                'ffmpeg_params': ['-avoid_negative_ts', 'make_zero']
+            })
+        
+        # Always use CPU encoding for final output to ensure compatibility
+        video.write_videofile(outputVideo, **write_params)
+        
+    except Exception as write_error:
+        print(f"Error writing video with advanced parameters: {write_error}")
+        # Fallback to basic write
+        try:
+            video.write_videofile(outputVideo, fps=frameRarte, codec='libx264', verbose=False, logger=None)
+        except Exception as fallback_error:
+            print(f"Error with fallback video write: {fallback_error}")
+            return None
 
     return outputVideo
 
@@ -571,7 +701,8 @@ def create_enhanced_slideshow(images_folder, title, content, audio_file, output_
             "framing": True,
             "motion_graphics": False,
             "preset": "ultrafast",  # Change from fast to ultrafast
-            "crf": 28  # Increase from 23 to 28 for faster processing
+            "crf": 28,  # Increase from 23 to 28 for faster processing
+            "image_fit_method": "cover"  # Changed from "contain" to "cover" to eliminate margins
         }
     try:
         print(f"Creating enhanced slideshow with {len(os.listdir(images_folder))} images...")

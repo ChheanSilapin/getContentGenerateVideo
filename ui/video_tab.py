@@ -42,7 +42,7 @@ class VideoEntry:
         ttk.Label(
             file_label_frame,
             text="📁 Video File:",
-            font=("Helvetica", 10, "bold")
+            font=("Cascadia Code", 10, "bold")
         ).pack(side="left")
 
         # File input row
@@ -53,7 +53,7 @@ class VideoEntry:
             file_input_frame,
             textvariable=self.video_file_path,
             state="readonly",
-            font=("Helvetica", 10),
+            font=("Cascadia Code", 10),
             width=50
         )
         file_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
@@ -75,7 +75,7 @@ class VideoEntry:
         ttk.Label(
             prompt_label_frame,
             text="💬 Voice-over Prompt:",
-            font=("Helvetica", 10, "bold")
+            font=("Cascadia Code", 10, "bold")
         ).pack(side="left")
 
         # Prompt input row
@@ -86,7 +86,7 @@ class VideoEntry:
             prompt_input_frame,
             height=2,
             wrap="word",
-            font=("Helvetica", 10),
+            font=("Cascadia Code", 10),
             relief="solid",
             borderwidth=1,
             padx=6,
@@ -182,18 +182,12 @@ class VideoTab:
         title_label = ttk.Label(
             title_frame,
             text="🎬 Multi-Video Generation",
-            font=("Helvetica", 20, "bold")
+            font=("Cascadia Code", 20, "bold")
         )
         title_label.pack(anchor="w")
 
         # Description with better styling
-        desc_label = ttk.Label(
-            header_frame,
-            text="Process multiple videos with individual voice-overs and subtitles while preserving original video duration",
-            font=("Helvetica", 11),
-            foreground="#666666"
-        )
-        desc_label.pack(anchor="w", pady=(5, 0))
+        
 
         # Audio settings section
         self.setup_audio_settings(main_frame)
@@ -276,7 +270,7 @@ class VideoTab:
         ttk.Label(
             volume_label_frame,
             text="🔉 Original audio volume:",
-            font=("Helvetica", 10, "bold")
+            font=("Cascadia Code", 10, "bold")
         ).pack(side="left")
 
         # Volume control frame
@@ -298,7 +292,7 @@ class VideoTab:
         self.volume_label = ttk.Label(
             volume_control_frame,
             text="30%",
-            font=("Helvetica", 10, "bold"),
+            font=("Cascadia Code", 10, "bold"),
             foreground="#2c3e50"
         )
         self.volume_label.pack(side="left")
@@ -336,7 +330,7 @@ class VideoTab:
         entries_title = ttk.Label(
             entries_header,
             text="📹 Video Entries",
-            font=("Helvetica", 14, "bold")
+            font=("Cascadia Code", 14, "bold")
         )
         entries_title.pack(side="left")
 

@@ -46,7 +46,7 @@ class ImageTab:
         header_frame = ttk.Frame(main_frame)
         header_frame.pack(fill="x", padx=5, pady=(5, 10))
 
-        label = ttk.Label(header_frame, text="Image Selection", font=("Helvetica", 14, "bold"))
+        label = ttk.Label(header_frame, text="Image Selection", font=("Cascadia Code", 14, "bold"))
         label.pack(side="left")
 
         # Button and help text
@@ -54,14 +54,14 @@ class ImageTab:
         button_frame.pack(fill="x", padx=5, pady=5)
 
         select_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Choose Images", self.select_images, width=12
+            button_frame, "Choose Images", self.select_images, width=15
         )
         select_button.pack(side="left", padx=5)
 
         help_label = ttk.Label(
             button_frame,
             text="Select images from your device or load from a website URL",
-            font=("Helvetica", 9),
+            font=("Cascadia Code", 9),
             foreground=self.main_gui.colors["light_text"]
         )
         help_label.pack(side="left", padx=10)
@@ -93,27 +93,27 @@ class ImageTab:
         # Left side buttons (selection controls)
         select_all_button = self.main_gui.ui_factory.create_styled_button(
             action_frame, "Select All", lambda: self.select_all_images(True),
-            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=10
+            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=15
         )
         select_all_button.pack(side="left", padx=5)
 
         deselect_all_button = self.main_gui.ui_factory.create_styled_button(
             action_frame, "Deselect All", lambda: self.select_all_images(False),
-            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=10
+            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=15
         )
         deselect_all_button.pack(side="left", padx=5)
 
         # Clear images button
         clear_button = self.main_gui.ui_factory.create_styled_button(
             action_frame, "Clear Images", self.clear_images,
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", width=12
+            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", width=15
         )
         clear_button.pack(side="left", padx=5)
 
         # Right side button (primary action)
         continue_button = self.main_gui.ui_factory.create_styled_button(
             action_frame, "Continue with Selected", self.main_gui.continue_with_selected_images,
-            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=18
+            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=25
         )
         continue_button.pack(side="right", padx=5)
 
@@ -169,7 +169,7 @@ class ImageTab:
         title_label = tk.Label(
             image_frame,
             text=title_text,
-            font=("Helvetica", 14, "bold"),
+            font=("Cascadia Code", 14, "bold"),
             bg="white",
             fg=self.main_gui.colors["text"]
         )
@@ -232,7 +232,7 @@ class ImageTab:
                     text=filename,
                     bg="white",
                     fg=self.main_gui.colors["text"],
-                    font=("Helvetica", 9)
+                    font=("Cascadia Code", 9)
                 )
                 name_label.grid(row=2, column=0, padx=5, pady=(0, 5))
 
