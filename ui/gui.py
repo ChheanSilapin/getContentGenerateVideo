@@ -93,11 +93,12 @@ except ImportError as e:
         "light_text": "#7f8c8d"
     }
     GUI_FONTS = {
-        "default": ("Cascadia Code", 8),
-        "button": ("Cascadia Code", 8, "bold"),
-        "label": ("Cascadia Code", 8),
-        "heading": ("Cascadia Code", 9, "bold"),
-        "console": ("Consolas", 8)
+    "default": ("Cascadia Code", 12),
+    "button": ("Cascadia Code", 12),
+    "label": ("Cascadia Code", 12),
+    "heading": ("Cascadia Code", 12, "bold"),
+    "console": ("Cascadia Code", 12),
+    "tab": ("Cascadia Code", 12)  # Add this line for tab headers
     }
     # Create a fallback model class if import fails
     class VideoGeneratorModel:
@@ -171,6 +172,61 @@ except ImportError as e:
         """Fallback copy_selected_images function"""
         print(f"Fallback: copy_selected_images({image_paths}, {output_folder})")
         return False
+
+# Add fallback UI component classes
+try:
+    from ui.input_tab import InputTab
+    from ui.image_tab import ImageTab
+    from ui.video_tab import VideoTab
+    from ui.option_tab import OptionTab
+    from ui.batch_tab import BatchTab
+except ImportError as e:
+    print(f"Error importing UI components: {e}")
+    # Create fallback UI component classes
+    class InputTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback InputTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Input Tab - Import Error\nPlease check your installation", 
+                           font=("Arial", 12), fg="red")
+            label.pack(expand=True)
+
+    class ImageTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback ImageTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Image Tab - Import Error\nPlease check your installation", 
+                           font=("Arial", 12), fg="red")
+            label.pack(expand=True)
+
+    class VideoTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback VideoTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Video Tab - Import Error\nPlease check your installation", 
+                           font=("Arial", 12), fg="red")
+            label.pack(expand=True)
+
+    class OptionTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback OptionTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Option Tab - Import Error\nPlease check your installation", 
+                           font=("Arial", 12), fg="red")
+            label.pack(expand=True)
+
+    class BatchTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback BatchTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Batch Tab - Import Error\nPlease check your installation", 
+                           font=("Arial", 12), fg="red")
+            label.pack(expand=True)
 
 class VideoGeneratorGUI:
     """Main GUI class for the Video Generator application"""
@@ -368,11 +424,29 @@ class VideoGeneratorGUI:
         self.log(f"Video generated successfully: {os.path.basename(final_video)}")
         self.update_progress_ui(100, "Video generated successfully")
         self.reset_ui()
-        response = messagebox.askyesno(
+        
+        # FIXED: Add post-completion cleanup option
+        cleanup_response = messagebox.askyesno(
+            "Cleanup Files", 
+            "Video generated successfully!\n\nDo you want to clean up intermediate files (voice.mp3, subtitles.ass, etc.) to save space?\n\nClick 'No' to keep them for debugging."
+        )
+        
+        if cleanup_response:
+            try:
+                output_dir = os.path.dirname(final_video)
+                cleaned_count = self.model.cleanup_after_video_complete(output_dir, keep_debug_files=False)
+                self.log(f"✅ Cleaned up {cleaned_count} intermediate files to save space")
+            except Exception as e:
+                self.log(f"⚠️ Cleanup failed: {e}")
+        else:
+            self.log("📁 Keeping all intermediate files for debugging")
+        
+        # Ask if user wants to open the video
+        open_response = messagebox.askyesno(
             "Success",
             f"Video generated successfully: {os.path.basename(final_video)}\n\nDo you want to open it now?"
         )
-        if response:
+        if open_response:
             self.open_file(final_video)
 
     def display_preview_images(self, image_paths):

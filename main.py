@@ -45,16 +45,22 @@ def setup_environment():
 
 def check_ffmpeg_availability():
     """Check if FFmpeg is available (bundled or system-installed)"""
-    import subprocess
     try:
-        # Try to run ffmpeg to check if it's available
-        subprocess.run(['ffmpeg', '-version'], 
-                      capture_output=True, 
-                      timeout=5, 
-                      check=True)
-        return True
-    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-        return False
+        # Use the centralized implementation from utils.helpers
+        from utils.helpers import check_ffmpeg_availability as centralized_check
+        is_available, ffmpeg_path, error_message = centralized_check()
+        return is_available  # Return only boolean for backward compatibility
+    except ImportError:
+        # Fallback implementation if utils.helpers is not available
+        import subprocess
+        try:
+            subprocess.run(['ffmpeg', '-version'], 
+                          capture_output=True, 
+                          timeout=5, 
+                          check=True)
+            return True
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+            return False
 
 def show_ffmpeg_warning():
     """Show warning if FFmpeg is not available"""

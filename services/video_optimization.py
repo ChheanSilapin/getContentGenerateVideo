@@ -11,7 +11,6 @@ import traceback
 import sys
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, AudioClip
 from moviepy.audio.fx.all import volumex, audio_normalize
-from scipy.signal import butter, lfilter
 
 # Use centralized path management
 try:

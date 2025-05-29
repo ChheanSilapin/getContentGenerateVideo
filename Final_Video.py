@@ -3,6 +3,7 @@ import os
 import traceback
 import shutil
 import sys
+import time
 
 # Use centralized path management
 try:
@@ -104,7 +105,21 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             # Running as script - use current directory
             temp_dir = os.getcwd()
             
-        local_subtitle_path = os.path.join(temp_dir, "temp_subtitle.ass")
+        # ENHANCED: Create unique temp filename to avoid conflicts
+        timestamp = str(int(time.time() * 1000))  # millisecond timestamp
+        local_subtitle_path = os.path.join(temp_dir, f"temp_subtitle_{timestamp}.ass")
+        
+        # ENHANCED: Ensure no leftover temp files exist
+        temp_pattern = os.path.join(temp_dir, "temp_subtitle*.ass")
+        import glob
+        old_temp_files = glob.glob(temp_pattern)
+        for old_file in old_temp_files:
+            try:
+                os.remove(old_file)
+                print(f"Cleaned up old temp file: {old_file}")
+            except Exception as cleanup_e:
+                print(f"Warning: Could not clean up old temp file {old_file}: {cleanup_e}")
+        
         shutil.copy2(subtitle_path, local_subtitle_path)
         print(f"Created local subtitle file: {local_subtitle_path}")
         temp_subtitle_path = local_subtitle_path
@@ -113,8 +128,10 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         # Fall back to using system temp directory
         try:
             import tempfile
+            import time
+            timestamp = str(int(time.time() * 1000))
             temp_dir = tempfile.gettempdir()
-            local_subtitle_path = os.path.join(temp_dir, "temp_subtitle.ass")
+            local_subtitle_path = os.path.join(temp_dir, f"temp_subtitle_{timestamp}.ass")
             shutil.copy2(subtitle_path, local_subtitle_path)
             print(f"Created temp subtitle file in system temp: {local_subtitle_path}")
             temp_subtitle_path = local_subtitle_path
@@ -244,10 +261,31 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     # Clean up temporary subtitle file if it was created
     if temp_subtitle_path != subtitle_path and os.path.exists(temp_subtitle_path):
         try:
-            os.remove(temp_subtitle_path)
-            print(f"Cleaned up temporary subtitle file: {temp_subtitle_path}")
+            # DEBUGGING: Keep temp files to investigate "150" issue
+            # os.remove(temp_subtitle_path)
+            print(f"DEBUG: Keeping temporary subtitle file for inspection: {temp_subtitle_path}")
         except Exception as e:
             print(f"Warning: Could not remove temporary subtitle file: {e}")
+    
+    # ENHANCED: Additional cleanup for any remaining temp subtitle files
+    try:
+        import glob
+        if getattr(sys, 'frozen', False):
+            cleanup_dir = os.path.dirname(output_file)
+        else:
+            cleanup_dir = os.getcwd()
+        
+        temp_pattern = os.path.join(cleanup_dir, "temp_subtitle*.ass")
+        remaining_temp_files = glob.glob(temp_pattern)
+        for temp_file in remaining_temp_files:
+            try:
+                # DEBUGGING: Keep temp files to investigate "150" issue
+                # os.remove(temp_file)
+                print(f"DEBUG: Found temp subtitle file (keeping for inspection): {temp_file}")
+            except Exception as cleanup_e:
+                print(f"Warning: Could not remove temp file {temp_file}: {cleanup_e}")
+    except Exception as final_cleanup_e:
+        print(f"Warning: Error in final temp file cleanup: {final_cleanup_e}")
 
     # Final verification
     if os.path.exists(output_file):

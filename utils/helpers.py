@@ -337,7 +337,7 @@ def test_subtitle_functionality():
             with open(temp_subtitle_path, 'w', encoding='utf-8') as f:
                 f.write("[Script Info]\nTitle: Test Subtitle\nScriptType: v4.00+\n\n")
                 f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,150,1\n\n")
+                f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1\n\n")
                 f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
                 f.write("Dialogue: 0,0:00:00.00,0:00:03.00,Default,,0,0,0,,Test subtitle working!\n")
 

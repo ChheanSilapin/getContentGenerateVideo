@@ -221,7 +221,7 @@ if !errorlevel! neq 0 (
 )
 
 echo Compiling with PyInstaller...
-%VENV%\Scripts\pyinstaller.exe video_generator.spec --clean
+%VENV%\Scripts\pyinstaller.exe video_generator.spec --clean --log-level WARN
 if !errorlevel! neq 0 (
     echo ✗ PyInstaller build failed
     set /a BUILD_ERRORS+=1

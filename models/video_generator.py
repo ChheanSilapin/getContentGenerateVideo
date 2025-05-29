@@ -328,20 +328,54 @@ class VideoGeneratorModel:
             print(f"Video generated successfully: {result}")
             self.update_progress(100, f"Video generated successfully: {os.path.basename(result)}")
 
-            # Clean up the output folder based on image source
-            self._organize_output_folder(output_dir)
-
+            # FIXED: Only organize during generation, not cleanup final files yet
+            self._organize_output_folder_during_generation(output_dir)
+            
+            # Return result first, cleanup will happen separately
             return result
         else:
             print("Failed to finalize video")
             self.update_progress(0, "Failed to finalize video")
             return None
 
-    def _organize_output_folder(self, output_dir):
+    def _organize_output_folder_during_generation(self, output_dir):
         """
-        Organize the output folder - keep only final video and downloaded images (if from URL)
+        Organize the output folder DURING generation - keep all important files
+        Only remove truly temporary files that are no longer needed
         """
         try:
+            # Only clean up intermediate files that are definitely not needed anymore
+            truly_temp_files = [
+                os.path.join(output_dir, "slideshow_temp.mp4"),               # Temp video
+                os.path.join(output_dir, "slideshow_enhanced_temp.mp4"),      # Enhanced temp video
+                os.path.join(output_dir, "original_video_backup.mp4"),        # Backup video
+                os.path.join(output_dir, "temp_audio.mp3"),                   # Temp audio
+                os.path.join(output_dir, "temp_video.mp4"),                   # Any temp video
+            ]
+
+            cleaned_count = 0
+            for file_path in truly_temp_files:
+                if os.path.exists(file_path):
+                    try:
+                        os.remove(file_path)
+                        print(f"Cleaned up temp file during generation: {os.path.basename(file_path)}")
+                        cleaned_count += 1
+                    except Exception as e:
+                        print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
+
+            print(f"✅ Cleaned {cleaned_count} temporary files during generation")
+            
+        except Exception as e:
+            print(f"Error organizing during generation: {e}")
+
+    def cleanup_after_video_complete(self, output_dir, keep_debug_files=False):
+        """
+        FIXED: Cleanup files AFTER video generation is complete
+        This should be called by the UI after the user gets their final video
+        """
+        try:
+            print("Starting post-completion cleanup...")
+            
             # Check if images were downloaded from URL - if so, keep them
             images_dir = os.path.join(output_dir, "images")
             if os.path.exists(images_dir):
@@ -352,33 +386,46 @@ class VideoGeneratorModel:
                     shutil.rmtree(images_dir)
                     print(f"Cleaned up images directory: {images_dir}")
 
-            # Clean up ALL intermediate files - keep only final_output.mp4
-            intermediate_files = [
+            # Files to remove after video is complete (unless debugging)
+            post_completion_files = [
                 os.path.join(output_dir, "slideshow.mp4"),                    # Intermediate video
-                os.path.join(output_dir, "slideshow_temp.mp4"),               # Temp video
-                os.path.join(output_dir, "slideshow_enhanced_temp.mp4"),      # Enhanced temp video
-                os.path.join(output_dir, "original_video_backup.mp4"),        # Backup video
-                os.path.join(output_dir, "subtitles.ass"),                    # Subtitle file
-                os.path.join(output_dir, "voice.mp3"),                        # Audio file
-                os.path.join(output_dir, "voice.mp3.txt"),                    # Audio text file
-                os.path.join(output_dir, "temp_audio.mp3"),                   # Temp audio
-                os.path.join(output_dir, "temp_video.mp4"),                   # Any temp video
             ]
+            
+            # Add debug files to cleanup list if not keeping them
+            if not keep_debug_files:
+                post_completion_files.extend([
+                    os.path.join(output_dir, "subtitles.ass"),                 
+                    os.path.join(output_dir, "voice.mp3"),                      
+                    os.path.join(output_dir, "voice.mp3.txt"),                 
+                ])
 
             cleaned_count = 0
-            for file_path in intermediate_files:
+            for file_path in post_completion_files:
                 if os.path.exists(file_path):
                     try:
                         os.remove(file_path)
-                        print(f"Cleaned up intermediate file: {os.path.basename(file_path)}")
+                        print(f"Post-completion cleanup: {os.path.basename(file_path)}")
                         cleaned_count += 1
                     except Exception as e:
                         print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
 
-            print(f"✅ Output folder organized - removed {cleaned_count} intermediate files, keeping only final_output.mp4")
+            if keep_debug_files:
+                debug_files_kept = []
+                debug_files = ["subtitles.ass", "voice.mp3", "voice.mp3.txt"]
+                for debug_file in debug_files:
+                    file_path = os.path.join(output_dir, debug_file)
+                    if os.path.exists(file_path):
+                        debug_files_kept.append(debug_file)
+                
+                if debug_files_kept:
+                    print(f"DEBUG: Kept files for investigation: {', '.join(debug_files_kept)}")
+
+            print(f"✅ Post-completion cleanup: removed {cleaned_count} files, keeping final_output.mp4")
+            return cleaned_count
             
         except Exception as e:
-            print(f"Error organizing output folder: {e}")
+            print(f"Error in post-completion cleanup: {e}")
+            return 0
 
     def preview_images_from_url(self, url):
         """

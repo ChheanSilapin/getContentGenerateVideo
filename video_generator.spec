@@ -7,9 +7,9 @@ block_cipher = None
 # Exclude unnecessary modules to reduce size and build time
 excludes = [
     'matplotlib', 'scipy', 'pandas', 'jupyter', 'IPython',
-    'tornado', 'zmq', 'sqlite3', 'xml', 'xmlrpc',
-    'unittest', 'test', 'tests', 'distutils',
-    'setuptools', 'pip', 'wheel', 'numpy.tests',
+    'tornado', 'zmq', 'sqlite3', 'xmlrpc',
+    'unittest', 'test', 'tests',
+    'pip', 'numpy.tests',
     'PIL.tests', 'cv2.tests', 'requests.tests'
 ]
 
@@ -34,7 +34,34 @@ hiddenimports = [
     'urllib.parse',
     'datetime',
     'json',
-    'subprocess'
+    'subprocess',
+    'xml',
+    'xml.etree',
+    'xml.etree.ElementTree',
+    'xml.parsers',
+    'xml.parsers.expat',
+    'plistlib',
+    'jaraco',
+    'jaraco.text',
+    'jaraco.functools',
+    'more_itertools',
+    'importlib_metadata',
+    'zipp',
+    'packaging',
+    'packaging.version',
+    'packaging.specifiers',
+    'packaging.requirements',
+    # Add UI module imports to prevent import errors
+    'ui.input_tab',
+    'ui.image_tab',
+    'ui.video_tab',
+    'ui.option_tab',
+    'ui.batch_tab',
+    'ui.image_selector',
+    'ui.text_redirector',
+    'models.video_generator',
+    'services.image_service',
+    'utils.gui_helpers'
 ]
 
 # Ensure FFmpeg binaries are included for standalone operation
@@ -89,9 +116,9 @@ exe = EXE(
     name='Video Generator',
     debug=False,
     bootloader_ignore_signals=False,
-    strip=True,  # Strip debug symbols for smaller size
+    strip=False,  # Disable strip to prevent Windows warnings
     upx=False,  # Disable UPX - causes slow startup and compatibility issues
-    console=False,  # Hide console for clean user experience
+    console=True,  # Hide console for clean user experience
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
@@ -106,7 +133,7 @@ coll = COLLECT(
     a.binaries,
     a.zipfiles,
     a.datas,
-    strip=True,  # Strip debug symbols
+    strip=False,  # Disable strip to prevent Windows warnings
     upx=False,  # Disable UPX compression for faster startup
     name='Video Generator',
 )

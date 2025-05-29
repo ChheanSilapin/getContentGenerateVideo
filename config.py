@@ -56,7 +56,6 @@ GUI_COLORS = {
 }
 
 # GUI Fonts
-# GUI Fonts
 GUI_FONTS = {
     "default": ("Cascadia Code", 12),
     "button": ("Cascadia Code", 12),
@@ -65,3 +64,26 @@ GUI_FONTS = {
     "console": ("Cascadia Code", 12),
     "tab": ("Cascadia Code", 12)  # Add this line for tab headers
 }
+
+# ENHANCED: Performance Optimization Settings
+SUBTITLE_PERFORMANCE_MODE = "auto"  # "auto", "speed", "quality"
+LONG_AUDIO_THRESHOLD = 10.0  # Seconds - switch to ultra-fast mode above this
+ULTRA_FAST_MIN_OVERLAP = 0.05  # Minimal overlap for long audio (seconds)
+STANDARD_OVERLAP = 0.1  # Standard overlap for shorter audio (seconds)
+FAST_READING_SPEED_WPM = 200  # Words per minute for subtitle timing
+ADAPTIVE_GROUP_SIZING = True  # Use adaptive word group sizing based on text length
+
+# File Cleanup Settings  
+AUTO_CLEANUP_INTERMEDIATE_FILES = False  # Ask user by default
+KEEP_DEBUG_FILES_BY_DEFAULT = False  # Clean by default to save space
+CLEANUP_TEMP_FILES_DURING_GENERATION = True  # Clean temp files during generation
+
+# Audio Analysis Settings
+ENABLE_SPEECH_ANALYSIS = True  # Use audio analysis for better sync
+SPEECH_ANALYSIS_MAX_DURATION = 15.0  # Max duration for speech analysis (seconds)
+SILENCE_DETECTION_THRESHOLD = 14  # dB below average for silence detection
+MIN_SILENCE_LENGTH = 200  # Milliseconds
+
+# Video Processing Options
+VIDEO_RESOLUTIONS = ["1920x1080", "1280x720", "854x480", "640x360"]
+DEFAULT_RESOLUTION = "1280x720"

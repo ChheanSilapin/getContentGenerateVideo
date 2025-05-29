@@ -9,7 +9,7 @@ import threading
 import tkinter as tk
 import tkinter.simpledialog
 import urllib.parse
-from tkinter import messagebox, ttk
+from tkinter import messagebox, ttk, filedialog
 
 import requests
 from bs4 import BeautifulSoup
@@ -38,6 +38,10 @@ class InputTab:
         self.progress_label = None
         self.generate_button = None
         self.stop_button = None
+        
+        # Output folder selection
+        self.output_folder = None
+        self.output_folder_entry = None
 
         # Set up the tab
         self.setup_input_tab()
@@ -108,6 +112,30 @@ class InputTab:
         gpu_radio = ttk.Radiobutton(cpu_gpu_frame, text="GPU", variable=self.cpu_gpu, value="GPU")
         gpu_radio.pack(side="left", padx=7)  # Increased padding
 
+        # Output folder selection section
+        output_frame = ttk.LabelFrame(main_frame, text="Output Folder", padding=4)
+        output_frame.pack(fill="x", padx=2, pady=3)
+
+        output_folder_frame = ttk.Frame(output_frame)
+        output_folder_frame.pack(fill="x", padx=2, pady=2)
+
+        output_label = ttk.Label(output_folder_frame, text="Save to:", font=("Cascadia Code", 11))
+        output_label.pack(side="left", padx=2)
+
+        self.output_folder = tk.StringVar(value="Default (Auto)")
+        self.output_folder_entry = ttk.Entry(output_folder_frame, textvariable=self.output_folder, width=30, font=("Cascadia Code", 11), state="readonly")
+        self.output_folder_entry.pack(side="left", padx=2, fill="x", expand=True)
+
+        output_browse_button = self.main_gui.ui_factory.create_styled_button(
+            output_folder_frame, "Browse", self.output_folder_button_click, width=10
+        )
+        output_browse_button.pack(side="left", padx=2)
+
+        output_reset_button = self.main_gui.ui_factory.create_styled_button(
+            output_folder_frame, "Reset", self.output_folder_reset_click, width=8
+        )
+        output_reset_button.pack(side="left", padx=2)
+
         # Progress section - make it more prominent
         progress_frame, self.progress_bar, self.progress_label = self.main_gui.ui_factory.create_progress_section(
             main_frame, "Progress"
@@ -147,6 +175,21 @@ class InputTab:
             self.url_entry.delete(0, tk.END)
             self.url_entry.insert(0, url)
             self.main_gui.log(f"Set URL: {url}")
+
+    def output_folder_button_click(self):
+        """Handle output folder browse button click"""
+        folder_path = filedialog.askdirectory(
+            title="Select Output Folder",
+            initialdir=os.path.expanduser("~")
+        )
+        if folder_path:
+            self.output_folder.set(folder_path)
+            self.main_gui.log(f"Output folder set to: {folder_path}")
+
+    def output_folder_reset_click(self):
+        """Handle output folder reset button click"""
+        self.output_folder.set("Default (Auto)")
+        self.main_gui.log("Output folder reset to default")
 
     def start_button_click(self):
         """Handle start button click to begin video generation"""
@@ -237,6 +280,18 @@ class InputTab:
         self.main_gui.model.text_input = text
         self.main_gui.model.processing_option = self.cpu_gpu.get().lower()
 
+        # Set output folder if user selected one
+        output_folder_value = self.output_folder.get()
+        if output_folder_value and output_folder_value != "Default (Auto)":
+            if os.path.isdir(output_folder_value):
+                self.main_gui.model.output_folder = output_folder_value
+                self.main_gui.log(f"Using custom output folder: {output_folder_value}")
+            else:
+                self.main_gui.log(f"Warning: Selected output folder doesn't exist, using default")
+                self.main_gui.model.output_folder = None
+        else:
+            self.main_gui.model.output_folder = None
+
         if self.main_gui.selected_images:
             # Check if images were downloaded from a URL
             if url:
@@ -284,6 +339,7 @@ class InputTab:
         """Handle clear button click to clear all inputs"""
         self.text_input.delete("1.0", tk.END)
         self.url_entry.delete(0, tk.END)
+        self.output_folder.set("Default (Auto)")  # Reset output folder
         self.progress_bar["value"] = 0
         self.progress_label.config(text="0%")
         self.main_gui.update_image_progress(0, "Cleared image progress")
