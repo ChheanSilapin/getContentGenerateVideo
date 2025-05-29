@@ -27,11 +27,9 @@ except ImportError:
         get_ffmpeg_path = helpers.get_ffmpeg_path
         check_ffmpeg_availability = helpers.check_ffmpeg_availability
     except ImportError:
-        # Final fallback
-        def get_ffmpeg_path():
-            return 'ffmpeg'
-        def check_ffmpeg_availability():
-            return False, 'ffmpeg', 'Import failed'
+        # Critical error - should not happen in production
+        print("CRITICAL: Cannot import FFmpeg utilities from utils.helpers or fallback_manager")
+        raise ImportError("FFmpeg utilities are required but unavailable")
 
 def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp4"):
     """Merge video and subtitle into a final output video"""

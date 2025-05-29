@@ -461,6 +461,23 @@ class VideoTab:
         if not response:
             return
 
+        # ✅ RESPECT OUTPUT FOLDER FROM INPUT TAB
+        # Apply the same output folder configuration that Input tab uses
+        if self.main_gui.input_tab_component:
+            output_folder_value = self.main_gui.input_tab_component.output_folder.get()
+            if output_folder_value and output_folder_value != "Default (Auto)":
+                if os.path.isdir(output_folder_value):
+                    self.main_gui.model.output_folder = output_folder_value
+                    self.main_gui.log(f"🎬 Video tab using custom output folder: {output_folder_value}")
+                else:
+                    self.main_gui.log(f"⚠️ Selected output folder doesn't exist, using default")
+                    self.main_gui.model.output_folder = None
+            else:
+                self.main_gui.model.output_folder = None
+                self.main_gui.log("🎬 Video tab using default output folder")
+        else:
+            self.main_gui.log("⚠️ Could not access Input tab settings, using default output folder")
+
         # Clear any existing batch jobs
         self.main_gui.model.batch_jobs.clear()
 
@@ -527,16 +544,61 @@ class VideoTab:
         self.update_video_progress(100, f"Completed: {successful}/{total} videos")
         self.reset_video_ui()
 
+        # ✅ AUTOMATIC CLEANUP FOR MULTI-VIDEO GENERATION
+        if successful > 0:
+            self.main_gui.log("🧹 Starting automatic cleanup of intermediate files...")
+            total_cleaned = 0
+            
+            for job, video_path in results:
+                if video_path and os.path.exists(video_path):
+                    output_dir = os.path.dirname(video_path)
+                    try:
+                        # For multi-video generation, always clean up intermediate files to save space
+                        # Don't keep debug files by default for multi-video to avoid clutter
+                        cleaned_count = self.main_gui.model.cleanup_after_video_complete(
+                            output_dir, 
+                            keep_debug_files=False  # Clean everything except final_output.mp4
+                        )
+                        total_cleaned += cleaned_count
+                        
+                        # Log cleanup for this specific video
+                        video_name = os.path.basename(video_path)
+                        if cleaned_count > 0:
+                            self.main_gui.log(f"✅ Cleaned {cleaned_count} files for {video_name}")
+                        else:
+                            self.main_gui.log(f"ℹ️ No cleanup needed for {video_name}")
+                            
+                    except Exception as e:
+                        self.main_gui.log(f"⚠️ Cleanup failed for {os.path.basename(video_path)}: {e}")
+            
+            # Summary of cleanup
+            if total_cleaned > 0:
+                self.main_gui.log(f"🎉 Auto-cleanup completed: Removed {total_cleaned} intermediate files")
+                self.main_gui.log("🗑️ Only final_output.mp4 files remain for each video")
+            else:
+                self.main_gui.log("ℹ️ No intermediate files needed cleanup")
+
+        # Create completion message
+        message = f"Successfully generated {successful} out of {total} videos."
+        
+        if successful > 0 and total_cleaned > 0:
+            message += f"\n\n🧹 Auto-cleanup completed\n🗑️ Removed {total_cleaned} intermediate files\n💾 Only final_output.mp4 files remain"
+        
         # Show completion message
         if successful > 0:
-            message = f"Successfully generated {successful} out of {total} videos.\n\nWould you like to open the output folder?"
+            message += "\n\nWould you like to open the output folder?"
             response = messagebox.askyesno("Processing Complete", message)
             if response and results:
-                # Open the output folder of the first successful result
+                # Find the first successful result and open its parent directory
                 for job, video_path in results:
-                    if video_path:
-                        output_dir = os.path.dirname(video_path)
-                        self.main_gui.open_file(output_dir)
+                    if video_path and os.path.exists(video_path):
+                        # Go up one level to show all video folders
+                        video_dir = os.path.dirname(video_path)
+                        parent_dir = os.path.dirname(video_dir)
+                        if os.path.exists(parent_dir):
+                            self.main_gui.open_file(parent_dir)
+                        else:
+                            self.main_gui.open_file(video_dir)
                         break
         else:
             messagebox.showerror("Processing Failed", "No videos were generated successfully.")

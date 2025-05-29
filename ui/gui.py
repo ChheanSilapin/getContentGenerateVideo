@@ -76,30 +76,20 @@ try:
     from ui.batch_tab import BatchTab
 except ImportError as e:
     print(f"Error importing required modules: {e}")
-    # Set fallback values if config import fails
-    GUI_WINDOW_SIZE = "800x800"
-    GUI_TITLE = "Video Generator"
-    GUI_MIN_WIDTH = 800
-    GUI_MIN_HEIGHT = 600
-    GUI_RESIZABLE = True
-    GUI_CENTER_ON_SCREEN = True
-    GUI_COLORS = {
-        "primary": "#2c3e50",
-        "secondary": "#3498db",
-        "accent": "#e74c3c",
-        "success": "#2ecc71",
-        "background": "#ecf0f1",
-        "text": "#34495e",
-        "light_text": "#7f8c8d"
-    }
-    GUI_FONTS = {
-    "default": ("Cascadia Code", 12),
-    "button": ("Cascadia Code", 12),
-    "label": ("Cascadia Code", 12),
-    "heading": ("Cascadia Code", 12, "bold"),
-    "console": ("Cascadia Code", 12),
-    "tab": ("Cascadia Code", 12)  # Add this line for tab headers
-    }
+    # Import config values with proper error handling instead of hardcoded duplicates
+    try:
+        from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS
+    except ImportError as config_error:
+        print(f"Warning: Could not import config values: {config_error}")
+        # Use minimal fallback values only if absolutely necessary
+        GUI_WINDOW_SIZE = "800x800"
+        GUI_TITLE = "Video Generator"
+        GUI_MIN_WIDTH = 800
+        GUI_MIN_HEIGHT = 600
+        GUI_RESIZABLE = True
+        GUI_CENTER_ON_SCREEN = True
+        # Use config module constants instead of duplicating them
+        from config import GUI_COLORS, GUI_FONTS
     # Create a fallback model class if import fails
     class VideoGeneratorModel:
         """Fallback model class when the real one can't be imported"""

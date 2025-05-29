@@ -22,13 +22,14 @@ class BatchTab:
         """
         self.parent_frame = parent_frame
         self.main_gui = main_gui
-
-        # Initialize UI components
-        self.jobs_listbox = None
         self.batch_progress_bar = None
         self.batch_progress_label = None
-
-        # Set up the tab
+        self.jobs_listbox = None
+        
+        # ✅ ADD CLEANUP PREFERENCES FOR BATCH PROCESSING
+        self.auto_cleanup_enabled = tk.BooleanVar(value=True)  # Default to cleanup for batch processing
+        self.keep_debug_files = tk.BooleanVar(value=False)     # Default to clean for space saving
+        
         self.setup_batch_tab()
 
     def setup_batch_tab(self):
@@ -85,6 +86,48 @@ class BatchTab:
                                     command=self.start_batch_processing,
                                     style="Accent.TButton")
         start_batch_btn.pack(side=tk.RIGHT, padx=5)
+        
+        # ✅ ADD CLEANUP PREFERENCES UI
+        cleanup_frame = ttk.LabelFrame(batch_frame, text="File Cleanup Options", padding=5)
+        cleanup_frame.pack(fill="x", pady=5)
+        
+        # Auto cleanup checkbox
+        auto_cleanup_cb = ttk.Checkbutton(
+            cleanup_frame, 
+            text="🗑️ Auto-cleanup intermediate files (keep only final_output.mp4)",
+            variable=self.auto_cleanup_enabled,
+            command=self._on_cleanup_option_changed
+        )
+        auto_cleanup_cb.pack(anchor="w", pady=2)
+        
+        # Keep debug files checkbox (only enabled when auto-cleanup is on)
+        self.keep_debug_cb = ttk.Checkbutton(
+            cleanup_frame, 
+            text="📁 Keep debug files (voice.mp3, subtitles.ass) for troubleshooting",
+            variable=self.keep_debug_files
+        )
+        self.keep_debug_cb.pack(anchor="w", pady=2, padx=20)
+        
+        # Info label
+        self.cleanup_info_label = ttk.Label(
+            cleanup_frame, 
+            text="💡 Recommended: Enable auto-cleanup for batch processing to save disk space",
+            font=("Helvetica", 9),
+            foreground="gray"
+        )
+        self.cleanup_info_label.pack(anchor="w", pady=2)
+        
+        # Update initial state
+        self._on_cleanup_option_changed()
+
+    def _on_cleanup_option_changed(self):
+        """Handle cleanup option changes"""
+        if self.auto_cleanup_enabled.get():
+            self.keep_debug_cb.configure(state="normal")
+            self.cleanup_info_label.configure(text="💡 Auto-cleanup enabled: Only final_output.mp4 will be kept per video")
+        else:
+            self.keep_debug_cb.configure(state="disabled")
+            self.cleanup_info_label.configure(text="⚠️ Auto-cleanup disabled: All intermediate files will be kept (uses more disk space)")
 
     def add_current_as_job(self):
         """Add current settings as a batch job"""
@@ -156,6 +199,23 @@ class BatchTab:
             messagebox.showwarning("Process Running", "Video generation is already in progress")
             return
 
+        # ✅ RESPECT OUTPUT FOLDER FROM INPUT TAB
+        # Apply the same output folder configuration that Input tab uses
+        if self.main_gui.input_tab_component:
+            output_folder_value = self.main_gui.input_tab_component.output_folder.get()
+            if output_folder_value and output_folder_value != "Default (Auto)":
+                if os.path.isdir(output_folder_value):
+                    self.main_gui.model.output_folder = output_folder_value
+                    self.main_gui.log(f"📦 Batch tab using custom output folder: {output_folder_value}")
+                else:
+                    self.main_gui.log(f"⚠️ Selected output folder doesn't exist, using default")
+                    self.main_gui.model.output_folder = None
+            else:
+                self.main_gui.model.output_folder = None
+                self.main_gui.log("📦 Batch tab using default output folder")
+        else:
+            self.main_gui.log("⚠️ Could not access Input tab settings, using default output folder")
+
         self.main_gui.log(f"Starting batch processing of {len(self.main_gui.model.batch_jobs)} jobs")
 
         # Reset progress bars
@@ -208,7 +268,51 @@ class BatchTab:
         successes = sum(1 for _, video_path in results if video_path)
         failures = len(results) - successes
 
-        message = f"Batch processing completed:\n{successes} videos generated successfully\n{failures} jobs failed"
+        # ✅ AUTOMATIC CLEANUP FOR BATCH PROCESSING
+        if successes > 0 and self.auto_cleanup_enabled.get():
+            self.main_gui.log("🧹 Starting automatic cleanup of intermediate files...")
+            total_cleaned = 0
+            
+            for job, video_path in results:
+                if video_path and os.path.exists(video_path):
+                    output_dir = os.path.dirname(video_path)
+                    try:
+                        cleaned_count = self.main_gui.model.cleanup_after_video_complete(
+                            output_dir, 
+                            keep_debug_files=self.keep_debug_files.get()
+                        )
+                        total_cleaned += cleaned_count
+                        
+                        # Log cleanup for this specific video
+                        video_name = os.path.basename(video_path)
+                        if cleaned_count > 0:
+                            self.main_gui.log(f"✅ Cleaned {cleaned_count} files for {video_name}")
+                        else:
+                            self.main_gui.log(f"ℹ️ No cleanup needed for {video_name}")
+                            
+                    except Exception as e:
+                        self.main_gui.log(f"⚠️ Cleanup failed for {os.path.basename(video_path)}: {e}")
+            
+            # Summary of cleanup
+            if total_cleaned > 0:
+                self.main_gui.log(f"🎉 Cleanup completed: Removed {total_cleaned} intermediate files total")
+                if self.keep_debug_files.get():
+                    self.main_gui.log("📁 Debug files (voice.mp3, subtitles.ass) were kept for troubleshooting")
+                else:
+                    self.main_gui.log("🗑️ All intermediate files removed - only final_output.mp4 files remain")
+            else:
+                self.main_gui.log("ℹ️ No intermediate files needed cleanup")
+        elif successes > 0:
+            self.main_gui.log("📁 Keeping all intermediate files (auto-cleanup disabled)")
+
+        # Create completion message
+        message = f"Batch processing completed:\n✅ {successes} videos generated successfully\n❌ {failures} jobs failed"
+        
+        if successes > 0 and self.auto_cleanup_enabled.get():
+            if self.keep_debug_files.get():
+                message += f"\n\n🧹 Cleaned up intermediate files (kept debug files)\n📁 Removed {total_cleaned} temporary files"
+            else:
+                message += f"\n\n🧹 Auto-cleanup completed\n🗑️ Removed {total_cleaned} intermediate files\n💾 Only final_output.mp4 files remain"
 
         if successes > 0:
             # Ask if user wants to open the output folder
@@ -216,10 +320,18 @@ class BatchTab:
                 "Batch Complete",
                 f"{message}\n\nDo you want to open the output folder?"
             )
-            if response and results[0][1]:  # If there's at least one successful result
-                # Open the folder containing the first successful video
-                output_dir = os.path.dirname(results[0][1])
-                self.main_gui.open_file(output_dir)
+            if response:
+                # Find the first successful result and open its parent directory
+                for job, video_path in results:
+                    if video_path and os.path.exists(video_path):
+                        # Go up one level to show all video folders
+                        video_dir = os.path.dirname(video_path)
+                        parent_dir = os.path.dirname(video_dir)
+                        if os.path.exists(parent_dir):
+                            self.main_gui.open_file(parent_dir)
+                        else:
+                            self.main_gui.open_file(video_dir)
+                        break
         else:
             messagebox.showinfo("Batch Complete", message)
 

@@ -51,7 +51,7 @@ def check_ffmpeg_availability():
         is_available, ffmpeg_path, error_message = centralized_check()
         return is_available  # Return only boolean for backward compatibility
     except ImportError:
-        # Fallback implementation if utils.helpers is not available
+        # Minimal fallback if utils.helpers is completely unavailable
         import subprocess
         try:
             subprocess.run(['ffmpeg', '-version'], 

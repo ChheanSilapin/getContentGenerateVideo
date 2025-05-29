@@ -899,6 +899,35 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
     """
     try:
         from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
+        import tempfile
+        import sys
+
+        # CRITICAL FIX: Configure MoviePy for bundled executable
+        if getattr(sys, 'frozen', False):
+            # Running as bundled executable - set up proper temp directory
+            temp_dir = os.path.join(os.path.dirname(output_file), 'temp')
+            os.makedirs(temp_dir, exist_ok=True)
+            # Set MoviePy temporary directory
+            os.environ['TMPDIR'] = temp_dir
+            os.environ['TEMP'] = temp_dir
+            os.environ['TMP'] = temp_dir
+            
+            # Configure FFmpeg paths for bundled executable
+            try:
+                from utils.helpers import get_ffmpeg_path
+                ffmpeg_path = get_ffmpeg_path()
+                if ffmpeg_path and os.path.exists(ffmpeg_path):
+                    # Set FFmpeg path for MoviePy
+                    try:
+                        from moviepy.config import change_settings
+                        change_settings({"FFMPEG_BINARY": ffmpeg_path})
+                        print(f"Voice-over: Using FFmpeg from: {ffmpeg_path}")
+                    except ImportError:
+                        # Fallback: set environment variable for FFmpeg
+                        os.environ['FFMPEG_BINARY'] = ffmpeg_path
+                        print(f"Voice-over: Set FFmpeg path via environment: {ffmpeg_path}")
+            except Exception as e:
+                print(f"Warning: Could not configure FFmpeg path for voice-over: {e}")
 
         print(f"Loading video: {video_file}")
         video = VideoFileClip(video_file)
@@ -906,8 +935,8 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
         print(f"Loading generated audio: {audio_file}")
         new_audio = AudioFileClip(audio_file)
 
-        print(f"Original video duration: {video.duration}s")
-        print(f"Generated audio duration: {new_audio.duration}s")
+        print(f"Original video duration: {video.duration:.2f}s")
+        print(f"Generated audio duration: {new_audio.duration:.2f}s")
 
         # Handle different scenarios for audio and video duration
         if new_audio.duration <= video.duration:
@@ -930,7 +959,7 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
         else:
             # Audio is longer than video - trim audio to match video duration
             print("Audio is longer than video")
-            print(f"Trimming audio from {new_audio.duration}s to {video.duration}s")
+            print(f"Trimming audio from {new_audio.duration:.2f}s to {video.duration:.2f}s")
             trimmed_audio = new_audio.subclip(0, video.duration)
 
             if video.audio is not None and mix_with_original:
@@ -951,22 +980,48 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
 
         # Write the final video with compatible parameters
         print(f"Writing video with voice-over to: {output_file}")
+        
+        # CRITICAL FIX: Use proper temp_audiofile path for bundled executables
         try:
-            # Try with newer MoviePy parameters first
+            if getattr(sys, 'frozen', False):
+                # For bundled executables, use a full path in the output directory
+                temp_audio_path = os.path.join(os.path.dirname(output_file), 'temp_audio_voiceover.m4a')
+            else:
+                # For development, use relative path
+                temp_audio_path = 'temp-audio.m4a'
+                
             final_video.write_videofile(
                 output_file,
                 codec='libx264',
                 audio_codec='aac',
-                temp_audiofile='temp-audio.m4a',
-                remove_temp=True
+                temp_audiofile=temp_audio_path,
+                remove_temp=True,
+                verbose=False,
+                logger=None,
+                # Add compatibility parameters
+                ffmpeg_params=[
+                    '-profile:v', 'baseline',
+                    '-level', '3.0',
+                    '-pix_fmt', 'yuv420p',
+                    '-ar', '44100',
+                    '-ac', '2',
+                    '-avoid_negative_ts', 'make_zero'
+                ]
             )
-        except TypeError:
-            # Fallback for older MoviePy versions
-            final_video.write_videofile(
-                output_file,
-                codec='libx264',
-                audio_codec='aac'
-            )
+        except Exception as write_error:
+            print(f"Error with advanced parameters: {write_error}")
+            # Fallback: try without temp_audiofile parameter
+            try:
+                final_video.write_videofile(
+                    output_file,
+                    codec='libx264',
+                    audio_codec='aac',
+                    verbose=False,
+                    logger=None
+                )
+            except Exception as fallback_error:
+                print(f"Fallback write also failed: {fallback_error}")
+                return False
 
         # Clean up
         video.close()

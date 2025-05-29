@@ -61,7 +61,8 @@ hiddenimports = [
     'ui.text_redirector',
     'models.video_generator',
     'services.image_service',
-    'utils.gui_helpers'
+    'utils.gui_helpers',
+    'utils.font_manager',  # ✅ Include font management utility
 ]
 
 # Ensure FFmpeg binaries are included for standalone operation
@@ -85,6 +86,7 @@ a = Analysis(
         ('ui', 'ui'),
         ('utils', 'utils'),
         ('README.md', '.'),  # Include documentation
+        ('fonts', 'fonts'),  # ✅ Include fonts directory for bundled fonts
     ],
     hiddenimports=hiddenimports,
     hookspath=[],

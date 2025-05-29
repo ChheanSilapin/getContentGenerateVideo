@@ -55,15 +55,58 @@ GUI_COLORS = {
     "light_text": "#7f8c8d"    # Gray text
 }
 
-# GUI Fonts
-GUI_FONTS = {
-    "default": ("Cascadia Code", 12),
-    "button": ("Cascadia Code", 12),
-    "label": ("Cascadia Code", 12),
-    "heading": ("Cascadia Code", 12, "bold"),
-    "console": ("Cascadia Code", 12),
-    "tab": ("Cascadia Code", 12)  # Add this line for tab headers
-}
+# GUI Fonts with intelligent fallbacks
+def get_gui_fonts():
+    """
+    Get GUI fonts with intelligent fallbacks for all platforms
+    
+    Returns:
+        dict: Font configuration with automatic fallbacks
+    """
+    try:
+        # Import font manager if available
+        from utils.font_manager import initialize_fonts
+        return initialize_fonts()
+    except ImportError:
+        # Fallback font configuration (silent)
+        return {
+            "default": ("Consolas", 12),
+            "button": ("Consolas", 12),  
+            "label": ("Consolas", 12),
+            "heading": ("Consolas", 12, "bold"),
+            "console": ("Consolas", 12),
+            "tab": ("Consolas", 12),
+            "small": ("Consolas", 10),
+            "large": ("Consolas", 14)
+        }
+    except Exception as e:
+        # Only print actual errors
+        print(f"⚠️ Font initialization error: {e}")
+        # Safe fallback to system defaults
+        return {
+            "default": ("Arial", 12),
+            "button": ("Arial", 12),
+            "label": ("Arial", 12),
+            "heading": ("Arial", 12, "bold"),
+            "console": ("Courier New", 12),
+            "tab": ("Arial", 12),
+            "small": ("Arial", 10),
+            "large": ("Arial", 14)
+        }
+
+# Initialize fonts at module load
+try:
+    GUI_FONTS = get_gui_fonts()
+except:
+    # Emergency fallback if everything fails
+    GUI_FONTS = {
+        "default": ("Arial", 12),
+        "button": ("Arial", 12),
+        "label": ("Arial", 12),
+        "heading": ("Arial", 12, "bold"),
+        "console": ("Courier New", 12),
+        "tab": ("Arial", 12)
+    }
 
 # ENHANCED: Performance Optimization Settings
 SUBTITLE_PERFORMANCE_MODE = "auto"  # "auto", "speed", "quality"

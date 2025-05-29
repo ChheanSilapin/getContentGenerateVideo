@@ -76,7 +76,7 @@ class InputTab:
         self.text_input.config(yscrollcommand=text_scrollbar.set)
 
         # Image source section - increase spacing
-        image_frame = ttk.LabelFrame(main_frame, text="Image Source", padding=6)  # Increased padding
+        image_frame = ttk.LabelFrame(main_frame, text="Image Source Pinterest or WordPress only", padding=6)  # Increased padding
         image_frame.pack(fill='x', padx=2, pady=3)  # Increased spacing
 
         # Website URL input
@@ -113,7 +113,21 @@ class InputTab:
         gpu_radio.pack(side="left", padx=7)  # Increased padding
 
         # Output folder selection section
-        output_frame = ttk.LabelFrame(main_frame, text="Output Folder", padding=4)
+        try:
+            # Get the actual default output directory
+            from utils.helpers import get_output_directory
+            default_output = get_output_directory()
+            # Shorten the path for display if it's too long
+            if len(default_output) > 50:
+                default_display = "..." + default_output[-47:]
+            else:
+                default_display = default_output
+            output_frame_text = f"📁 Output Folder (default: {default_display})"
+        except Exception:
+            # Fallback if anything goes wrong
+            output_frame_text = "📁 Output Folder"
+        
+        output_frame = ttk.LabelFrame(main_frame, text=output_frame_text, padding=4)
         output_frame.pack(fill="x", padx=2, pady=3)
 
         output_folder_frame = ttk.Frame(output_frame)
