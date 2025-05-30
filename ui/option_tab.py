@@ -447,13 +447,17 @@ class OptionTab:
         button_frame = tk.Frame(main_frame, bg="#f0f0f0")
         button_frame.pack(fill="x", pady=(2, 0))  # Minimal spacing
 
-        tk.Button(button_frame, text="Reset", command=self.reset_enhancement_options, 
-                 bg="#2196F3", fg="white", font=("Cascadia Code", 10, "bold"),
-                 width=8).pack(side="right", padx=1)  # Smaller width and padding
+        # Reset button - using UI factory
+        reset_btn = self.main_gui.ui_factory.create_secondary_button(
+            button_frame, "🔄 Reset", self.reset_enhancement_options, width=10
+        )
+        reset_btn.pack(side="right", padx=3)
 
-        tk.Button(button_frame, text="Apply", command=self.update_enhancement_options, 
-                 bg="#4CAF50", fg="white", font=("Cascadia Code", 10, "bold"),
-                 width=8).pack(side="right", padx=1)  # Smaller width and padding
+        # Apply button - using UI factory  
+        apply_btn = self.main_gui.ui_factory.create_primary_button(
+            button_frame, "✅ Apply", self.update_enhancement_options, width=10
+        )
+        apply_btn.pack(side="right", padx=3)
 
     def update_enhancement_options(self):
         """Update the model with current enhancement options"""

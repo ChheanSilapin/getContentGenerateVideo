@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Video Generator - Optimized Main Entry Point
-Creates videos with subtitles from text and images
+Creates videos with subtitles from a text and images
 Optimized for fast startup and standalone operation
 """
 import os
@@ -27,7 +27,7 @@ def setup_environment():
     # Set up paths for bundled FFmpeg
     if getattr(sys, 'frozen', False):
         # Running as PyInstaller bundle
-        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEI PASS') else os.path.dirname(sys.executable)
         
         # Add bundle directory to PATH for FFmpeg
         current_path = os.environ.get('PATH', '')
@@ -41,7 +41,7 @@ def setup_environment():
         os.makedirs(output_dir, exist_ok=True)
         os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
     except Exception:
-        pass  # Will use current directory as fallback
+        pass  # Will use the current directory as fallback
 
 def check_ffmpeg_availability():
     """Check if FFmpeg is available (bundled or system-installed)"""
@@ -85,7 +85,7 @@ def show_ffmpeg_warning():
         root.destroy()
         
     except ImportError:
-        # Fallback to console message if tkinter not available
+        # Fallback to a console message if tkinter not available
         print("WARNING: FFmpeg not found!")
         print("Video generation requires FFmpeg. Please install it from https://ffmpeg.org/download.html")
 

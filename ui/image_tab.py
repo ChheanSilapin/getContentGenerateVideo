@@ -53,8 +53,8 @@ class ImageTab:
         button_frame = ttk.Frame(main_frame)
         button_frame.pack(fill="x", padx=5, pady=5)
 
-        select_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Choose Images", self.select_images, width=15
+        select_button = self.main_gui.ui_factory.create_icon_button(
+            button_frame, "Choose Images", self.select_images, icon="📁", width=20
         )
         select_button.pack(side="left", padx=5)
 
@@ -91,29 +91,26 @@ class ImageTab:
         action_frame.pack(fill="x", padx=5, pady=10)
 
         # Left side buttons (selection controls)
-        select_all_button = self.main_gui.ui_factory.create_styled_button(
-            action_frame, "Select All", lambda: self.select_all_images(True),
-            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=15
+        select_all_button = self.main_gui.ui_factory.create_secondary_button(
+            action_frame, "Select All", lambda: self.select_all_images(True), width=12
         )
         select_all_button.pack(side="left", padx=5)
 
-        deselect_all_button = self.main_gui.ui_factory.create_styled_button(
-            action_frame, "Deselect All", lambda: self.select_all_images(False),
-            bg_color=self.main_gui.colors["secondary"], hover_color="#2980b9", width=15
+        deselect_all_button = self.main_gui.ui_factory.create_secondary_button(
+            action_frame, "Deselect All", lambda: self.select_all_images(False), width=12
         )
         deselect_all_button.pack(side="left", padx=5)
 
         # Clear images button
-        clear_button = self.main_gui.ui_factory.create_styled_button(
-            action_frame, "Clear Images", self.clear_images,
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", width=15
+        clear_button = self.main_gui.ui_factory.create_icon_button(
+            action_frame, "Clear Images", self.clear_images, icon="🧹", width=20
         )
         clear_button.pack(side="left", padx=5)
 
         # Right side button (primary action)
-        continue_button = self.main_gui.ui_factory.create_styled_button(
+        continue_button = self.main_gui.ui_factory.create_icon_button(
             action_frame, "Continue with Selected", self.main_gui.continue_with_selected_images,
-            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=25
+            icon="✅", width=30
         )
         continue_button.pack(side="right", padx=5)
 

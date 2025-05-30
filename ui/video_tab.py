@@ -58,9 +58,9 @@ class VideoEntry:
         )
         file_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
 
-        browse_button = self.main_gui.ui_factory.create_styled_button(
-            file_input_frame, "📂 Browse", self.browse_video_file,
-            bg_color=self.main_gui.colors["secondary"], width=12
+        browse_button = self.main_gui.ui_factory.create_icon_button(
+            file_input_frame, "Browse", self.browse_video_file,
+            icon="📂", width=12
         )
         browse_button.pack(side="right")
 
@@ -97,10 +97,10 @@ class VideoEntry:
         # Bind text changes to update the StringVar
         prompt_text.bind('<KeyRelease>', lambda e: self.prompt_text.set(prompt_text.get("1.0", tk.END).strip()))
 
-        # Remove button with better styling
-        remove_button = self.main_gui.ui_factory.create_styled_button(
-            prompt_input_frame, "🗑️ Remove", lambda: self.remove_callback(self.entry_id),
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", width=12
+        # Remove button with clean styling
+        remove_button = self.main_gui.ui_factory.create_icon_button(
+            prompt_input_frame, "Remove", lambda: self.remove_callback(self.entry_id),
+            icon="🗑️", width=12
         )
         remove_button.pack(side="right", anchor="n", pady=(0, 0))
 
@@ -217,9 +217,9 @@ class VideoTab:
         left_buttons = ttk.Frame(button_container)
         left_buttons.pack(side="left", fill="x", expand=True)
 
-        self.generate_button = self.main_gui.ui_factory.create_styled_button(
-            left_buttons, "🚀 Generate All Videos", self.start_video_generation,
-            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=25
+        self.generate_button = self.main_gui.ui_factory.create_icon_button(
+            left_buttons, "Generate All Videos", self.start_video_generation,
+            icon="🚀", width=25
         )
         self.generate_button.pack(side="left")
 
@@ -227,9 +227,9 @@ class VideoTab:
         right_buttons = ttk.Frame(button_container)
         right_buttons.pack(side="right")
 
-        self.stop_button = self.main_gui.ui_factory.create_styled_button(
-            right_buttons, "⏹️ Stop", self.stop_video_generation,
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", state="disabled", width=12
+        self.stop_button = self.main_gui.ui_factory.create_icon_button(
+            right_buttons, "Stop", self.stop_video_generation,
+            icon="⏹️", state="disabled", width=12
         )
         self.stop_button.pack(side="right")
 
@@ -335,9 +335,9 @@ class VideoTab:
         entries_title.pack(side="left")
 
         # Add video button moved to header
-        add_video_button = self.main_gui.ui_factory.create_styled_button(
-            entries_header, "➕ Add Video", self.add_video_entry,
-            bg_color=self.main_gui.colors["primary"], width=12
+        add_video_button = self.main_gui.ui_factory.create_icon_button(
+            entries_header, "Add Video", self.add_video_entry,
+            icon="➕", width=18
         )
         add_video_button.pack(side="right")
 

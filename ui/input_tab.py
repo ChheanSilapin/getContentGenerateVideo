@@ -90,8 +90,8 @@ class InputTab:
         self.url_entry = ttk.Entry(url_frame, textvariable=self.website_url, width=30, font=("Cascadia Code", 11))  # Increased width and font
         self.url_entry.pack(side="left", padx=2, fill="x", expand=True)  # Increased padding
 
-        url_button = self.main_gui.ui_factory.create_styled_button(
-            url_frame, "Browse", self.url_button_click, width=10  # Increased width
+        url_button = self.main_gui.ui_factory.create_secondary_button(
+            url_frame, "🌐 Browse", self.url_button_click, width=12
         )
         url_button.pack(side="left", padx=2)  # Increased padding
 
@@ -140,13 +140,13 @@ class InputTab:
         self.output_folder_entry = ttk.Entry(output_folder_frame, textvariable=self.output_folder, width=30, font=("Cascadia Code", 11), state="readonly")
         self.output_folder_entry.pack(side="left", padx=2, fill="x", expand=True)
 
-        output_browse_button = self.main_gui.ui_factory.create_styled_button(
-            output_folder_frame, "Browse", self.output_folder_button_click, width=10
+        output_browse_button = self.main_gui.ui_factory.create_secondary_button(
+            output_folder_frame, "📁 Browse", self.output_folder_button_click, width=12
         )
         output_browse_button.pack(side="left", padx=2)
 
-        output_reset_button = self.main_gui.ui_factory.create_styled_button(
-            output_folder_frame, "Reset", self.output_folder_reset_click, width=8
+        output_reset_button = self.main_gui.ui_factory.create_light_button(
+            output_folder_frame, "🔄 Reset", self.output_folder_reset_click, width=10
         )
         output_reset_button.pack(side="left", padx=2)
 
@@ -165,20 +165,18 @@ class InputTab:
         button_frame.pack(fill="x", pady=4)  # Increased vertical padding
 
         # Action buttons with better spacing and larger size
-        self.generate_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Generate Video", self.start_button_click,
-            bg_color=self.main_gui.colors["success"], hover_color="#27ae60", width=16  # Increased width
+        self.generate_button = self.main_gui.ui_factory.create_primary_button(
+            button_frame, "🚀 Generate Video", self.start_button_click, width=18
         )
         self.generate_button.pack(side="left", padx=4)  # Increased padding
 
-        self.stop_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Stop", self.stop_button_click,
-            bg_color=self.main_gui.colors["accent"], hover_color="#c0392b", state="disabled", width=11  # Increased width
+        self.stop_button = self.main_gui.ui_factory.create_danger_button(
+            button_frame, "⏹️ Stop", self.stop_button_click, state="disabled", width=12
         )
         self.stop_button.pack(side="left", padx=4)  # Increased padding
 
-        clear_button = self.main_gui.ui_factory.create_styled_button(
-            button_frame, "Clear All", self.clear_input_button_click, width=11  # Increased width
+        clear_button = self.main_gui.ui_factory.create_secondary_button(
+            button_frame, "🧹 Clear All", self.clear_input_button_click, width=13
         )
         clear_button.pack(side="left", padx=4)  # Increased padding
 

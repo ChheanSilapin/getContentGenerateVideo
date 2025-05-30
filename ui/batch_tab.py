@@ -26,9 +26,9 @@ class BatchTab:
         self.batch_progress_label = None
         self.jobs_listbox = None
         
-        # ✅ ADD CLEANUP PREFERENCES FOR BATCH PROCESSING
-        self.auto_cleanup_enabled = tk.BooleanVar(value=True)  # Default to cleanup for batch processing
-        self.keep_debug_files = tk.BooleanVar(value=False)     # Default to clean for space saving
+        # Initialize cleanup settings - always enabled for automatic cleanup
+        self.auto_cleanup_enabled = tk.BooleanVar(value=True)  # Always True - automatic cleanup
+        self.keep_debug_files = tk.BooleanVar(value=False)     # Always False - keep only final video
         
         self.setup_batch_tab()
 
@@ -66,68 +66,30 @@ class BatchTab:
         buttons_frame = ttk.Frame(batch_frame)
         buttons_frame.pack(fill="x", pady=10)
 
-        # Add current settings as a job
-        add_job_btn = ttk.Button(buttons_frame, text="Add Current Settings as Job",
-                                command=self.add_current_as_job)
+        # Add current settings as a job - using UI factory
+        add_job_btn = self.main_gui.ui_factory.create_icon_button(
+            buttons_frame, "Add Job", self.add_current_as_job,
+            icon="➕", width=12
+        )
         add_job_btn.pack(side="left", padx=5)
 
-        # Remove selected job
-        remove_job_btn = ttk.Button(buttons_frame, text="Remove Selected Job",
-                                   command=self.remove_selected_job)
+        # Remove selected job - using UI factory  
+        remove_job_btn = self.main_gui.ui_factory.create_secondary_button(
+            buttons_frame, "🗑️Remove Selected", self.remove_selected_job, width=20
+        )
         remove_job_btn.pack(side="left", padx=5)
 
-        # Clear all jobs
-        clear_jobs_btn = ttk.Button(buttons_frame, text="Clear All Jobs",
-                                   command=self.clear_all_jobs)
+        # Clear all jobs - using UI factory
+        clear_jobs_btn = self.main_gui.ui_factory.create_danger_button(
+            buttons_frame, "🧹 Clear All Jobs", self.clear_all_jobs, width=20
+        )
         clear_jobs_btn.pack(side="left", padx=5)
 
-        # Start batch processing
-        start_batch_btn = ttk.Button(buttons_frame, text="Start Batch Processing",
-                                    command=self.start_batch_processing,
-                                    style="Accent.TButton")
-        start_batch_btn.pack(side=tk.RIGHT, padx=5)
-        
-        # ✅ ADD CLEANUP PREFERENCES UI
-        cleanup_frame = ttk.LabelFrame(batch_frame, text="File Cleanup Options", padding=5)
-        cleanup_frame.pack(fill="x", pady=5)
-        
-        # Auto cleanup checkbox
-        auto_cleanup_cb = ttk.Checkbutton(
-            cleanup_frame, 
-            text="🗑️ Auto-cleanup intermediate files (keep only final_output.mp4)",
-            variable=self.auto_cleanup_enabled,
-            command=self._on_cleanup_option_changed
+        # Start batch processing - using UI factory primary button
+        start_batch_btn = self.main_gui.ui_factory.create_primary_button(
+            buttons_frame, "🚀 Start Batch Processing", self.start_batch_processing, width=30
         )
-        auto_cleanup_cb.pack(anchor="w", pady=2)
-        
-        # Keep debug files checkbox (only enabled when auto-cleanup is on)
-        self.keep_debug_cb = ttk.Checkbutton(
-            cleanup_frame, 
-            text="📁 Keep debug files (voice.mp3, subtitles.ass) for troubleshooting",
-            variable=self.keep_debug_files
-        )
-        self.keep_debug_cb.pack(anchor="w", pady=2, padx=20)
-        
-        # Info label
-        self.cleanup_info_label = ttk.Label(
-            cleanup_frame, 
-            text="💡 Recommended: Enable auto-cleanup for batch processing to save disk space",
-            font=("Helvetica", 9),
-            foreground="gray"
-        )
-        self.cleanup_info_label.pack(anchor="w", pady=2)
-        
-        # Update initial state
-        self._on_cleanup_option_changed()
-
-    def _on_cleanup_option_changed(self):
-        """Handle cleanup option changes"""
-        if self.auto_cleanup_enabled.get():
-            self.keep_debug_cb.configure(state="normal")
-            self.cleanup_info_label.configure(text="💡 Auto-cleanup enabled: Only final_output.mp4 will be kept per video")
-        else:
-            self.keep_debug_cb.configure(state="disabled")
-            self.cleanup_info_label.configure(text="⚠️ Auto-cleanup disabled: All intermediate files will be kept (uses more disk space)")
+        start_batch_btn.pack(side="left", padx=5)
 
     def add_current_as_job(self):
         """Add current settings as a batch job"""
@@ -270,7 +232,7 @@ class BatchTab:
 
         # ✅ AUTOMATIC CLEANUP FOR BATCH PROCESSING
         if successes > 0 and self.auto_cleanup_enabled.get():
-            self.main_gui.log("🧹 Starting automatic cleanup of intermediate files...")
+            self.main_gui.log("Starting automatic cleanup of intermediate files...")
             total_cleaned = 0
             
             for job, video_path in results:

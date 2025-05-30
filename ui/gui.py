@@ -3,11 +3,11 @@
 Video Generator GUI
 A professional-looking UI for generating videos from a text and images
 """
+from tkinter import messagebox, ttk
+
 import datetime
 import os
 import tkinter as tk
-from tkinter import messagebox, ttk
-import threading
 
 from utils.gui_helpers import *
 
@@ -18,27 +18,38 @@ class UIComponentFactory:
     def __init__(self, colors):
         self.colors = colors
 
-    def create_styled_button(self, parent, text, command, bg_color=None, width=8, **kwargs):
-        """Create a consistently styled button"""
-        bg_color = bg_color or self.colors["secondary"]
-        hover_color = kwargs.pop('hover_color', self.colors["primary"])
-
-        button = tk.Button(
+    def create_styled_button(self, parent, text, command, bg_color=None, width=8, style="default", **kwargs):
+        """Create a button that looks exactly like ttk.Button to match merge tab styling"""
+        # Use ttk.Button for consistent styling with merge tab
+        button = ttk.Button(
             parent,
             text=text,
-            bg=bg_color,
-            fg="white",
-            font=GUI_FONTS["button"],  # Use config font
-            relief="flat",
-            width=width,
             command=command,
-            activebackground=hover_color,
+            width=width,
             **kwargs
         )
-
-        # Add hover effect
-        HoverEffect(button, hover_bg=hover_color, normal_bg=bg_color)
         return button
+
+    def create_icon_button(self, parent, text, command, icon="", bg_color=None, width=12, **kwargs):
+        """Create a button with icon and text matching merge tab ttk.Button style"""
+        display_text = f"{icon} {text}" if icon else text
+        return ttk.Button(parent, text=display_text, command=command, width=width, **kwargs)
+
+    def create_primary_button(self, parent, text, command, width=15, **kwargs):
+        """Create a ttk.Button matching merge tab style"""
+        return ttk.Button(parent, text=text, command=command, width=width, **kwargs)
+
+    def create_secondary_button(self, parent, text, command, width=12, **kwargs):
+        """Create a ttk.Button matching merge tab style"""  
+        return ttk.Button(parent, text=text, command=command, width=width, **kwargs)
+
+    def create_danger_button(self, parent, text, command, width=12, **kwargs):
+        """Create a ttk.Button matching merge tab style"""
+        return ttk.Button(parent, text=text, command=command, width=width, **kwargs)
+
+    def create_light_button(self, parent, text, command, width=12, **kwargs):
+        """Create a ttk.Button matching merge tab style"""
+        return ttk.Button(parent, text=text, command=command, width=width, **kwargs)
 
     def create_progress_section(self, parent, title="Progress"):
         """Create a consistent progress section with bar and label"""
@@ -72,6 +83,7 @@ try:
     from ui.input_tab import InputTab
     from ui.image_tab import ImageTab
     from ui.video_tab import VideoTab
+    from ui.merge_video_tab import MergeVideoTab
     from ui.option_tab import OptionTab
     from ui.batch_tab import BatchTab
 except ImportError as e:
@@ -168,6 +180,7 @@ try:
     from ui.input_tab import InputTab
     from ui.image_tab import ImageTab
     from ui.video_tab import VideoTab
+    from ui.merge_video_tab import MergeVideoTab
     from ui.option_tab import OptionTab
     from ui.batch_tab import BatchTab
 except ImportError as e:
@@ -198,6 +211,13 @@ except ImportError as e:
             self.gui = gui
             label = tk.Label(parent, text="Video Tab - Import Error\nPlease check your installation", 
                            font=("Arial", 12), fg="red")
+            label.pack(expand=True)
+    class MergeVideoTab:
+        def __init__(self, parent, gui):
+            print("WARNING: Using fallback MergeVideoTab")
+            self.parent = parent
+            self.gui = gui
+            label = tk.Label(parent, text="Merge Video Tab - Import Error\nPlease check your installation",font=("Arial", 12), fg="red")
             label.pack(expand=True)
 
     class OptionTab:
@@ -235,6 +255,7 @@ class VideoGeneratorGUI:
         self.input_tab_component = None
         self.image_tab_component = None
         self.video_tab_component = None
+        self.merge_video_tab_component = None
         self.option_tab_component = None
         self.batch_tab_component = None
 
@@ -268,6 +289,7 @@ class VideoGeneratorGUI:
         self.input_tab = ttk.Frame(self.notebook)
         self.image_tab = ttk.Frame(self.notebook)
         self.video_tab = ttk.Frame(self.notebook)
+        self.merge_video_tab = ttk.Frame(self.notebook)
         self.option_tab = ttk.Frame(self.notebook)
         self.log_tab = ttk.Frame(self.notebook)
         self.batch_tab = ttk.Frame(self.notebook)
@@ -276,6 +298,7 @@ class VideoGeneratorGUI:
         self.notebook.add(self.input_tab, text="Input")
         self.notebook.add(self.image_tab, text="Images")
         self.notebook.add(self.video_tab, text="Video")
+        self.notebook.add(self.merge_video_tab, text="Merge Video")
         self.notebook.add(self.option_tab, text="Options")
         self.notebook.add(self.batch_tab, text="Batch")
         self.notebook.add(self.log_tab, text="Log")
@@ -285,6 +308,7 @@ class VideoGeneratorGUI:
         self.setup_input_tab()
         self.setup_image_tab()
         self.setup_video_tab()
+        self.setup_merge_tab()
         self.setup_option_tab()
         self.setup_batch_tab()
 
@@ -322,6 +346,9 @@ class VideoGeneratorGUI:
         """Set up the video tab using the VideoTab component"""
         # Create the VideoTab component
         self.video_tab_component = VideoTab(self.video_tab, self)
+    def setup_merge_tab(self):
+        """Set up the merge video tab using the MergeVideoTab component"""
+        self.merge_video_tab_component = MergeVideoTab(self.merge_video_tab, self)
 
     def setup_option_tab(self):
         """Set up the option tab using the OptionTab component"""
@@ -415,7 +442,7 @@ class VideoGeneratorGUI:
         self.update_progress_ui(100, "Video generated successfully")
         self.reset_ui()
         
-        # FIXED: Add post-completion cleanup option
+        # FIXED: Add a post-completion cleanup option
         cleanup_response = messagebox.askyesno(
             "Cleanup Files", 
             "Video generated successfully!\n\nDo you want to clean up intermediate files (voice.mp3, subtitles.ass, etc.) to save space?\n\nClick 'No' to keep them for debugging."
@@ -557,12 +584,12 @@ def main():
         # Get the base path for the application
         if getattr(sys, 'frozen', False):
             # Running as PyInstaller executable
-            if hasattr(sys, '_MEIPASS'):
+            if hasattr(sys, '_MEI PASS'):
                 base_path = sys._MEIPASS
             else:
                 base_path = os.path.dirname(sys.executable)
         else:
-            # Running as script
+            # Running as a script
             base_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         
         icon_path = os.path.join(base_path, 'app_icon.ico')
@@ -591,7 +618,7 @@ def main():
         center_y = int(screen_height / 2 - window_height / 2)
         root.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
     
-    # Make window responsive
+    # Make a window responsive
     root.grid_rowconfigure(0, weight=1)
     root.grid_columnconfigure(0, weight=1)
     
