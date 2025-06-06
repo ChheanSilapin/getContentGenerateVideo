@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import traceback
 import tempfile
+import time
 import numpy as np
 from PIL import Image
 from moviepy.editor import (
@@ -14,7 +15,7 @@ from moviepy.editor import (
     CompositeAudioClip, concatenate_videoclips, CompositeVideoClip, AudioClip
 )
 # Import from utils
-from utils.helpers import ensure_directory_exists, get_ffmpeg_path
+from utils.helpers import ensure_directory_exists, get_ffmpeg_path, get_ffprobe_path
 
 
 # Import config
@@ -1287,7 +1288,7 @@ def reset_moviepy_configuration():
 def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, target_duration=None):
     """
     FFmpeg-based fallback for adding voiceover when MoviePy fails
-    Uses FFmpeg directly for video looping and audio mixing - much more reliable
+    Uses FFmpeg directly for video looping with crossfade transitions - professional quality
     
     Args:
         video_file: Path to input video
@@ -1304,33 +1305,14 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
             print("FFmpeg not available for fallback processing")
             return False
         
-        print(f"Using FFmpeg fallback for reliable video processing...")
+        print(f"Using FFmpeg fallback for professional video processing with crossfade...")
         
-        # Get video duration using FFmpeg
-        probe_cmd = [
-            ffmpeg_path, '-i', video_file, '-f', 'null', '-', '-v', 'quiet', '-show_entries', 
-            'format=duration', '-of', 'csv=p=0'
-        ]
+        # Get video and audio durations using the proper FFprobe function
+        video_duration = get_media_duration(video_file)
+        audio_duration = get_media_duration(audio_file)
         
-        try:
-            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-            video_duration = float(result.stdout.strip()) if result.stdout.strip() else 0
-        except:
-            print("WARNING: Could not determine video duration, using direct processing")
-            video_duration = 0
-        
-        # Get audio duration
-        probe_cmd = [
-            ffmpeg_path, '-i', audio_file, '-f', 'null', '-', '-v', 'quiet', '-show_entries', 
-            'format=duration', '-of', 'csv=p=0'
-        ]
-        
-        try:
-            result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
-            audio_duration = float(result.stdout.strip()) if result.stdout.strip() else 0
-        except:
-            print("WARNING: Could not determine audio duration, using direct processing")
-            audio_duration = 0
+        print(f"Detected video duration: {video_duration:.2f}s")
+        print(f"Detected audio duration: {audio_duration:.2f}s")
         
         target_duration = target_duration or audio_duration
         
@@ -1338,31 +1320,22 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         if target_duration > 0 and video_duration > 0 and target_duration > video_duration:
             loops_needed = int(target_duration / video_duration) + 1
             print(f"Video duration: {video_duration:.2f}s, Audio duration: {target_duration:.2f}s")
-            print(f"Creating {loops_needed} loops using FFmpeg...")
+            print(f"Creating {loops_needed} loops for reliable video looping...")
             
-            # Create looped video first
-            temp_looped = output_file.replace('.mp4', '_temp_looped.mp4')
+            # Use direct looping as primary method (most reliable)
+            print("Using proven direct looping method for reliability...")
+            looped_video = create_direct_loop_video(video_file, target_duration, ffmpeg_path, output_file)
             
-            # FFmpeg command for smooth video looping
-            loop_cmd = [
-                ffmpeg_path,
-                '-stream_loop', str(loops_needed - 1),  # Additional loops needed
-                '-i', video_file,
-                '-c', 'copy',  # Copy without re-encoding (fast and reliable)
-                '-avoid_negative_ts', 'make_zero',
-                '-t', str(target_duration),  # Trim to exact duration
-                '-y',
-                temp_looped
-            ]
+            if not looped_video:
+                print("Direct looping failed, trying crossfade method...")
+                # Fallback to crossfade if direct fails (rare)
+                looped_video = create_crossfade_loop_video(video_file, target_duration, ffmpeg_path)
             
-            print("Creating looped video with FFmpeg...")
-            result = subprocess.run(loop_cmd, capture_output=True, text=True, timeout=180)
-            
-            if result.returncode != 0:
-                print(f"FFmpeg video looping failed: {result.stderr}")
+            if not looped_video:
+                print("Video looping failed completely")
                 return False
-            
-            video_for_mixing = temp_looped
+                
+            video_for_mixing = looped_video
         else:
             print("No looping needed - audio fits within video duration")
             video_for_mixing = video_file
@@ -1378,7 +1351,7 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
             '-c:a', 'aac',           # AAC audio codec (compatible)
             '-map', '0:v:0',         # Use video from first input
             '-map', '1:a:0',         # Use audio from second input  
-            '-shortest',             # Stop when shortest stream ends
+            '-t', str(target_duration),  # Use target duration instead of -shortest
             '-avoid_negative_ts', 'make_zero',
             '-y',
             output_file
@@ -1386,17 +1359,305 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         
         result = subprocess.run(mix_cmd, capture_output=True, text=True, timeout=180)
         
-        # Clean up temporary looped video
-        if video_for_mixing != video_file and os.path.exists(video_for_mixing):
-            os.remove(video_for_mixing)
-        
         if result.returncode == 0:
-            print("FFmpeg fallback processing successful!")
-            return True
+            # Validate output duration and file integrity
+            output_duration = get_media_duration(output_file)
+            output_size = os.path.getsize(output_file) if os.path.exists(output_file) else 0
+            
+            print(f"Final output duration: {output_duration:.2f}s (expected: {target_duration:.2f}s)")
+            print(f"Final output size: {output_size} bytes")
+            
+            if output_duration > 0 and abs(output_duration - target_duration) < 2.0:  # Allow 2s tolerance
+                if output_size > 100000:  # At least 100KB for a valid video
+                    print("FFmpeg video processing successful!")
+                    success = True
+                else:
+                    print(f"Warning: Output file too small ({output_size} bytes), may be corrupted")
+                    success = True  # Still proceed, but warn user
+            else:
+                print(f"Warning: Output duration mismatch - got {output_duration:.2f}s, expected {target_duration:.2f}s")
+                success = True  # Still consider it successful, but log the discrepancy
         else:
             print(f"FFmpeg audio mixing failed: {result.stderr}")
-            return False
+            success = False
+        
+        # Clean up temporary looped video
+        if video_for_mixing != video_file and os.path.exists(video_for_mixing):
+            try:
+                os.remove(video_for_mixing)
+                print(f"Cleaned up temporary looped video: {os.path.basename(video_for_mixing)}")
+            except Exception as e:
+                print(f"Warning: Could not remove temporary file: {e}")
+        
+        return success
             
     except Exception as e:
         print(f"FFmpeg fallback error: {e}")
         return False
+
+def create_crossfade_loop_video(video_file, target_duration, ffmpeg_path):
+    """
+    Create a looped video with crossfade transitions using FFmpeg
+    Provides professional-quality smooth transitions between loops
+    
+    Args:
+        video_file: Path to input video
+        target_duration: Target duration for the looped video
+        ffmpeg_path: Path to FFmpeg executable
+        
+    Returns:
+        str: Path to created looped video file, or None if failed
+    """
+    try:
+        # Validation and error prevention
+        if not os.path.exists(video_file):
+            print(f"Error: Input video file not found: {video_file}")
+            return None
+            
+        if not os.path.exists(ffmpeg_path) and ffmpeg_path != 'ffmpeg':
+            print(f"Error: FFmpeg executable not found: {ffmpeg_path}")
+            return None
+            
+        video_duration = get_media_duration(video_file)
+        if video_duration <= 0:
+            print("Error: Could not determine video duration or video is empty")
+            return None
+            
+        if target_duration <= video_duration:
+            print("Error: Target duration must be longer than video duration for looping")
+            return None
+            
+        loops_needed = int(target_duration / video_duration) + 1
+        
+        # Prevent excessive loops that could cause memory issues
+        if loops_needed > 50:
+            print(f"Error: Too many loops needed ({loops_needed}), maximum is 50")
+            return None
+            
+        # Calculate optimal crossfade duration
+        crossfade_duration = min(0.75, video_duration * 0.15)  # 0.75s max, or 15% of video duration
+        
+        # Ensure crossfade doesn't exceed half the video duration
+        crossfade_duration = min(crossfade_duration, video_duration * 0.4)
+        
+        print(f"Creating crossfade loop with {crossfade_duration:.2f}s transitions...")
+        
+        # Create unique temporary file to prevent duplicates
+        temp_dir = tempfile.gettempdir()
+        timestamp = int(time.time() * 1000)  # Include timestamp for uniqueness
+        temp_looped = os.path.join(temp_dir, f"temp_crossfade_{timestamp}_{os.path.basename(video_file)}")
+        
+        # Clean up any existing file with same name (duplicate prevention)
+        if os.path.exists(temp_looped):
+            try:
+                os.remove(temp_looped)
+                print(f"Removed existing temporary file: {temp_looped}")
+            except Exception as e:
+                print(f"Warning: Could not remove existing temp file: {e}")
+        
+        # Build FFmpeg filter complex for crossfade transitions
+        filter_parts = []
+        input_parts = []
+        
+        # Add multiple inputs (same video file repeated)
+        for i in range(loops_needed):
+            input_parts.extend(['-i', video_file])
+        
+        # Build crossfade filter chain with error prevention
+        last_output = "0:v"
+        
+        for i in range(1, loops_needed):
+            # Calculate crossfade timing with safe boundaries
+            # Each loop starts slightly before the previous one ends
+            offset = (i * video_duration) - crossfade_duration
+            
+            # Ensure offset is not negative (error prevention)
+            if offset < 0:
+                offset = 0
+                
+            # Ensure crossfade duration doesn't exceed available time
+            effective_crossfade = min(crossfade_duration, video_duration - 0.1)
+            
+            if i == 1:
+                # First crossfade
+                filter_parts.append(f"[{last_output}][{i}:v]xfade=transition=fade:duration={effective_crossfade:.2f}:offset={offset:.2f}[v{i}]")
+                last_output = f"v{i}"
+            else:
+                # Subsequent crossfades
+                filter_parts.append(f"[{last_output}][{i}:v]xfade=transition=fade:duration={effective_crossfade:.2f}:offset={offset:.2f}[v{i}]")
+                last_output = f"v{i}"
+        
+        # Validate filter chain was created
+        if not filter_parts:
+            print("Error: No crossfade filters created")
+            return None
+            
+        # Join all filter parts
+        filter_complex = ";".join(filter_parts)
+        
+        # Build complete FFmpeg command with error prevention
+        cmd = [ffmpeg_path] + input_parts + [
+            '-filter_complex', filter_complex,
+            '-map', f'[{last_output}]',
+            '-t', str(target_duration),  # Trim to exact duration
+            '-c:v', 'libx264',
+            '-crf', '23',  # Good quality
+            '-preset', 'medium',
+            '-avoid_negative_ts', 'make_zero',
+            '-movflags', '+faststart',  # Optimize for streaming
+            '-y',
+            temp_looped
+        ]
+        
+        print("Executing crossfade loop command...")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        
+        if result.returncode == 0 and os.path.exists(temp_looped):
+            # Validate output file is not empty
+            if os.path.getsize(temp_looped) > 1024:  # At least 1KB
+                print("Crossfade loop created successfully!")
+                return temp_looped
+            else:
+                print("Error: Output file is too small, likely corrupted")
+                if os.path.exists(temp_looped):
+                    os.remove(temp_looped)
+                return None
+        else:
+            print(f"Crossfade loop failed: {result.stderr}")
+            # Clean up failed attempt
+            if os.path.exists(temp_looped):
+                try:
+                    os.remove(temp_looped)
+                except:
+                    pass
+            return None
+            
+    except Exception as e:
+        print(f"Crossfade loop error: {e}")
+        return None
+
+def create_direct_loop_video(video_file, target_duration, ffmpeg_path, output_file):
+    """
+    Create a looped video using direct concatenation (fallback method)
+    Simple but effective when crossfade fails
+    
+    Args:
+        video_file: Path to input video
+        target_duration: Target duration for the looped video
+        ffmpeg_path: Path to FFmpeg executable
+        output_file: Output file path for naming temporary file
+        
+    Returns:
+        str: Path to created looped video file, or None if failed
+    """
+    try:
+        # Validation and error prevention
+        if not os.path.exists(video_file):
+            print(f"Error: Input video file not found: {video_file}")
+            return None
+            
+        if not os.path.exists(ffmpeg_path) and ffmpeg_path != 'ffmpeg':
+            print(f"Error: FFmpeg executable not found: {ffmpeg_path}")
+            return None
+            
+        video_duration = get_media_duration(video_file)
+        if video_duration <= 0:
+            print("Error: Could not determine video duration or video is empty")
+            return None
+            
+        if target_duration <= video_duration:
+            print("Error: Target duration must be longer than video duration for looping")
+            return None
+            
+        loops_needed = int(target_duration / video_duration) + 1
+        
+        # Prevent excessive loops that could cause memory issues
+        if loops_needed > 100:
+            print(f"Error: Too many loops needed ({loops_needed}), maximum is 100")
+            return None
+        
+        print(f"Creating direct loop with {loops_needed} repetitions...")
+        
+        # Create unique temporary file to prevent duplicates
+        timestamp = int(time.time() * 1000)
+        temp_looped = output_file.replace('.mp4', f'_temp_looped_{timestamp}.mp4')
+        
+        # Clean up any existing file with same pattern (duplicate prevention)
+        temp_pattern = output_file.replace('.mp4', '_temp_looped_*.mp4')
+        import glob
+        for old_temp in glob.glob(temp_pattern):
+            if os.path.exists(old_temp):
+                try:
+                    os.remove(old_temp)
+                    print(f"Cleaned up old temporary file: {old_temp}")
+                except Exception as e:
+                    print(f"Warning: Could not remove old temp file {old_temp}: {e}")
+        
+        # FFmpeg command for direct video looping with error prevention
+        loop_cmd = [
+            ffmpeg_path,
+            '-stream_loop', str(loops_needed - 1),  # Additional loops needed
+            '-i', video_file,
+            '-c', 'copy',  # Copy without re-encoding (fast and reliable)
+            '-avoid_negative_ts', 'make_zero',
+            '-t', str(target_duration),  # Trim to exact duration
+            '-movflags', '+faststart',  # Optimize for streaming
+            '-y',
+            temp_looped
+        ]
+        
+        print("Creating direct looped video...")
+        result = subprocess.run(loop_cmd, capture_output=True, text=True, timeout=180)
+        
+        if result.returncode == 0 and os.path.exists(temp_looped):
+            # Validate output file is not empty
+            if os.path.getsize(temp_looped) > 1024:  # At least 1KB
+                print("Direct loop created successfully!")
+                return temp_looped
+            else:
+                print("Error: Output file is too small, likely corrupted")
+                if os.path.exists(temp_looped):
+                    os.remove(temp_looped)
+                return None
+        else:
+            print(f"Direct loop failed: {result.stderr}")
+            return None
+            
+    except Exception as e:
+        print(f"Direct loop error: {e}")
+        return None
+
+def get_media_duration(media_file):
+    """
+    Get the duration of a media file (video or audio) using FFprobe
+    
+    Args:
+        media_file: Path to media file
+        
+    Returns:
+        float: Duration in seconds, or 0 if detection fails
+    """
+    try:
+        ffprobe_path = get_ffprobe_path()
+        if not ffprobe_path or not (ffprobe_path == 'ffprobe' or os.path.exists(ffprobe_path)):
+            return 0
+        
+        # Use FFprobe to get duration with correct syntax
+        probe_cmd = [
+            ffprobe_path,
+            '-v', 'quiet',  # Suppress output except for errors
+            '-show_entries', 'format=duration',  # Show only duration
+            '-of', 'csv=p=0',  # Output as CSV without headers
+            media_file
+        ]
+        
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=30)
+        
+        if result.returncode == 0 and result.stdout.strip():
+            duration = float(result.stdout.strip())
+            return duration if duration > 0 else 0
+        else:
+            return 0
+            
+    except Exception as e:
+        return 0

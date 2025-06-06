@@ -171,6 +171,38 @@ def get_ffmpeg_path():
     # Fallback to system PATH
     return 'ffmpeg'
 
+def get_ffprobe_path():
+    """
+    Get the path to FFprobe executable, prioritizing bundled version
+
+    Returns:
+        str: Path to FFprobe executable
+    """
+    # Check if running as PyInstaller executable
+    if getattr(sys, 'frozen', False):
+        # Running as PyInstaller executable
+        if hasattr(sys, '_MEIPASS'):
+            # PyInstaller extracts files to sys._MEIPASS
+            bundled_ffprobe = os.path.join(sys._MEIPASS, 'ffprobe.exe')
+            if os.path.exists(bundled_ffprobe):
+                return bundled_ffprobe
+
+        # Fallback: check in executable directory
+        exe_dir = os.path.dirname(sys.executable)
+        exe_dir_ffprobe = os.path.join(exe_dir, 'ffprobe.exe')
+        if os.path.exists(exe_dir_ffprobe):
+            return exe_dir_ffprobe
+
+    # Check in current script directory (for development)
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)  # Go up one level from utils/
+    local_ffprobe = os.path.join(project_root, 'ffprobe.exe')
+    if os.path.exists(local_ffprobe):
+        return local_ffprobe
+
+    # Fallback to system PATH
+    return 'ffprobe'
+
 def get_file_extension(file_path):
     """
     Get the extension of a file

@@ -22,7 +22,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='VideoGenerator_1.0.3',
+    name='VideoGenerator_1.0.4',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
