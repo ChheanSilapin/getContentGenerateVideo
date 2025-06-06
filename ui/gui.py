@@ -3,11 +3,11 @@
 Video Generator GUI
 A professional-looking UI for generating videos from a text and images
 """
-from tkinter import messagebox, ttk
+from utils.common_imports import tk, messagebox, ttk, filedialog
 
 import datetime
 import os
-import tkinter as tk
+import sys
 
 from utils.gui_helpers import *
 
@@ -52,20 +52,121 @@ class UIComponentFactory:
         return ttk.Button(parent, text=text, command=command, width=width, **kwargs)
 
     def create_progress_section(self, parent, title="Progress"):
-        """Create a consistent progress section with bar and label"""
-        frame = ttk.LabelFrame(parent, text=title, padding=2)  # Minimal padding for 800x800
+        """Create a consistent progress section with bar and prominent percentage label"""
+        frame = ttk.LabelFrame(parent, text=title, padding=8)
 
-        progress_bar = ttk.Progressbar(frame, orient="horizontal", mode='determinate')
-        progress_bar.pack(fill="x", padx=1, pady=1)  # Minimal padding
+        # Progress container for side-by-side layout
+        progress_container = ttk.Frame(frame)
+        progress_container.pack(fill="x", padx=5, pady=5)
 
-        progress_label = ttk.Label(frame, text="0%", font=GUI_FONTS["label"])  # Use config font
-        progress_label.pack(pady=0)  # No padding
+        # Progress bar
+        progress_bar = ttk.Progressbar(
+            progress_container, 
+            orient="horizontal", 
+            mode='determinate',
+            length=400
+        )
+        progress_bar.pack(side="left", fill="x", expand=True, padx=(0, 10))
+
+        # Enhanced percentage label - more prominent and visible
+        progress_label = ttk.Label(
+            progress_container, 
+            text="0%", 
+            font=("Cascadia Code", 14, "bold"),
+            foreground="#2c3e50",
+            background="#ecf0f1",
+            relief="solid",
+            borderwidth=1,
+            width=8,
+            anchor="center"
+        )
+        progress_label.pack(side="right", padx=(5, 0))
 
         return frame, progress_bar, progress_label
 
     def create_labeled_frame(self, parent, title, padding=2):  # Minimal default padding for 800x800
         """Create a consistently styled labeled frame"""
         return ttk.LabelFrame(parent, text=title, padding=padding)
+
+    def create_output_folder_section(self, parent, title="Output Folder", initial_folder=None):
+        """Create a reusable output folder selection section"""
+        frame = ttk.LabelFrame(parent, text=title, padding=8)
+
+        # Output folder container
+        folder_container = ttk.Frame(frame)
+        folder_container.pack(fill="x", padx=5, pady=5)
+
+        # Label
+        ttk.Label(
+            folder_container,
+            text="Save to:",
+            font=("Cascadia Code", 10, "bold")
+        ).pack(anchor="w", pady=(0, 4))
+
+        # Path display and browse button row
+        path_row = ttk.Frame(folder_container)
+        path_row.pack(fill="x")
+
+        # Output folder variable
+        output_folder_var = tk.StringVar()
+        
+        # Set initial value
+        if initial_folder:
+            output_folder_var.set(initial_folder)
+        else:
+            try:
+                from utils.helpers import get_output_directory
+                default_folder = get_output_directory()
+                output_folder_var.set(default_folder)
+            except:
+                output_folder_var.set("Default (Auto)")
+
+        # Path entry (readonly)
+        path_entry = ttk.Entry(
+            path_row,
+            textvariable=output_folder_var,
+            state="readonly",
+            font=("Cascadia Code", 10),
+            width=50
+        )
+        path_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
+
+        # Browse button
+        def browse_folder():
+            folder_path = filedialog.askdirectory(
+                title="Select Output Folder",
+                initialdir=output_folder_var.get() if output_folder_var.get() != "Default (Auto)" else None
+            )
+            if folder_path:
+                output_folder_var.set(folder_path)
+
+        browse_button = self.create_icon_button(
+            path_row, "Browse", browse_folder,
+            icon="📂", width=12
+        )
+        browse_button.pack(side="right")
+
+        # Current folder info
+        info_label = ttk.Label(
+            folder_container,
+            text="",
+            font=("Cascadia Code", 9),
+            foreground="#7f8c8d"
+        )
+        info_label.pack(anchor="w", pady=(4, 0))
+
+        # Update info label when folder changes
+        def update_info_label(*args):
+            current_path = output_folder_var.get()
+            if current_path and current_path != "Default (Auto)":
+                info_label.config(text=f"Current: {os.path.basename(current_path)}")
+            else:
+                info_label.config(text="Using default output folder")
+
+        output_folder_var.trace("w", update_info_label)
+        update_info_label()  # Set initial value
+
+        return frame, output_folder_var
 
 # Import the model and UI components
 try:
@@ -76,83 +177,20 @@ try:
         print("OpenCV (cv2) not available. Some features may be limited.")
 
     # Import config
-    from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS
+    from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS, get_tab_visibility
     from models.video_generator import VideoGeneratorModel
     from ui.image_selector import ImageSelector
     from ui.text_redirector import TextRedirector
-    from ui.input_tab import InputTab
-    from ui.image_tab import ImageTab
-    from ui.video_tab import VideoTab
-    from ui.merge_video_tab import MergeVideoTab
-    from ui.option_tab import OptionTab
-    from ui.batch_tab import BatchTab
 except ImportError as e:
     print(f"Error importing required modules: {e}")
-    # Import config values with proper error handling instead of hardcoded duplicates
+    # Simplified config import with proper error handling
     try:
-        from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS
+        from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS, get_tab_visibility
     except ImportError as config_error:
-        print(f"Warning: Could not import config values: {config_error}")
-        # Use minimal fallback values only if absolutely necessary
-        GUI_WINDOW_SIZE = "800x800"
-        GUI_TITLE = "Video Generator"
-        GUI_MIN_WIDTH = 800
-        GUI_MIN_HEIGHT = 600
-        GUI_RESIZABLE = True
-        GUI_CENTER_ON_SCREEN = True
-        # Use config module constants instead of duplicating them
-        from config import GUI_COLORS, GUI_FONTS
-    # Create a fallback model class if import fails
-    class VideoGeneratorModel:
-        """Fallback model class when the real one can't be imported"""
-        def __init__(self):
-            print("WARNING: Using fallback VideoGeneratorModel")
-            self.text_input = None
-            self.image_source = None
-            self.website_url = None
-            self.local_folder = None
-            self.selected_images = []
-            self.processing_option = "cpu"
-            self.progress_callback = None
-
-        def set_progress_callback(self, callback):
-            """Set a callback function for progress updates"""
-            self.progress_callback = callback
-
-        def generate_video(self, stop_event=None):
-            """Generate a placeholder video"""
-            _ = stop_event  # Acknowledge unused parameter
-            print("Using fallback video generation")
-            # Create output directory
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-            output_dir = os.path.join("output", f"video_{timestamp}")
-            os.makedirs(output_dir, exist_ok=True)
-
-            # Create placeholder files
-            subtitle_file = os.path.join(output_dir, "subtitles.ass")
-            video_file = os.path.join(output_dir, "video.mp4")
-
-            with open(subtitle_file, "w") as f:
-                f.write("Placeholder subtitle file")
-
-            with open(video_file, "w") as f:
-                f.write("Placeholder video file")
-
-            return subtitle_file, video_file, output_dir
-
-        def finalize_video(self, subtitle_path, video_path, output_dir, stop_event=None):
-            """Finalize the placeholder video"""
-            # Acknowledge unused parameters
-            _ = subtitle_path
-            _ = video_path
-            _ = stop_event
-
-            final_output = os.path.join(output_dir, "final_output.mp4")
-
-            with open(final_output, "w") as f:
-                f.write("Placeholder final video file")
-
-            return final_output
+        print(f"CRITICAL: Could not import config values: {config_error}")
+        print("Please ensure config.py is present and accessible.")
+        # Exit gracefully rather than using hardcoded duplicates
+        sys.exit(1)
 
 # Import services
 try:
@@ -165,7 +203,7 @@ except ImportError as e:
         print(f"Fallback: download_images({url}, {output_folder}, {max_images})")
         return []
 
-    def download_images_for_preview(url, output_folder, max_images=10):
+    def download_images_for_preview(url, output_folder, max_images=5):
         """Fallback download_images_for_preview function"""
         print(f"Fallback: download_images_for_preview({url}, {output_folder}, {max_images})")
         return []
@@ -173,9 +211,8 @@ except ImportError as e:
     def copy_selected_images(image_paths, output_folder):
         """Fallback copy_selected_images function"""
         print(f"Fallback: copy_selected_images({image_paths}, {output_folder})")
-        return False
 
-# Add fallback UI component classes
+# Import UI components - if they fail, the application should exit gracefully
 try:
     from ui.input_tab import InputTab
     from ui.image_tab import ImageTab
@@ -183,60 +220,10 @@ try:
     from ui.merge_video_tab import MergeVideoTab
     from ui.option_tab import OptionTab
     from ui.batch_tab import BatchTab
-except ImportError as e:
-    print(f"Error importing UI components: {e}")
-    # Create fallback UI component classes
-    class InputTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback InputTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Input Tab - Import Error\nPlease check your installation", 
-                           font=("Arial", 12), fg="red")
-            label.pack(expand=True)
-
-    class ImageTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback ImageTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Image Tab - Import Error\nPlease check your installation", 
-                           font=("Arial", 12), fg="red")
-            label.pack(expand=True)
-
-    class VideoTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback VideoTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Video Tab - Import Error\nPlease check your installation", 
-                           font=("Arial", 12), fg="red")
-            label.pack(expand=True)
-    class MergeVideoTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback MergeVideoTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Merge Video Tab - Import Error\nPlease check your installation",font=("Arial", 12), fg="red")
-            label.pack(expand=True)
-
-    class OptionTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback OptionTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Option Tab - Import Error\nPlease check your installation", 
-                           font=("Arial", 12), fg="red")
-            label.pack(expand=True)
-
-    class BatchTab:
-        def __init__(self, parent, gui):
-            print("WARNING: Using fallback BatchTab")
-            self.parent = parent
-            self.gui = gui
-            label = tk.Label(parent, text="Batch Tab - Import Error\nPlease check your installation", 
-                           font=("Arial", 12), fg="red")
-            label.pack(expand=True)
+except ImportError as ui_error:
+    print(f"CRITICAL: Could not import UI components: {ui_error}")
+    print("Please ensure all UI modules are present and accessible.")
+    sys.exit(1)
 
 class VideoGeneratorGUI:
     """Main GUI class for the Video Generator application"""
@@ -294,23 +281,40 @@ class VideoGeneratorGUI:
         self.log_tab = ttk.Frame(self.notebook)
         self.batch_tab = ttk.Frame(self.notebook)
 
-        # Add tabs to notebook with shorter names for small screens
-        self.notebook.add(self.input_tab, text="Input")
-        self.notebook.add(self.image_tab, text="Images")
-        self.notebook.add(self.video_tab, text="Video")
-        self.notebook.add(self.merge_video_tab, text="Merge Video")
-        self.notebook.add(self.option_tab, text="Options")
-        self.notebook.add(self.batch_tab, text="Batch")
-        self.notebook.add(self.log_tab, text="Log")
+        # Get tab visibility configuration
+        self.tabs_to_show = get_tab_visibility()
+        
+        # Conditionally add tabs to notebook based on configuration
+        if self.tabs_to_show['input']:
+            self.notebook.add(self.input_tab, text="Input")
+        if self.tabs_to_show['images']:
+            self.notebook.add(self.image_tab, text="Images")
+        if self.tabs_to_show['video']:
+            self.notebook.add(self.video_tab, text="Video")
+        if self.tabs_to_show['merge']:
+            self.notebook.add(self.merge_video_tab, text="Merge Video")
+        if self.tabs_to_show['options']:
+            self.notebook.add(self.option_tab, text="Options")
+        if self.tabs_to_show['batch']:
+            self.notebook.add(self.batch_tab, text="Batch")
+        if self.tabs_to_show['log']:
+            self.notebook.add(self.log_tab, text="Log")
 
         # Set up tabs (log tab first since other tabs may need to log messages)
-        self.setup_log_tab()
-        self.setup_input_tab()
-        self.setup_image_tab()
-        self.setup_video_tab()
-        self.setup_merge_tab()
-        self.setup_option_tab()
-        self.setup_batch_tab()
+        if self.tabs_to_show['log']:
+            self.setup_log_tab()
+        if self.tabs_to_show['input']:
+            self.setup_input_tab()
+        if self.tabs_to_show['images']:
+            self.setup_image_tab()
+        if self.tabs_to_show['video']:
+            self.setup_video_tab()
+        if self.tabs_to_show['merge']:
+            self.setup_merge_tab()
+        if self.tabs_to_show['options']:
+            self.setup_option_tab()
+        if self.tabs_to_show['batch']:
+            self.setup_batch_tab()
 
     def _configure_styles(self):
         """Configure ttk styles for consistent appearance"""
@@ -380,6 +384,8 @@ class VideoGeneratorGUI:
 
         self.log("Welcome to Video Generator")
         self.log("Enter text and select images to create your video")
+        
+        
 
     def log(self, message):
         """Add a message to the log with timestamp"""
@@ -451,12 +457,16 @@ class VideoGeneratorGUI:
         if cleanup_response:
             try:
                 output_dir = os.path.dirname(final_video)
-                cleaned_count = self.model.cleanup_after_video_complete(output_dir, keep_debug_files=False)
-                self.log(f"✅ Cleaned up {cleaned_count} intermediate files to save space")
+                cleaned_count = self.model.cleanup_after_video_complete(
+                    output_dir, 
+                    keep_debug_files=False  # Full cleanup when user requests it
+                )
+                if cleaned_count > 0:
+                    self.log(f"Cleaned up {cleaned_count} intermediate files to save space")
             except Exception as e:
-                self.log(f"⚠️ Cleanup failed: {e}")
+                self.log(f"Cleanup failed: {e}")
         else:
-            self.log("📁 Keeping all intermediate files for debugging")
+            self.log("Keeping all intermediate files for debugging")
         
         # Ask if user wants to open the video
         open_response = messagebox.askyesno(
@@ -534,6 +544,9 @@ class VideoGeneratorGUI:
 
     def update_progress_ui(self, value, message=None):
         """Update the progress bar and log message"""
+        # Ensure progress value is within valid range (0-100)
+        value = max(0, min(100, int(value)))
+        
         # Update input tab progress bar through a component
         if self.input_tab_component:
             self.input_tab_component.progress_bar["value"] = value
@@ -580,11 +593,10 @@ def main():
     
     # Set icon using the correct path
     try:
-        import sys
         # Get the base path for the application
         if getattr(sys, 'frozen', False):
             # Running as PyInstaller executable
-            if hasattr(sys, '_MEI PASS'):
+            if hasattr(sys, '_MEIPASS'):
                 base_path = sys._MEIPASS
             else:
                 base_path = os.path.dirname(sys.executable)

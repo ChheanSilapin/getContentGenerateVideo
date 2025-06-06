@@ -5,6 +5,7 @@ import os
 import sys
 from datetime import datetime
 from version import __version__
+import config  # Import config for cleanup settings
 
 # Add the parent directory to the path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -12,38 +13,48 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # Import config
 from config import DEFAULT_ASPECT_RATIO
 
-from services.audio_service import generate_audio
-from services.image_service import copy_selected_images
-from services.video_service import create_enhanced_slideshow
-from services.subtitle_service import generate_subtitles
-from Final_Video import merge_video_subtitle
+# Import the generation functions
+try:
+    from services.audio_service import generate_audio
+    from services.image_service import copy_selected_images
+    from services.video_service import create_enhanced_slideshow
+    from services.subtitle_service import generate_subtitles
+    from Final_Video import merge_video_subtitle
+except ImportError as e:
+    print(f"Warning: Could not import some services: {e}")
+    # Try individual imports as fallback
+    try:
+        from services.audio_service import generate_audio
+    except ImportError:
+        generate_audio = None
+        print("Could not import generate_audio")
+    
+    try:
+        from services.image_service import copy_selected_images
+    except ImportError:
+        copy_selected_images = None
+        print("Could not import copy_selected_images")
+    
+    try:
+        from services.video_service import create_enhanced_slideshow
+    except ImportError:
+        create_enhanced_slideshow = None
+        print("Could not import create_enhanced_slideshow")
+    
+    try:
+        from services.subtitle_service import generate_subtitles
+    except ImportError:
+        generate_subtitles = None
+        print("Could not import generate_subtitles")
+    
+    try:
+        from Final_Video import merge_video_subtitle
+    except ImportError:
+        merge_video_subtitle = None
+        print("Could not import merge_video_subtitle")
 
 # Import title/content extraction from centralized location
-try:
-    from utils.helpers import get_title_content
-except ImportError:
-    # Fallback implementation if import fails
-    def get_title_content(text):
-        """
-        Extract title and content from text
-
-        Args:
-            text: Input text
-
-        Returns:
-            tuple: (title, content)
-        """
-        lines = text.strip().split('\n')
-
-        # If there's only one line, use it as both title and content
-        if len(lines) == 1:
-            return lines[0], lines[0]
-
-        # Use the first line as title and the rest as content
-        title = lines[0]
-        content = '\n'.join(lines[1:])
-
-        return title, content
+from utils.text_processing import get_title_content
 
 class VideoGeneratorModel:
     """Model for handling video generation"""
@@ -276,9 +287,8 @@ class VideoGeneratorModel:
             self.update_progress(0, "Failed to create video")
             return None, None, None
 
-        print("\n--- DEBUG: Video creation completed, about to update progress ---")
+        # Video creation completed, starting subtitle generation
         self.update_progress(70, "Video created successfully")
-        print("\n--- DEBUG: Progress updated, about to start subtitle generation ---")
 
         # Step 4: Generate subtitles
         print("\n--- Step 4: Generating Subtitles ---")
@@ -289,7 +299,7 @@ class VideoGeneratorModel:
         subtitle_style = self.enhancement_options.get("subtitle_style", "modern_glow")
         print(f"Using subtitle style: {subtitle_style}")
         
-        print(f"\n--- DEBUG: About to call generate_subtitles with: {self.text_input}, {video_file}, {audio_file}, {subtitle_file} ---")
+        # Generate subtitles for the video
         if not generate_subtitles(self.text_input, video_file, audio_file, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
@@ -303,7 +313,46 @@ class VideoGeneratorModel:
 
         self.update_progress(90, "Subtitles generated successfully")
 
-        return subtitle_file, video_file, output_dir
+        # Step 5: Finalize video with subtitles
+        final_video = self.finalize_video(subtitle_file, video_file, output_dir, stop_event)
+
+        # EXPLICIT MOVIEPY CLEANUP - Release file handles immediately after processing
+        try:
+            import gc
+            # Force garbage collection to release MoviePy references
+            gc.collect()
+            print("Released MoviePy file handles")
+        except Exception as e:
+            print(f"Note: MoviePy cleanup attempt: {e}")
+
+        if final_video:
+            print(f"Video processing completed successfully: {final_video}")
+            
+            # AUTO-CLEANUP for single videos - same as batch processing
+            cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+            if cleanup_enabled:
+                print("Starting automatic cleanup for single video...")
+                try:
+                    # Use the consolidated cleanup function
+                    cleaned_count = self.cleanup_after_video_complete(
+                        output_dir, 
+                        keep_debug_files=False  # Clean everything except final_output.mp4
+                    )
+                    if cleaned_count > 0:
+                        print(f"Auto-cleanup completed: Removed {cleaned_count} intermediate files")
+                        print("Only final_output.mp4 remains")
+                    else:
+                        print("No cleanup needed - files already clean")
+                except Exception as e:
+                    print(f"Warning: Cleanup failed for single video: {e}")
+            else:
+                print("Auto-cleanup disabled in config - keeping all files")
+            
+            # Return tuple format expected by UI (subtitle_file, final_video, output_dir)
+            return subtitle_file, final_video, output_dir
+        else:
+            print("Failed to finalize video")
+            return None, None, None
 
     def finalize_video(self, subtitlePath, videoPath, output_dir, stop_event=None):
         """
@@ -370,11 +419,21 @@ class VideoGeneratorModel:
 
     def cleanup_after_video_complete(self, output_dir, keep_debug_files=False):
         """
-        FIXED: Cleanup files AFTER video generation is complete
-        This should be called by the UI after the user gets their final video
+        Consolidated cleanup function - single source of truth for all temporary file cleanup
+        This should be called by the UI after video generation is complete
         """
         try:
-            print("Starting post-completion cleanup...")
+            print("Starting consolidated post-completion cleanup...")
+            
+            # Enhanced delay to allow MoviePy and TTS processes to fully release file handles
+            import time
+            import gc
+            
+            # Force garbage collection to release any lingering references
+            gc.collect()
+            
+            # Longer delay for video processing (MoviePy needs more time)
+            time.sleep(1.0)
             
             # Check if images were downloaded from URL - if so, keep them
             images_dir = os.path.join(output_dir, "images")
@@ -386,28 +445,63 @@ class VideoGeneratorModel:
                     shutil.rmtree(images_dir)
                     print(f"Cleaned up images directory: {images_dir}")
 
-            # Files to remove after video is complete (unless debugging)
-            post_completion_files = [
+            # CONSOLIDATED: All intermediate files to remove (keep only final_output.mp4)
+            intermediate_files = [
                 os.path.join(output_dir, "slideshow.mp4"),                    # Intermediate video
+                os.path.join(output_dir, "video_with_audio.mp4"),             # ADDED: Video with audio (main intermediate file)
             ]
             
-            # Add debug files to cleanup list if not keeping them
+            # Add all temporary/debug files to cleanup list if not keeping them
             if not keep_debug_files:
-                post_completion_files.extend([
-                    os.path.join(output_dir, "subtitles.ass"),                 
-                    os.path.join(output_dir, "voice.mp3"),                      
-                    os.path.join(output_dir, "voice.mp3.txt"),                 
+                intermediate_files.extend([
+                    # Core temporary files
+                    os.path.join(output_dir, "subtitles.ass"),                 # Subtitle file
+                    os.path.join(output_dir, "voice.mp3"),                     # Generated voice
+                    os.path.join(output_dir, "voice.mp3.txt"),                 # Voice metadata
+                    # Additional temporary files
+                    os.path.join(output_dir, "temp_audio_voiceover.m4a"),      # Voice-over temp
+                    os.path.join(output_dir, "temp-audio.m4a"),                # Audio temp
+                    os.path.join(output_dir, "temp_subtitle_*.ass"),           # Temp subtitles (pattern)
                 ])
 
             cleaned_count = 0
-            for file_path in post_completion_files:
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                        print(f"Post-completion cleanup: {os.path.basename(file_path)}")
-                        cleaned_count += 1
-                    except Exception as e:
-                        print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
+            
+            # Clean up individual files with enhanced retry for video files
+            for file_path in intermediate_files:
+                if "*" in file_path:
+                    # Handle wildcard patterns
+                    import glob
+                    matching_files = glob.glob(file_path)
+                    for match_file in matching_files:
+                        if os.path.exists(match_file):
+                            # Use enhanced retry for video files
+                            if match_file.endswith(('.mp4', '.avi', '.mov')):
+                                cleaned_count += self._remove_video_file_with_retry(match_file)
+                            else:
+                                cleaned_count += self._remove_file_with_retry(match_file)
+                else:
+                    # Handle regular files
+                    if os.path.exists(file_path):
+                        # Use enhanced retry for video files
+                        if file_path.endswith(('.mp4', '.avi', '.mov')):
+                            cleaned_count += self._remove_video_file_with_retry(file_path)
+                        else:
+                            cleaned_count += self._remove_file_with_retry(file_path)
+
+            # Clean up MoviePy and other temporary files with common patterns
+            import glob
+            temp_patterns = [
+                os.path.join(output_dir, "*TEMP_MPY_wvf_snd.mp3"),             # MoviePy temp audio
+                os.path.join(output_dir, "*_temp*"),                           # General temp files
+                os.path.join(output_dir, "temp_*"),                            # Temp prefixed files
+            ]
+            
+            for pattern in temp_patterns:
+                matching_files = glob.glob(pattern)
+                for temp_file in matching_files:
+                    # Don't remove final_output.mp4 or other important files
+                    if "final_output" not in os.path.basename(temp_file).lower():
+                        cleaned_count += self._remove_file_with_retry(temp_file)
 
             if keep_debug_files:
                 debug_files_kept = []
@@ -417,15 +511,84 @@ class VideoGeneratorModel:
                     if os.path.exists(file_path):
                         debug_files_kept.append(debug_file)
                 
-                if debug_files_kept:
-                    print(f"DEBUG: Kept files for investigation: {', '.join(debug_files_kept)}")
+                            # Keep debug files if requested
 
-            print(f"✅ Post-completion cleanup: removed {cleaned_count} files, keeping final_output.mp4")
+            print(f"✅ Consolidated cleanup: removed {cleaned_count} files, keeping only final_output.mp4")
             return cleaned_count
             
         except Exception as e:
-            print(f"Error in post-completion cleanup: {e}")
+            print(f"Error in consolidated cleanup: {e}")
             return 0
+
+    def _remove_video_file_with_retry(self, file_path, max_retries=5):
+        """
+        Remove a video file with enhanced retry mechanism for MoviePy file locks
+        
+        Args:
+            file_path: Path to video file to remove
+            max_retries: Maximum number of retry attempts (increased for video files)
+            
+        Returns:
+            int: 1 if removed successfully, 0 if failed
+        """
+        import time
+        import gc
+        
+        for attempt in range(max_retries):
+            try:
+                # Force garbage collection before each attempt
+                gc.collect()
+                
+                # Longer delay for video files (MoviePy needs more time)
+                if attempt > 0:
+                    time.sleep(1.0)
+                
+                os.remove(file_path)
+                print(f"Consolidated cleanup: {os.path.basename(file_path)}")
+                return 1
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    print(f"Video file locked, retrying in 1.0s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(1.0)
+                else:
+                    print(f"Warning: Could not remove video file {os.path.basename(file_path)} after {max_retries} attempts: MoviePy still has file lock")
+                    return 0
+            except Exception as e:
+                print(f"Warning: Could not remove video file {os.path.basename(file_path)}: {e}")
+                return 0
+        
+        return 0
+
+    def _remove_file_with_retry(self, file_path, max_retries=3):
+        """
+        Remove a file with retry mechanism for locked files
+        
+        Args:
+            file_path: Path to file to remove
+            max_retries: Maximum number of retry attempts
+            
+        Returns:
+            int: 1 if removed successfully, 0 if failed
+        """
+        import time
+        
+        for attempt in range(max_retries):
+            try:
+                os.remove(file_path)
+                print(f"Consolidated cleanup: {os.path.basename(file_path)}")
+                return 1
+            except PermissionError as e:
+                if attempt < max_retries - 1:
+                    print(f"File locked, retrying in 0.5s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
+                    time.sleep(0.5)
+                else:
+                    print(f"Warning: Could not remove {os.path.basename(file_path)} after {max_retries} attempts: File still locked")
+                    return 0
+            except Exception as e:
+                print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
+                return 0
+        
+        return 0
 
     def preview_images_from_url(self, url):
         """
@@ -498,15 +661,24 @@ class VideoGeneratorModel:
 
                 def job_progress_callback(value, message=None):
                     # Calculate combined progress: base progress for completed jobs + partial progress for current job
-                    job_weight = 100 / total_jobs  # Each job contributes this much to total progress
+                    # Each job contributes equally to the total progress
+                    job_weight = 100 / total_jobs
                     # Base progress from completed jobs
                     base_progress = int(i * job_weight)
                     # Current job contribution (scaled by job weight)
                     current_job_progress = int((value / 100) * job_weight)
                     # Combined progress
                     combined_progress = base_progress + current_job_progress
+                    # Ensure we never exceed 100%
+                    combined_progress = min(combined_progress, 100)
 
-                    job_message = f"Job {i+1}/{total_jobs}: {message}" if message else f"Job {i+1}/{total_jobs}"
+                    # Create cleaner progress message - show percentage instead of confusing slash
+                    if message:
+                        job_message = f"Video {i+1}/{total_jobs}: {message}"
+                    else:
+                        # Default to percentage when no specific message
+                        job_message = f"{combined_progress}% - Processing video {i+1} of {total_jobs}"
+                    
                     if original_callback:
                         original_callback(combined_progress, job_message)
 
@@ -523,14 +695,14 @@ class VideoGeneratorModel:
                     # Update progress to show this job is complete
                     if original_callback:
                         job_complete_progress = int((i + 1) * (100 / total_jobs))
-                        original_callback(job_complete_progress, f"Completed job {i+1}/{total_jobs}")
+                        original_callback(job_complete_progress, f"✅ Completed video {i+1} of {total_jobs}")
                 else:
                     results.append((job, None))
                     job["status"] = "failed"
                     # Update progress to show this job is complete but failed
                     if original_callback:
                         job_complete_progress = int((i + 1) * (100 / total_jobs))
-                        original_callback(job_complete_progress, f"Failed job {i+1}/{total_jobs}")
+                        original_callback(job_complete_progress, f"❌ Failed video {i+1} of {total_jobs}")
 
                 # Restore the original callback
                 self.progress_callback = original_callback
@@ -562,6 +734,17 @@ class VideoGeneratorModel:
         self.batch_jobs.append(job)
         return len(self.batch_jobs)  # Return job ID (1-based index)
 
+    def add_group_batch_job(self, group_data, audio_settings=None):
+        """Add a grouped video processing job to the batch queue"""
+        job = {
+            "group_data": group_data,
+            "job_type": "group",
+            "status": "pending",
+            "audio_settings": audio_settings or {"mute_original": False, "original_volume": 0.3}
+        }
+        self.batch_jobs.append(job)
+        return len(self.batch_jobs)  # Return job ID (1-based index)
+
     def process_video_batch(self, stop_event=None):
         """Process all video jobs in the batch queue"""
         results = []
@@ -572,83 +755,214 @@ class VideoGeneratorModel:
             if stop_event and stop_event.is_set():
                 break
 
-            # Skip non-video jobs
-            if job.get("job_type") != "video":
-                continue
+            # Handle different job types
+            job_type = job.get("job_type")
+            if job_type == "video":
+                result = self._process_individual_video_job(job, i, total_jobs, stop_event)
+            elif job_type == "group":
+                result = self._process_group_video_job(job, i, total_jobs, stop_event)
+            else:
+                continue  # Skip unknown job types
+            
+            results.append((job, result))
 
-            # Calculate overall progress percentage
-            overall_progress = int((i / total_jobs) * 100)
-            self.update_progress(overall_progress, f"Starting video job {i+1}/{total_jobs}")
-
-            # Set up the current job for video processing
-            self.text_input = job["text_input"]
-            video_file = job["video_file"]
-
-            # Store audio settings for this job
-            self.current_audio_settings = job.get("audio_settings", {"mute_original": False, "original_volume": 0.3})
-
-            # For video processing, we'll extract frames from the video to use as images
-            self.processing_option = "cpu"  # Default to CPU for batch processing
-
-            # Process the job
-            try:
-                job["status"] = "processing"
-
-                # Create a wrapper for the progress callback to show both job progress and overall progress
-                original_callback = self.progress_callback
-
-                def job_progress_callback(value, message=None):
-                    # Calculate combined progress: base progress for completed jobs + partial progress for current job
-                    job_weight = 100 / total_jobs  # Each job contributes this much to total progress
-                    # Base progress from completed jobs
-                    base_progress = int(i * job_weight)
-                    # Current job contribution (scaled by job weight)
-                    current_job_progress = int((value / 100) * job_weight)
-                    # Combined progress
-                    combined_progress = base_progress + current_job_progress
-
-                    job_message = f"Video {i+1}/{total_jobs}: {message}" if message else f"Video {i+1}/{total_jobs}"
-                    if original_callback:
-                        original_callback(combined_progress, job_message)
-
-                # Temporarily replace the callback
-                self.progress_callback = job_progress_callback
-
-                # Process the video file to generate a new video with the prompt
-                final_video = self.process_video_with_prompt(video_file, stop_event)
-
-                if final_video:
-                    results.append((job, final_video))
-                    job["status"] = "completed"
-                    # Update progress to show this job is complete
-                    if original_callback:
-                        job_complete_progress = int((i + 1) * (100 / total_jobs))
-                        original_callback(job_complete_progress, f"Completed video {i+1}/{total_jobs}")
-                else:
-                    results.append((job, None))
-                    job["status"] = "failed"
-                    # Update progress to show this job is complete but failed
-                    if original_callback:
-                        job_complete_progress = int((i + 1) * (100 / total_jobs))
-                        original_callback(job_complete_progress, f"Failed video {i+1}/{total_jobs}")
-
-                # Restore the original callback
-                self.progress_callback = original_callback
-
-            except Exception as e:
-                print(f"Error processing video job {i+1}: {e}")
-                results.append((job, None))
-                job["status"] = "failed"
-
-                # Restore the original callback
-                self.progress_callback = original_callback
-
-            # Update the current job index
-            self.current_job_index = i + 1
-
-        # Final progress update
-        self.update_progress(100, f"Video batch processing completed: {len([r for _, r in results if r])} of {total_jobs} successful")
         return results
+
+    def _process_individual_video_job(self, job, job_index, total_jobs, stop_event):
+        """Process an individual video job"""
+        # Calculate overall progress percentage
+        overall_progress = int((job_index / total_jobs) * 100)
+        self.update_progress(overall_progress, f"Starting video job {job_index+1}/{total_jobs}")
+
+        # Set up the current job for video processing
+        self.text_input = job["text_input"]
+        video_file = job["video_file"]
+
+        # Store audio settings for this job
+        self.current_audio_settings = job.get("audio_settings", {"mute_original": False, "original_volume": 0.3})
+
+        # For video processing, we'll extract frames from the video to use as images
+        self.processing_option = "cpu"  # Default to CPU for batch processing
+
+        # Process the job
+        try:
+            job["status"] = "processing"
+
+            # Create a wrapper for the progress callback to show both job progress and overall progress
+            original_callback = self.progress_callback
+
+            def job_progress_callback(value, message=None):
+                # Calculate combined progress: base progress for completed jobs + partial progress for current job
+                # Each job contributes equally to the total progress
+                job_weight = 100 / total_jobs
+                # Base progress from completed jobs
+                base_progress = int(job_index * job_weight)
+                # Current job contribution (scaled by job weight)
+                current_job_progress = int((value / 100) * job_weight)
+                # Combined progress
+                combined_progress = base_progress + current_job_progress
+                # Ensure we never exceed 100%
+                combined_progress = min(combined_progress, 100)
+
+                # Create cleaner progress message
+                if message:
+                    job_message = f"Video {job_index+1}/{total_jobs}: {message}"
+                else:
+                    # Default to percentage when no specific message
+                    job_message = f"{combined_progress}% - Processing video {job_index+1} of {total_jobs}"
+                
+                if original_callback:
+                    original_callback(combined_progress, job_message)
+
+            # Temporarily replace the callback
+            self.progress_callback = job_progress_callback
+
+            # Process the video file to generate a new video with the prompt
+            final_video = self.process_video_with_prompt(video_file, stop_event)
+
+            # Restore the original callback
+            self.progress_callback = original_callback
+
+            if final_video:
+                job["status"] = "completed"
+                # Update progress to show this job is complete
+                if original_callback:
+                    job_complete_progress = int((job_index + 1) * (100 / total_jobs))
+                    original_callback(job_complete_progress, f"✅ Completed video {job_index+1} of {total_jobs}")
+                return final_video
+            else:
+                job["status"] = "failed"
+                # Update progress to show this job is complete but failed
+                if original_callback:
+                    job_complete_progress = int((job_index + 1) * (100 / total_jobs))
+                    original_callback(job_complete_progress, f"❌ Failed video {job_index+1} of {total_jobs}")
+                return None
+
+        except Exception as e:
+            print(f"Error processing video job {job_index+1}: {e}")
+            job["status"] = "failed"
+            # Restore the original callback
+            if 'original_callback' in locals():
+                self.progress_callback = original_callback
+            return None
+
+    def _process_group_video_job(self, job, job_index, total_jobs, stop_event):
+        """Process a grouped video job (multiple videos combined into one)"""
+        group_data = job["group_data"]
+        
+        # Calculate overall progress percentage
+        overall_progress = int((job_index / total_jobs) * 100)
+        self.update_progress(overall_progress, f"Starting group job {job_index+1}/{total_jobs}: {group_data['output_name']}")
+
+        # Store audio settings for this job
+        self.current_audio_settings = job.get("audio_settings", {"mute_original": False, "original_volume": 0.3})
+
+        try:
+            job["status"] = "processing"
+            
+            # Create a list to store processed individual videos
+            processed_videos = []
+            pairs = group_data['pairs']
+            
+            # Process each video in the group
+            for i, pair in enumerate(pairs):
+                if stop_event and stop_event.is_set():
+                    break
+                
+                # Set up for individual video processing
+                self.text_input = pair['prompt']
+                video_file = pair['video_file']
+                
+                # Update progress for this video in the group
+                # Calculate progress within the current job's allocated range (0-80% of job weight)
+                job_weight = 100 / total_jobs
+                video_progress_within_job = (i / len(pairs)) * 80  # 0-80% of this job for individual videos
+                current_progress = overall_progress + int((video_progress_within_job / 100) * job_weight)
+                current_progress = min(current_progress, 100)  # Ensure we never exceed 100%
+                self.update_progress(current_progress, 
+                                   f"Group {job_index+1}: Processing video {i+1}/{len(pairs)} - {os.path.basename(video_file)}")
+                
+                # Process individual video
+                processed_video = self.process_video_with_prompt(video_file, stop_event)
+                if processed_video:
+                    processed_videos.append(processed_video)
+                else:
+                    print(f"Failed to process video: {os.path.basename(video_file)}")
+            
+            # If we have processed videos, combine them
+            if processed_videos:
+                        # Combine processed videos
+                
+                # Import the merge service
+                from services.merge_service import VideoService
+                
+                # Create output path for combined video
+                output_dir = os.path.dirname(processed_videos[0])
+                parent_dir = os.path.dirname(output_dir)
+                combined_output = os.path.join(parent_dir, group_data['output_name'])
+                # Merge videos into combined output
+                
+                # Update progress for merging (80-95% of this job's weight)
+                job_weight = 100 / total_jobs
+                merge_start_progress = overall_progress + int((80 / 100) * job_weight)
+                merge_start_progress = min(merge_start_progress, 95)  # Cap at 95% to leave room for completion
+                self.update_progress(merge_start_progress, f"Group {job_index+1}: Combining {len(processed_videos)} videos...")
+                
+                # Merge videos
+                try:
+                    def merge_progress_callback(p, m):
+                        # Scale merge progress to remaining 15% of job weight (80-95%)
+                        merge_progress_range = 15  # 95% - 80% = 15%
+                        scaled_merge_progress = int((p / 100) * merge_progress_range * (job_weight / 100))
+                        final_progress = merge_start_progress + scaled_merge_progress
+                        final_progress = min(final_progress, 99)  # Never exceed 99% during processing
+                        self.update_progress(final_progress, f"Group {job_index+1}: {m}")
+                    
+                    merge_result = VideoService.merge_videos_optimized(
+                        processed_videos, 
+                        combined_output,
+                        progress_callback=merge_progress_callback
+                    )
+                    # Check merge result
+                    if not (merge_result and os.path.exists(combined_output)):
+                        print(f"ERROR: Video merge failed")
+                except Exception as e:
+                    print(f"ERROR: Video merge failed: {e}")
+                    merge_result = False
+                
+                if merge_result:
+                    job["status"] = "completed"
+                    
+                                    # Clean up individual video folders after successful merge
+                cleaned_folders = 0
+                for video_path in processed_videos:
+                    individual_folder = os.path.dirname(video_path)
+                    try:
+                        if os.path.exists(individual_folder):
+                            import shutil
+                            shutil.rmtree(individual_folder)
+                            cleaned_folders += 1
+                    except Exception as e:
+                        pass  # Continue cleanup even if some folders fail
+                    
+                    self.update_progress(int((job_index + 1) * (100 / total_jobs)), 
+                                       f"✅ Completed group {job_index+1}: {group_data['output_name']}")
+                    return combined_output
+                else:
+                    job["status"] = "failed"
+                    self.update_progress(int((job_index + 1) * (100 / total_jobs)), 
+                                       f"❌ Failed to combine group {job_index+1}")
+                    return None
+            else:
+                job["status"] = "failed"
+                self.update_progress(int((job_index + 1) * (100 / total_jobs)), 
+                                   f"❌ No videos processed in group {job_index+1}")
+                return None
+                
+        except Exception as e:
+            print(f"Error processing group job {job_index+1}: {e}")
+            job["status"] = "failed"
+            return None
 
     def process_video_with_prompt(self, video_file, stop_event=None):
         """
@@ -747,8 +1061,39 @@ class VideoGeneratorModel:
             # Step 4: Finalize video with subtitles
             final_video = self.finalize_video(subtitle_file, video_with_audio, output_dir, stop_event)
 
+            # EXPLICIT MOVIEPY CLEANUP - Release file handles immediately after processing
+            try:
+                import gc
+                # Force garbage collection to release MoviePy references
+                gc.collect()
+                print("Released MoviePy file handles")
+            except Exception as e:
+                print(f"Note: MoviePy cleanup attempt: {e}")
+
             if final_video:
                 print(f"Video processing completed successfully: {final_video}")
+                
+                # AUTO-CLEANUP for single videos - same as batch processing
+                cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+                if cleanup_enabled:
+                    print("Starting automatic cleanup for single video...")
+                    try:
+                        # Use the consolidated cleanup function
+                        cleaned_count = self.cleanup_after_video_complete(
+                            output_dir, 
+                            keep_debug_files=False  # Clean everything except final_output.mp4
+                        )
+                        if cleaned_count > 0:
+                            print(f"Auto-cleanup completed: Removed {cleaned_count} intermediate files")
+                            print("Only final_output.mp4 remains")
+                        else:
+                            print("No cleanup needed - files already clean")
+                    except Exception as e:
+                        print(f"Warning: Cleanup failed for single video: {e}")
+                else:
+                    print("Auto-cleanup disabled in config - keeping all files")
+                
+                # Return just the final video path (this method is used by video processing, not UI)
                 return final_video
             else:
                 print("Failed to finalize video")

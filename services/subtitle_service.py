@@ -1,23 +1,53 @@
 """
 Subtitle service for generating subtitles with modern styling
 """
-import os
-import sys
-import traceback
+from utils.common_imports import os, sys, traceback, time
 import re
 import emoji
 from moviepy.editor import VideoFileClip, AudioFileClip
-import time
 
 # Import from utils
-from utils.helpers import ensure_directory_exists, process_text_for_tts
+from utils.helpers import ensure_directory_exists
+from utils.text_processing import process_text_for_subtitles
 
 # Import config
 try:
-    from config import DEFAULT_MAX_CHARS_PER_LINE
+    from config import DEFAULT_MAX_CHARS_PER_LINE, SUBTITLE_CONFIG
 except ImportError:
     # Default value if config.py is not available
     DEFAULT_MAX_CHARS_PER_LINE = 56
+    # Fallback subtitle config
+    SUBTITLE_CONFIG = {
+        "default_font": "Times New Roman",
+        "font_size": 48,
+        "font_bold": True,
+        "words_per_group_short": 5,
+        "words_per_group_medium": 4,
+        "words_per_group_long": 3,
+        "reading_speed_wpm": 150,
+        "min_display_time": 1.2,
+        "early_start_offset": 0.3,
+        "overlap_time": 0.2,
+        "use_speech_analysis": True,
+        "speech_analysis_max_duration": 25.0,
+        "silence_threshold_db": 16,
+        "min_silence_length_ms": 150,
+        "default_style": "modern_glow",
+        "available_styles": {
+            "modern_glow": {
+                "name": "Modern Glow",
+                "font": "Times New Roman",
+                "size": 48,
+                "primary_color": "&H00FFFFFF",
+                "outline_color": "&H00FF8000",
+                "outline_width": 3,
+                "shadow": 2,
+                "bold": True,
+                "alignment": 2,
+                "margin_v": 80
+            }
+        }
+    }
 
 # Try to import pydub for audio analysis
 try:
@@ -28,119 +58,26 @@ except ImportError:
     PYDUB_AVAILABLE = False
     print("pydub not available. Will use simple timing for subtitles.")
 
-# Modern subtitle style presets
-SUBTITLE_STYLES = {
-    "modern_glow": {
-        "name": "Modern Glow",
-        "description": "White text with blue glow effect",
-        "font": "Arial Black",
-        "size": 48,
-        "primary_color": "&H00FFFFFF",  # White
-        "outline_color": "&H00FF8000",  # Blue glow
-        "outline_width": 3,
-        "shadow": 2,
-        "bold": True,
-        "alignment": 2,  # Bottom center
-        "margin_v": 80
-    },
-    "neon_pink": {
-        "name": "Neon Pink",
-        "description": "Hot pink neon style with glow",
-        "font": "Impact",
-        "size": 52,
-        "primary_color": "&H00FF00FF",  # Hot pink
-        "outline_color": "&H00800080",  # Dark pink outline
-        "outline_width": 4,
-        "shadow": 3,
-        "bold": True,
-        "alignment": 2,
-        "margin_v": 100
-    },
-    "gradient_gold": {
-        "name": "Gradient Gold",
-        "description": "Gold gradient with black shadow",
-        "font": "Arial Black",
-        "size": 46,
-        "primary_color": "&H0000D7FF",  # Gold
-        "secondary_color": "&H000080FF",  # Orange
-        "outline_color": "&H00000000",  # Black
-        "outline_width": 2,
-        "shadow": 2,
-        "bold": True,
-        "alignment": 2,
-        "margin_v": 90
-    },
-    "cyberpunk": {
-        "name": "Cyberpunk",
-        "description": "Cyan with electric effects",
-        "font": "Consolas",
-        "size": 44,
-        "primary_color": "&H00FFFF00",  # Cyan
-        "outline_color": "&H00FF0080",  # Purple outline
-        "outline_width": 3,
-        "shadow": 1,
-        "bold": True,
-        "alignment": 8,  # Top center
-        "margin_v": 150
-    },
-    "classic_movie": {
-        "name": "Classic Movie",
-        "description": "Yellow text with black background",
-        "font": "Times New Roman",
-        "size": 42,
-        "primary_color": "&H0000FFFF",  # Yellow
-        "back_color": "&H80000000",  # Semi-transparent black
-        "outline_color": "&H00000000",  # Black outline
-        "outline_width": 1,
-        "shadow": 0,
-        "bold": False,
-        "alignment": 2,
-        "margin_v": 60
-    },
-    "fire_red": {
-        "name": "Fire Red",
-        "description": "Red to orange gradient with glow",
-        "font": "Arial Black",
-        "size": 50,
-        "primary_color": "&H000000FF",  # Red
-        "secondary_color": "&H000080FF",  # Orange
-        "outline_color": "&H00000080",  # Dark red
-        "outline_width": 3,
-        "shadow": 2,
-        "bold": True,
-        "alignment": 2,
-        "margin_v": 85
-    },
-    "ice_blue": {
-        "name": "Ice Blue",
-        "description": "Light blue with white glow",
-        "font": "Arial",
-        "size": 45,
-        "primary_color": "&H00FFFF80",  # Light blue
-        "outline_color": "&H00FFFFFF",  # White glow
-        "outline_width": 2,
-        "shadow": 1,
-        "bold": True,
-        "alignment": 2,
-        "margin_v": 75
-    },
-    "retro_wave": {
-        "name": "Retro Wave",
-        "description": "Purple and pink 80s style",
-        "font": "Impact",
-        "size": 48,
-        "primary_color": "&H00FF80FF",  # Pink
-        "outline_color": "&H00800080",  # Purple
-        "outline_width": 4,
-        "shadow": 2,
-        "bold": True,
-        "alignment": 2,
-        "margin_v": 95
-    }
-}
+def get_subtitle_styles():
+    """Get available subtitle styles from centralized config"""
+    return SUBTITLE_CONFIG.get("available_styles", {})
 
-# ASS Header for subtitle files
-ASS_HEADER = """[Script Info]
+def get_available_styles():
+    """Get list of available subtitle styles"""
+    return list(get_subtitle_styles().keys())
+
+# Legacy SUBTITLE_STYLES for backward compatibility - DEPRECATED
+SUBTITLE_STYLES = get_subtitle_styles()
+
+# Create ASS header dynamically from config
+def create_ass_header():
+    """Create ASS header using centralized config"""
+    config = SUBTITLE_CONFIG
+    font = config.get("default_font", "Times New Roman")
+    size = config.get("font_size", 42)
+    bold = 1 if config.get("font_bold", True) else 0
+    
+    return f"""[Script Info]
 Title: Modern Styled Subtitle
 ScriptType: v4.00+
 PlayResX: 720
@@ -150,15 +87,14 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1
+Style: Default,{font},{size},&H00FFFFFF,&H000000FF,&H00000000,&H00000000,{bold},0,0,0,100,100,0,0,1,2,0,2,10,10,80,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
 
-def get_available_styles():
-    """Get list of available subtitle styles"""
-    return list(SUBTITLE_STYLES.keys())
+# Dynamic ASS Header
+ASS_HEADER = create_ass_header()
 
 def generate_subtitles(text, video_file, audio_file, output_file, style="modern_glow"):
     """
@@ -186,11 +122,6 @@ def generate_subtitles(text, video_file, audio_file, output_file, style="modern_
             with open(text_file, "w", encoding="utf-8") as f:
                 f.write(cleaned_text)  # Save cleaned text, not original
             print(f"Created text file for subtitles with cleaned text: {text_file}")
-            
-            # DEBUG: Show exact content being saved
-            print(f"DEBUG: Text file content: '{cleaned_text}'")
-            if "150" in cleaned_text:
-                print("⚠️  DEBUG WARNING: Found '150' in text file content!")
                 
         except Exception as e:
             print(f"Error creating text file: {e}")
@@ -213,94 +144,9 @@ def generate_subtitles(text, video_file, audio_file, output_file, style="modern_
         traceback.print_exc()
         return False
 
-def process_text_for_subtitles(text):
-    """
-    Enhanced text processing that removes numbered lists and preserves important content
-    
-    Args:
-        text: Text to process
-        
-    Returns:
-        str: Processed text with preserved important content and removed numbering
-    """
-    
-    # First, handle number emojis
-    number_emoji_map = {
-        '0️⃣': '0', '1️⃣': '1', '2️⃣': '2', '3️⃣': '3', '4️⃣': '4',
-        '5️⃣': '5', '6️⃣': '6', '7️⃣': '7', '8️⃣': '8', '9️⃣': '9'
-    }
-    for emoji_num, real_num in number_emoji_map.items():
-        text = text.replace(emoji_num, real_num)
-    
-    # Remove all other emojis but preserve text
-    text = emoji.replace_emoji(text, replace='')
-    
-    # AGGRESSIVE: Remove numbered list patterns first (before protecting content)
-    # Remove patterns like "150)," or "150)" at the beginning or anywhere
-    text = re.sub(r'\b\d+\)[,\s]*', '', text)  # Remove "150)," or "150) "
-    text = re.sub(r'^\s*\d+[.)\]]\s*', '', text)  # Remove "150." or "150)" at start
-    text = re.sub(r'\(\d+\)[,\s]*', '', text)  # Remove "(150)," 
-    
-    # Preserve important patterns AFTER removing numbering
-    # Protect currency amounts like $17,190 and $21,590
-    currency_pattern = r'\$[\d,]+(?:\.\d{2})?'
-    currency_matches = re.findall(currency_pattern, text)
-    currency_placeholders = {}
-    for i, match in enumerate(currency_matches):
-        placeholder = f"__CURRENCY_{i}__"
-        currency_placeholders[placeholder] = match
-        text = text.replace(match, placeholder, 1)
-    
-    # Protect years like 2025, 2026
-    year_pattern = r'\b(19|20)\d{2}\b'
-    year_matches = re.findall(year_pattern, text)
-    year_placeholders = {}
-    for i, match in enumerate(year_matches):
-        placeholder = f"__YEAR_{i}__"
-        year_placeholders[placeholder] = match
-        text = text.replace(match, placeholder, 1)
-    
-    # Protect contractions like 's, 'll, 've, 're, 't, 'd
-    contraction_pattern = r"\b\w+[''](?:s|ll|ve|re|t|d|m)\b"
-    contraction_matches = re.findall(contraction_pattern, text, re.IGNORECASE)
-    contraction_placeholders = {}
-    for i, match in enumerate(contraction_matches):
-        placeholder = f"__CONTRACTION_{i}__"
-        contraction_placeholders[placeholder] = match
-        text = text.replace(match, placeholder, 1)
-    
-    # Remove non-ASCII characters that might cause issues (but preserve placeholders)
-    text = re.sub(r'[^\x00-\x7F_]+', ' ', text)
-    
-    # Clean up extra whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # ADDITIONAL aggressive cleaning for any remaining numbered patterns
-    text = re.sub(r'^\s*\d+[.)\]\}:,-]\s*', '', text)  # Remove any number with punct at start
-    text = re.sub(r'\s+\d+[.)\]\}:,-]\s+', ' ', text)  # Remove numbered items in middle
-    
-    # Restore protected content
-    for placeholder, original in currency_placeholders.items():
-        text = text.replace(placeholder, original)
-    
-    for placeholder, original in year_placeholders.items():
-        text = text.replace(placeholder, original)
-    
-    for placeholder, original in contraction_placeholders.items():
-        text = text.replace(placeholder, original)
-    
-    # Final cleanup
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    # Remove leading punctuation and any remaining artifacts
-    text = re.sub(r'^[,\.\)\]\}:;-]+\s*', '', text)
-    text = re.sub(r'^[^\w$]+', '', text)  # Remove any non-word chars at start (except $)
-    
-    return text
-
 def process_local_video(video_path, output_type="ass", maxChar=40, output_file="subtitles.ass", audio_file=None, style="modern_glow"):
     """
-    Generate subtitles for a video with modern styling
+    Generate subtitles for a video using centralized styling configuration
 
     Args:
         video_path: Path to video file
@@ -318,9 +164,34 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
     if output_dir:
         ensure_directory_exists(output_dir)
 
-    # Get style configuration
-    style_config = SUBTITLE_STYLES.get(style, SUBTITLE_STYLES["modern_glow"])
-    print(f"Using style configuration: {style_config['name']}")
+    # USE CENTRALIZED CONFIG for style configuration
+    available_styles = SUBTITLE_CONFIG.get("available_styles", {})
+    default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
+    
+    # Get style configuration from centralized config
+    if style in available_styles:
+        style_config = available_styles[style]
+    elif default_style in available_styles:
+        print(f"Style '{style}' not found, using default style '{default_style}'")
+        style_config = available_styles[default_style]
+        style = default_style
+    else:
+        # Ultimate fallback
+        print(f"No valid styles found in config, using hardcoded fallback")
+        style_config = {
+            "name": "Fallback Style",
+            "font": SUBTITLE_CONFIG.get("default_font", "Times New Roman"),
+            "size": SUBTITLE_CONFIG.get("font_size", 48),
+            "primary_color": "&H00FFFFFF",
+            "outline_color": "&H00FF8000",
+            "outline_width": 3,
+            "shadow": 2,
+            "bold": SUBTITLE_CONFIG.get("font_bold", True),
+            "alignment": 2,
+            "margin_v": 80
+        }
+    
+    print(f"Using style configuration from centralized config: {style_config.get('name', style)}")
 
     subtitle_path = output_file
     try:
@@ -337,14 +208,14 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             f.write("[V4+ Styles]\n")
             f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
 
-            # Create the main style based on configuration
-            font = style_config.get("font", "Arial")
-            size = style_config.get("size", 42)
+            # Create the main style based on centralized configuration
+            font = style_config.get("font", SUBTITLE_CONFIG.get("default_font", "Times New Roman"))
+            size = style_config.get("size", SUBTITLE_CONFIG.get("font_size", 42))
             primary = style_config.get("primary_color", "&H00FFFFFF")
             secondary = style_config.get("secondary_color", "&H000000FF")
             outline = style_config.get("outline_color", "&H00000000")
             back = style_config.get("back_color", "&H00000000")
-            bold = 1 if style_config.get("bold", True) else 0
+            bold = 1 if style_config.get("bold", SUBTITLE_CONFIG.get("font_bold", True)) else 0
             outline_width = style_config.get("outline_width", 2)
             shadow = style_config.get("shadow", 0)
             alignment = style_config.get("alignment", 2)
@@ -408,14 +279,7 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             print("WARNING: Text file is empty, using default text")
             text = "Default subtitle text because original file was empty."
         
-        # DEBUG: Show what we read from the text file
-        print(f"DEBUG: Read from text file '{text_file}': '{text}'")
-        if "150" in text:
-            print("⚠️  DEBUG WARNING: Found '150' in text read from file!")
-        
         text = process_text_for_subtitles(text)
-        # Keep original case for better readability (remove uppercase conversion)
-        # text = text.upper()  # Commented out for better readability
 
         # Additional text cleaning for subtitles
         print(f"Original text: '{text}'")
@@ -471,7 +335,7 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
         
         print(f"Processing {len(words)} words for subtitles (preserved currency, years, contractions)")
 
-        # Create optimized word groups for better readability
+        # Create optimized word groups
         word_groups = create_optimized_word_groups(text)
         print(f"Created {len(word_groups)} optimized subtitle groups")
 
@@ -479,7 +343,9 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
         group_timings = _calculate_optimized_timing(audio_file, word_groups, audio.duration)
 
         # Generate subtitle events with word groups
-        subtitle_events = _generate_group_subtitle_events(word_groups, group_timings, style_config)
+        # For this function, we need a default style config since we don't have style_config here
+        default_style_config = SUBTITLE_CONFIG.get("available_styles", {}).get(SUBTITLE_CONFIG.get("default_style", "modern_glow"), {})
+        subtitle_events = _generate_group_subtitle_events(word_groups, group_timings, default_style_config)
         
         # Write events to file
         with open(subtitle_path, "a", encoding="utf-8") as f:
@@ -494,11 +360,19 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
         print(f"ERROR in subtitle generation: {str(e)}")
         print("Full traceback:")
         traceback.print_exc()
-        return _create_fallback_subtitle(subtitle_path, str(e))
+        try:
+            events = _create_fallback_subtitle(f"Error: {str(e)}", 10.0)
+            with open(subtitle_path, "w", encoding="utf-8") as f:
+                f.write(ASS_HEADER)
+                for event in events:
+                    f.write(f"Dialogue: 0,{_seconds_to_ass_time(event['start'])},{_seconds_to_ass_time(event['end'])},Default,,0,0,0,,{event['text']}\n")
+            return subtitle_path
+        except:
+            return None
 
 def _create_effect_styles(f, style_config):
     """Create additional effect styles for animations"""
-    font = style_config.get("font", "Arial")
+    font = style_config.get("font", "Times New Roman")
     size = style_config.get("size", 42)
     primary = style_config.get("primary_color", "&H00FFFFFF")
     secondary = style_config.get("secondary_color", "&H000000FF")
@@ -517,95 +391,109 @@ def _create_effect_styles(f, style_config):
     # Pop effect style (larger)
     f.write(f"Style: Pop,{font},{size + 8},{primary},{secondary},{outline},{back},{bold},0,0,0,120,120,0,0,1,{outline_width + 1},{shadow + 1},{alignment},10,10,{margin_v},1\n")
 
-def _calculate_word_timings(audio_file, words, total_duration):
-    """Calculate sophisticated word timings using audio analysis"""
-    word_timings = []
+def _calculate_optimized_timing(audio_file, word_groups, total_duration):
+    """
+    Calculate timing using centralized configuration for better voice sync
+    """
+    group_timings = []
     
-    if PYDUB_AVAILABLE:
-        try:
-            print("Starting audio analysis for word timing...")
-            audio_segment = AudioSegment.from_file(audio_file)
-            non_silent_ranges = detect_nonsilent(
-                audio_segment,
-                min_silence_len=100,  # More sensitive
-                silence_thresh=-30    # More sensitive
-            )
-
-            if non_silent_ranges:
-                print(f"Found {len(non_silent_ranges)} non-silent ranges for {len(words)} words")
-                offset_ms = 50  # Smaller offset for better sync
-                
-                # Distribute words across speech segments
-                segment_durations = [end - start for start, end in non_silent_ranges]
-                total_speech_duration = sum(segment_durations)
-                
-                words_per_segment = []
-                for dur in segment_durations:
-                    words_in_segment = max(1, round(len(words) * dur / total_speech_duration))
-                    words_per_segment.append(words_in_segment)
-                
-                # Adjust to match total word count with safety counter
-                adjustment_count = 0
-                max_adjustments = len(words) * 2  # Safety limit
-                
-                while sum(words_per_segment) != len(words) and adjustment_count < max_adjustments:
-                    adjustment_count += 1
-                    
-                    if sum(words_per_segment) > len(words):
-                        # Find segment with most words and reduce by 1
-                        max_idx = words_per_segment.index(max(words_per_segment))
-                        if words_per_segment[max_idx] > 1:
-                            words_per_segment[max_idx] -= 1
-                    else:
-                        # Find segment with longest duration and add 1 word
-                        max_idx = segment_durations.index(max(segment_durations))
-                        words_per_segment[max_idx] += 1
-                
-                # If we couldn't balance perfectly, use simple distribution
-                if sum(words_per_segment) != len(words):
-                    print(f"Warning: Could not perfectly distribute words. Using simple fallback.")
-                    print("Using simple timing fallback")
-                    word_duration = total_duration / len(words) if words else 1.0
-                    overlap = word_duration * 0.15  # 15% overlap
-                    
-                    for i in range(len(words)):
-                        word_start = max(0, i * word_duration - overlap)
-                        word_end = (i + 1) * word_duration + overlap
-                        word_timings.append((word_start, word_end))
-                    
-                    return word_timings
-
-                # Create timings
-                print("Creating word timings from audio analysis...")
-                word_idx = 0
-                for i, (start_ms, end_ms) in enumerate(non_silent_ranges):
-                    segment_word_count = words_per_segment[i]
-                    segment_duration_ms = end_ms - start_ms
-
-                    for j in range(segment_word_count):
-                        if word_idx < len(words):
-                            word_start = max(0, start_ms - offset_ms) + (j * segment_duration_ms / segment_word_count)
-                            word_end = start_ms + ((j + 1) * segment_duration_ms / segment_word_count) + offset_ms
-                            word_timings.append((word_start / 1000, word_end / 1000))
-                            word_idx += 1
-
-                print(f"Using advanced audio analysis: {len(word_timings)} timings for {len(words)} words")
-                return word_timings
-                
-        except Exception as e:
-            print(f"Audio analysis failed: {e}")
+    print("Using voice-synchronized timing from centralized config...")
     
-    # Fallback to simple timing
-    print("Using simple timing fallback")
-    word_duration = total_duration / len(words) if words else 1.0
-    overlap = word_duration * 0.15  # 15% overlap
+    total_groups = len(word_groups)
+    if total_groups == 0:
+        return group_timings
     
-    for i in range(len(words)):
-        word_start = max(0, i * word_duration - overlap)
-        word_end = (i + 1) * word_duration + overlap
-        word_timings.append((word_start, word_end))
+    # USE CENTRALIZED CONFIG for timing settings
+    config = SUBTITLE_CONFIG
+    reading_speed_wpm = config.get("reading_speed_wpm", 150)
+    min_display_time = config.get("min_display_time", 1.2)
+    early_start_offset = config.get("early_start_offset", 0.3)
+    overlap_time = config.get("overlap_time", 0.2)
     
-    return word_timings
+    print(f"Config: {reading_speed_wpm} WPM, {min_display_time}s min display, {early_start_offset}s early start")
+    
+    # TIMING: Better timing for all audio lengths with earlier subtitle appearance
+    if total_duration > 10.0:  # For longer audio
+        print(f"Voice-sync timing for longer audio ({total_duration:.1f}s) - subtitles appear early")
+        
+        # Better timing calculation with early subtitle appearance
+        avg_duration_per_group = total_duration / total_groups
+        base_duration = max(avg_duration_per_group, min_display_time)
+        
+        for i, group in enumerate(word_groups):
+            # Enhanced duration based on content
+            group_duration = base_duration
+            
+            # Adjust for content complexity
+            if group['char_count'] > 20:  # Longer text needs more time
+                group_duration *= 1.2
+            if group['has_punctuation']:  # Pause for punctuation
+                group_duration *= 1.1
+            if '$' in group['text']:  # Extra time for numbers/currency
+                group_duration *= 1.15
+            
+            # Calculate start time with early offset
+            if i == 0:
+                group_start = 0  # First subtitle starts immediately
+            else:
+                # Start earlier than previous subtitle ends for better voice sync
+                prev_end = group_timings[i-1][1]
+                group_start = prev_end - early_start_offset
+            
+            # Ensure start time is not negative
+            group_start = max(0, group_start)
+            group_end = group_start + group_duration
+            
+            # Ensure we don't exceed total duration
+            if group_end > total_duration:
+                group_end = total_duration
+                if group_start >= total_duration:
+                    group_start = max(0, total_duration - group_duration)
+            
+            group_timings.append((group_start, group_end))
+        
+        print(f"Voice-synchronized timing completed - subtitles start early for better sync")
+        return group_timings
+    
+    # Better timing for shorter audio with early subtitle start
+    print("Using optimized timing for shorter audio with early subtitle sync")
+    
+    current_time = 0
+    
+    for i, group in enumerate(word_groups):
+        word_count = group['word_count']
+        char_count = group['char_count']
+        
+        # Calculate when speech likely occurs
+        words_per_second = reading_speed_wpm / 60
+        speech_time = word_count / words_per_second
+        
+        # Content-based adjustments
+        if char_count > 25:  # Longer phrases
+            speech_time *= 1.2
+        if group['has_punctuation']:  # Pause for sentence boundaries
+            speech_time *= 1.15
+        if '$' in group['text'] or any(char.isdigit() for char in group['text']):
+            speech_time *= 1.1
+        
+        # Minimum duration for comfortable reading
+        group_duration = max(speech_time, min_display_time)
+        
+        # Start subtitles EARLY for voice sync
+        if i == 0:
+            group_start = 0  # First subtitle starts immediately
+        else:
+            # Start before the calculated speech time
+            group_start = max(0, current_time - overlap_time)
+        
+        group_end = group_start + group_duration
+        group_timings.append((group_start, group_end))
+        
+        # Less overlap, faster progression for better voice sync
+        advance_time = speech_time * 0.9  # Faster progression
+        current_time += advance_time
+    
+    return group_timings
 
 def _generate_group_subtitle_events(word_groups, group_timings, style_config):
     """Generate subtitle events for word groups with preserved content"""
@@ -624,10 +512,12 @@ def _generate_group_subtitle_events(word_groups, group_timings, style_config):
             group_start, group_end = group_timings[i]
             
             # Use the original group text - DON'T remove important content
-            clean_text = group['text'].strip()
+            config = SUBTITLE_CONFIG
+            if config.get("uppercase", False):
+                clean_text = group['text'].upper()
+            else:
+                clean_text = group['text'].strip()
             
-            # Only remove clearly problematic characters, preserve currency, years, contractions
-            # Remove only leading/trailing non-essential punctuation
             clean_text = re.sub(r'^[,\.\)\]\}]+\s*', '', clean_text)
             clean_text = re.sub(r'\s*[,\.\(\[\{]+$', '', clean_text)
             
@@ -637,10 +527,6 @@ def _generate_group_subtitle_events(word_groups, group_timings, style_config):
             
             # Escape special characters for ASS format but preserve content
             safe_text = clean_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
-            
-            # DEBUG: Check for "150" in subtitle text
-            if "150" in safe_text:
-                print(f"⚠️  DEBUG WARNING: Found '150' in subtitle text for group {i+1}: '{safe_text}'")
             
             # Choose style based on content
             style_name = "Default"
@@ -703,31 +589,33 @@ def _choose_word_style(word, index):
     else:
         return "Default"
 
-def _create_fallback_subtitle(subtitle_path, error_msg):
-    """Create a fallback subtitle file with error information"""
-    try:
-        with open(subtitle_path, "w", encoding="utf-8") as f:
-            f.write("[Script Info]\nTitle: Error Subtitle\nScriptType: v4.00+\nPlayResX: 720\nPlayResY: 1280\n\n")
-            f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-            f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1\n\n")
-            f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-            f.write(f"Dialogue: 0,0:00:00.00,0:00:05.00,Default,,0,0,0,,Error: {error_msg[:50]}...\n")
-            f.write(f"Dialogue: 0,0:00:05.00,0:00:10.00,Default,,0,0,0,,Please check the console for details.\n")
-            f.write(f"Dialogue: 0,0:00:10.00,0:05:00.00,Default,,0,0,0,,This is a fallback subtitle.\n")
-        print(f"Created fallback subtitle file: {subtitle_path}")
-        return subtitle_path
-    except Exception as fallback_error:
-        print(f"Failed to create fallback subtitle file: {fallback_error}")
-        return None
+def _create_fallback_subtitle(content, duration):
+    """
+    Create a fallback subtitle event list
+    
+    Args:
+        content: Text content
+        duration: Duration in seconds
+        
+    Returns:
+        list: List of subtitle events
+    """
+    return [
+        {
+            'text': content[:100] + "..." if len(content) > 100 else content,
+            'start': 0,
+            'end': min(duration, 10.0)
+        }
+    ]
 
 def create_optimized_word_groups(text):
     """
-    ENHANCED: Create optimized word groups with adaptive sizing based on text length
+    ENHANCED: Create optimized word groups using centralized config
     """
     if not text or not text.strip():
         return []
     
-    print("Creating optimized word groups...")
+    print("Creating optimized word groups using centralized configuration...")
     
     # Clean and split words
     words = text.strip().split()
@@ -738,187 +626,241 @@ def create_optimized_word_groups(text):
     
     print(f"Processing {total_words} words")
     
-    # PERFORMANCE OPTIMIZATION: Adaptive group sizing based on text length
-    if total_words > 200:  # Very long text - use larger groups for speed
-        words_per_group = 3
-        print("Using large groups (3 words) for long text - optimizing for speed")
-    elif total_words > 100:  # Medium text - balanced approach
-        words_per_group = 2  
-        print("Using medium groups (2 words) for medium text")
-    else:  # Short text - smaller groups for precision
-        words_per_group = 2
-        print("Using standard groups (2 words) for short text")
+    # USE CENTRALIZED CONFIG for word grouping
+    config = SUBTITLE_CONFIG
+    if total_words > 200:  # Very long text
+        words_per_group = config.get("words_per_group_long", 3)
+        print(f"Using {words_per_group} words per group for long text (>200 words)")
+    elif total_words > 100:  # Medium text
+        words_per_group = config.get("words_per_group_medium", 4)
+        print(f"Using {words_per_group} words per group for medium text (100-200 words)")
+    else:  # Short text
+        words_per_group = config.get("words_per_group_short", 5)
+        print(f"Using {words_per_group} words per group for short text (<100 words)")
     
     word_groups = []
     
-    # OPTIMIZED: Process in batches for better memory usage
+    # Process in batches with better phrase awareness
     for i in range(0, total_words, words_per_group):
         group_words = words[i:i + words_per_group]
         group_text = ' '.join(group_words)
         
-        # Quick calculations without complex analysis for speed
+        # Enhanced calculations for better timing
         word_count = len(group_words)
         char_count = len(group_text)
+        
+        # Check for natural phrase boundaries
+        has_punctuation = any(p in group_text for p in '.!?,:;')
         
         word_groups.append({
             'text': group_text,
             'word_count': word_count,
             'char_count': char_count,
             'start_index': i,
-            'end_index': min(i + words_per_group - 1, total_words - 1)
+            'end_index': min(i + words_per_group - 1, total_words - 1),
+            'has_punctuation': has_punctuation
         })
     
-    print(f"✅ Created {len(word_groups)} optimized groups")
+    print(f"✅ Created {len(word_groups)} optimized groups using centralized config")
     return word_groups
-
-def _calculate_optimized_timing(audio_file, word_groups, total_duration):
-    """
-    OPTIMIZED: Calculate faster timing for word groups with special handling for long audio
-    """
-    group_timings = []
-    
-    print("Using optimized fast timing calculation...")
-    
-    total_groups = len(word_groups)
-    if total_groups == 0:
-        return group_timings
-    
-    # PERFORMANCE OPTIMIZATION: Use ultra-fast timing for long audio
-    if total_duration > 10.0:  # For audio longer than 10 seconds
-        print(f"Long audio detected ({total_duration:.1f}s) - using ultra-fast timing mode")
-        
-        # Ultra-simplified timing for performance
-        avg_duration_per_group = total_duration / total_groups
-        overlap = 0.05  # Minimal overlap for speed
-        
-        for i, group in enumerate(word_groups):
-            group_start = max(0, i * avg_duration_per_group - overlap)
-            group_end = (i + 1) * avg_duration_per_group + overlap
-            
-            # Clamp to total duration
-            group_end = min(group_end, total_duration)
-            
-            group_timings.append((group_start, group_end))
-        
-        print(f"Ultra-fast timing completed for {total_groups} groups in long audio")
-        return group_timings
-    
-    # Standard timing for shorter audio (< 10 seconds)
-    reading_speed_wpm = 200  # Increased from 180 for faster pace
-    current_time = 0
-    
-    for i, group in enumerate(word_groups):
-        word_count = group['word_count']
-        char_count = group['char_count']
-        
-        # Simplified duration calculation for speed
-        base_duration = (word_count / reading_speed_wpm) * 60
-        
-        # Quick adjustments
-        if '$' in group['text']:
-            base_duration *= 1.1  # Slight pause for currency
-        if group['text'].endswith(('.', '!', '?')):
-            base_duration *= 1.05  # Brief pause for sentences
-        
-        # Minimum duration for readability
-        group_duration = max(base_duration, 0.8)  # Reduced minimum from 1.0
-        
-        # Reduced overlap for faster pace
-        overlap = 0.1  # Reduced from 0.2
-        group_start = max(0, current_time - overlap)
-        group_end = current_time + group_duration + overlap
-        
-        group_timings.append((group_start, group_end))
-        current_time += group_duration * 0.95  # 5% overlap
-    
-    return group_timings
 
 def _analyze_speech_timing(audio_file, word_groups, total_duration):
     """
-    ENHANCED: Analyze audio to detect speech segments for better text-speech sync
+    Analyze audio using centralized config to detect speech segments for better text-speech sync
     """
     try:
         from pydub import AudioSegment
         from pydub.silence import detect_nonsilent
         
-        print("Analyzing audio for speech pattern synchronization...")
+        print("Analyzing audio using centralized config for enhanced speech pattern synchronization...")
+        
+        # USE CENTRALIZED CONFIG for speech analysis
+        config = SUBTITLE_CONFIG
+        silence_threshold_db = config.get("silence_threshold_db", 16)
+        min_silence_length_ms = config.get("min_silence_length_ms", 150)
+        early_start_offset = config.get("early_start_offset", 0.3)
+        
+        print(f"Speech analysis config: {silence_threshold_db}dB threshold, {min_silence_length_ms}ms silence, {early_start_offset}s early start")
         
         # Load audio
         audio = AudioSegment.from_file(audio_file)
         
-        # Detect speech segments (non-silent parts)
-        # Adjusted for better speech detection
+        # Detect speech segments (non-silent parts) with config settings
         non_silent_segments = detect_nonsilent(
             audio,
-            min_silence_len=200,  # 200ms of silence
-            silence_thresh=audio.dBFS - 14  # Threshold for silence
+            min_silence_len=min_silence_length_ms,
+            silence_thresh=audio.dBFS - silence_threshold_db
         )
         
         if not non_silent_segments:
-            print("No speech segments detected, using fallback timing")
+            print("No speech segments detected, using enhanced fallback timing")
             return None
         
-        print(f"Detected {len(non_silent_segments)} speech segments")
+        print(f"Detected {len(non_silent_segments)} speech segments for {len(word_groups)} word groups")
         
         # Convert to seconds and create timing map
         speech_segments = []
         for start_ms, end_ms in non_silent_segments:
             start_sec = start_ms / 1000.0
             end_sec = end_ms / 1000.0
-            speech_segments.append((start_sec, end_sec))
+            duration = end_sec - start_sec
+            
+            # Filter out very short segments (likely noise)
+            if duration > 0.3:  # At least 300ms of speech
+                speech_segments.append((start_sec, end_sec))
         
-        # Map word groups to speech segments
+        if not speech_segments:
+            print("No valid speech segments found after filtering")
+            return None
+        
+        print(f"Using {len(speech_segments)} valid speech segments")
+        
+        # Better mapping of word groups to speech segments
         group_timings = []
         total_groups = len(word_groups)
         
-        # Distribute groups across detected speech segments
+        # Calculate total speech time for better distribution
+        total_speech_time = sum(end - start for start, end in speech_segments)
+        
         if len(speech_segments) >= total_groups:
-            # More speech segments than groups - use best segments
+            # More speech segments than groups - select best segments
+            print("Using one-to-one mapping with best speech segments")
+            
+            # Sort by segment duration (longer = better for subtitles)
+            sorted_segments = sorted(speech_segments, key=lambda x: x[1] - x[0], reverse=True)
+            
             for i, group in enumerate(word_groups):
-                if i < len(speech_segments):
-                    start_time, end_time = speech_segments[i]
+                if i < len(sorted_segments):
+                    start_time, end_time = sorted_segments[i]
+                    
+                    # Start subtitles BEFORE speech for better sync using config
+                    start_time = max(0, start_time - early_start_offset)
+                    
+                    # Adjust timing based on word group complexity
+                    duration = end_time - start_time
+                    
+                    # Minimum duration for readability
+                    min_duration = 1.2 + (group['char_count'] / 30)
+                    if duration < min_duration:
+                        end_time = start_time + min_duration
+                        if end_time > total_duration:
+                            end_time = min(total_duration, start_time + min_duration)
+                            start_time = max(0, end_time - min_duration)
+                    
                     group_timings.append((start_time, end_time))
                 else:
                     # Fallback for remaining groups
-                    last_end = group_timings[-1][1] if group_timings else 0
-                    duration = 2.0  # Default duration
-                    group_timings.append((last_end, last_end + duration))
+                    if group_timings:
+                        last_end = group_timings[-1][1]
+                        duration = 1.5 + (group['char_count'] / 25)
+                        start_time = max(0, last_end - 0.3)
+                        group_timings.append((start_time, start_time + duration))
+                    else:
+                        group_timings.append((0, 2.0))
         else:
             # Fewer speech segments than groups - distribute groups across segments
-            groups_per_segment = total_groups / len(speech_segments)
+            print("Distributing word groups across available speech segments")
+            
+            # Weighted distribution based on speech segment duration
+            segment_weights = []
+            for start_seg, end_seg in speech_segments:
+                seg_duration = end_seg - start_seg
+                weight = seg_duration * 1.0
+                segment_weights.append(weight)
+            
+            total_weight = sum(segment_weights)
             current_group = 0
             
-            for segment_start, segment_end in speech_segments:
+            for seg_idx, (segment_start, segment_end) in enumerate(speech_segments):
                 segment_duration = segment_end - segment_start
-                groups_in_this_segment = min(int(groups_per_segment) + 1, total_groups - current_group)
                 
-                if groups_in_this_segment <= 0:
-                    break
+                # Calculate how many groups this segment should handle
+                segment_weight = segment_weights[seg_idx]
+                groups_for_this_segment = max(1, round((segment_weight / total_weight) * total_groups))
+                groups_for_this_segment = min(groups_for_this_segment, total_groups - current_group)
+                
+                if groups_for_this_segment <= 0:
+                    continue
+                
+                print(f"Segment {seg_idx+1}: {groups_for_this_segment} groups in {segment_duration:.1f}s")
+                
+                # Start subtitles BEFORE speech in this segment using config
+                early_segment_start = max(0, segment_start - early_start_offset)
                 
                 # Distribute groups within this speech segment
-                for j in range(groups_in_this_segment):
+                for j in range(groups_for_this_segment):
                     if current_group >= total_groups:
                         break
                     
-                    # Calculate position within segment
-                    group_start = segment_start + (j * segment_duration / groups_in_this_segment)
-                    group_end = segment_start + ((j + 1) * segment_duration / groups_in_this_segment)
+                    group = word_groups[current_group]
+                    
+                    # Calculate position within segment with better spacing
+                    if groups_for_this_segment == 1:
+                        group_start = early_segment_start
+                        group_end = segment_end
+                    else:
+                        segment_portion = segment_duration / groups_for_this_segment
+                        group_start = early_segment_start + (j * segment_portion)
+                        
+                        # Adaptive duration based on content
+                        base_duration = segment_portion * 1.3
+                        if group['char_count'] > 20:
+                            base_duration *= 1.15
+                        if group['has_punctuation']:
+                            base_duration *= 1.1
+                        
+                        group_end = group_start + base_duration
+                        group_end = min(group_end, segment_end + 0.2)
+                    
+                    # Ensure minimum readable duration
+                    min_duration = 1.0 + (group['char_count'] / 40)
+                    if group_end - group_start < min_duration:
+                        group_end = group_start + min_duration
                     
                     group_timings.append((group_start, group_end))
                     current_group += 1
+                
+                if current_group >= total_groups:
+                    break
+            
+            # Handle any remaining groups with early start
+            while current_group < total_groups:
+                if group_timings:
+                    last_end = group_timings[-1][1]
+                    remaining_group = word_groups[current_group]
+                    duration = 1.5 + (remaining_group['char_count'] / 30)
+                    start_time = max(0, last_end - 0.2)
+                    group_timings.append((start_time, start_time + duration))
+                else:
+                    group_timings.append((0, 2.0))
+                current_group += 1
         
-        print(f"Speech-synced timing created for {len(group_timings)} groups")
-        return group_timings
+        # Validate and adjust timings
+        validated_timings = []
+        for i, (start, end) in enumerate(group_timings):
+            start = max(0, start)
+            end = min(end, total_duration)
+            
+            if end - start < 1.0:
+                end = start + 1.0
+                if end > total_duration:
+                    end = total_duration
+                    start = max(0, end - 1.0)
+            
+            validated_timings.append((start, end))
+        
+        print(f"Enhanced speech-synced timing created for {len(validated_timings)} groups using centralized config")
+        return validated_timings
         
     except Exception as e:
-        print(f"Speech analysis failed: {e}, using fallback timing")
+        print(f"Enhanced speech analysis failed: {e}, using improved fallback timing")
         return None
 
 def generate_subtitle_events(content, audio_file):
     """
-    Generate subtitle events with enhanced speed optimization and speech sync
+    Generate subtitle events using centralized config for optimization and speech sync
     """
-    print("Starting optimized subtitle generation...")
+    print("Starting optimized subtitle generation using centralized config...")
     
     try:
         # Get audio duration
@@ -933,28 +875,41 @@ def generate_subtitle_events(content, audio_file):
         print(f"Original text length: {len(content)}")
         print(f"Cleaned text length: {len(cleaned_content)}")
         
-        # Create optimized word groups
+        # Create optimized word groups using centralized config
         word_groups = create_optimized_word_groups(cleaned_content)
-        print(f"Created {len(word_groups)} word groups")
+        print(f"Created {len(word_groups)} word groups using centralized config")
         
         if not word_groups:
             print("WARNING: No word groups created, generating single subtitle")
             return _create_fallback_subtitle(cleaned_content, duration)
         
-        # ENHANCED: Try speech analysis first for better sync
-        group_timings = None
-        if duration <= 15.0:  # Only use speech analysis for reasonable length audio
-            group_timings = _analyze_speech_timing(audio_file, word_groups, duration)
+        # USE CENTRALIZED CONFIG for speech analysis decision
+        config = SUBTITLE_CONFIG
+        use_speech_analysis = config.get("use_speech_analysis", True)
+        max_duration_for_analysis = config.get("speech_analysis_max_duration", 25.0)
         
-        # Fallback to optimized timing if speech analysis fails or audio is too long
+        # Try speech analysis first for better sync
+        group_timings = None
+        if use_speech_analysis and duration <= max_duration_for_analysis:
+            print(f"Attempting enhanced speech analysis (audio <= {max_duration_for_analysis}s)...")
+            group_timings = _analyze_speech_timing(audio_file, word_groups, duration)
+        else:
+            if not use_speech_analysis:
+                print("Speech analysis disabled in config, using optimized timing")
+            else:
+                print(f"Audio too long ({duration:.1f}s) for speech analysis, using optimized timing")
+        
+        # Fallback to enhanced timing if speech analysis fails
         if group_timings is None:
-            print("Using optimized timing calculation...")
+            print("Using enhanced optimized timing calculation from centralized config...")
             group_timings = _calculate_optimized_timing(audio_file, word_groups, duration)
         
         # Generate subtitle events
-        subtitle_events = _generate_group_subtitle_events(word_groups, group_timings)
+        # For this function, we need a default style config since we don't have style_config here
+        default_style_config = config.get("available_styles", {}).get(config.get("default_style", "modern_glow"), {})
+        subtitle_events = _generate_group_subtitle_events(word_groups, group_timings, default_style_config)
         
-        print(f"Generated {len(subtitle_events)} subtitle events")
+        print(f"Generated {len(subtitle_events)} subtitle events using centralized config")
         return subtitle_events
         
     except Exception as e:
@@ -996,12 +951,12 @@ def generate_subtitle_file(content, audio_file, output_dir):
         import shutil
         shutil.move(temp_subtitle_file, final_subtitle_file)
         
-        print(f"✅ Subtitle file generated: {final_subtitle_file}")
-        print(f"📊 Generated {len(subtitle_events)} subtitle events")
+        print(f" Subtitle file generated: {final_subtitle_file}")
+        print(f" Generated {len(subtitle_events)} subtitle events")
         return final_subtitle_file
         
     except Exception as e:
-        print(f"❌ Error generating subtitle file: {e}")
+        print(f" Error generating subtitle file: {e}")
         import traceback
         traceback.print_exc()
         return None
@@ -1076,24 +1031,3 @@ def _seconds_to_ass_time(seconds):
     
     # ASS format uses centiseconds (1/100 of a second)
     return f"{hours}:{minutes:02d}:{secs:05.2f}"
-
-def _create_fallback_subtitle(content, duration):
-    """
-    Create a fallback subtitle event list
-    
-    Args:
-        content: Text content
-        duration: Duration in seconds
-        
-    Returns:
-        list: List of subtitle events
-    """
-    return [
-        {
-            'text': content[:100] + "..." if len(content) > 100 else content,
-            'start': 0,
-            'end': min(duration, 10.0)
-        }
-    ]
-
-

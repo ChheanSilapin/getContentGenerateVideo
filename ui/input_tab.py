@@ -6,10 +6,10 @@ Handles text input, image source selection, and processing options
 import os
 import tempfile
 import threading
-import tkinter as tk
-import tkinter.simpledialog
 import urllib.parse
-from tkinter import messagebox, ttk, filedialog
+
+# Use centralized UI imports
+from utils.common_imports import tk, messagebox, ttk, filedialog, tkinter
 
 import requests
 from bs4 import BeautifulSoup

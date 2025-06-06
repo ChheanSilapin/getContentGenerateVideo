@@ -4,8 +4,9 @@ Image Tab Component for Video Generator GUI
 Handles image selection, display, and management functionality
 """
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox, ttk
+
+# Use centralized UI imports
+from utils.common_imports import tk, messagebox, ttk, filedialog
 
 from PIL import Image, ImageTk
 

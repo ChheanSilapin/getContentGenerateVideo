@@ -27,7 +27,7 @@ def setup_environment():
     # Set up paths for bundled FFmpeg
     if getattr(sys, 'frozen', False):
         # Running as PyInstaller bundle
-        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEI PASS') else os.path.dirname(sys.executable)
+        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
         
         # Add bundle directory to PATH for FFmpeg
         current_path = os.environ.get('PATH', '')

@@ -48,8 +48,8 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
         
         for pattern, suggestion in problematic_patterns:
             if pattern in url.lower():
-                print(f"⚠️  DETECTED PROBLEMATIC URL: {pattern}")
-                print(f"💡 SUGGESTION: {suggestion}")
+                print(f"WARNING: DETECTED PROBLEMATIC URL: {pattern}")
+                print(f"SUGGESTION: {suggestion}")
                 
                 # For Google redirect URLs, try to extract the actual URL
                 if 'google.com/url?' in url.lower():
@@ -60,23 +60,23 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
                         actual_url = query_params.get('url', [None])[0]
                         
                         if actual_url:
-                            print(f"🔄 EXTRACTED ACTUAL URL: {actual_url}")
-                            print(f"💡 TIP: Use this direct URL instead: {actual_url}")
+                            print(f"EXTRACTED ACTUAL URL: {actual_url}")
+                            print(f"TIP: Use this direct URL instead: {actual_url}")
                             # Recursively try the extracted URL
                             return download_images(actual_url, output_folder, max_images, placeholder_count)
                     except Exception as extract_error:
-                        print(f"❌ Could not extract URL: {extract_error}")
+                        print(f"ERROR: Could not extract URL: {extract_error}")
                 
                 # For social media sites, create placeholder images with helpful message
-                print("🎨 Creating placeholder images since this site blocks scraping...")
+                print("Creating placeholder images since this site blocks scraping...")
                 return create_helpful_placeholder_images(output_folder, max_images, f"Images from {pattern} cannot be scraped automatically")
         
         # Validate URL format
         if not url.startswith(('http://', 'https://')):
-            print("❌ ERROR: URL must start with http:// or https://")
+            print("ERROR: URL must start with http:// or https://")
             return create_helpful_placeholder_images(output_folder, max_images, "Invalid URL format")
         
-        print("✅ URL appears valid, proceeding with download...")
+        print("URL appears valid, proceeding with download...")
 
         # Add proper headers to mimic a browser request
         headers = {
@@ -97,35 +97,35 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
         parsed_url = urllib.parse.urlparse(url)
         path = parsed_url.path.lower()
         if path.endswith(SUPPORTED_IMAGE_EXTENSIONS):
-            print("📸 Direct image URL detected, downloading as first image")
+            print("Direct image URL detected, downloading as first image")
             img_path = os.path.join(output_folder, "0.jpg")
             try:
-                print(f"⬇️  Downloading direct image...")
+                print(f"Downloading direct image...")
                 img_response = requests.get(url, headers=headers, timeout=15)
                 img_response.raise_for_status()
                 with open(img_path, "wb") as f:
                     f.write(img_response.content)
-                print(f"✅ Downloaded direct image to {img_path}")
+                print(f"Downloaded direct image to {img_path}")
 
                 # Create placeholder images if requested
                 if placeholder_count > 0:
-                    print(f"🎨 Creating {placeholder_count} placeholder images")
+                    print(f"Creating {placeholder_count} placeholder images")
                     placeholder_paths = create_placeholder_images(output_folder, placeholder_count, start_index=1)
                     return [img_path] + placeholder_paths
                 
                 return [img_path]
             except Exception as e:
-                print(f"❌ Failed to download direct image: {e}")
+                print(f"ERROR: Failed to download direct image: {e}")
                 return create_helpful_placeholder_images(output_folder, max_images, f"Failed to download direct image: {str(e)}")
 
         # Regular website processing
         try:
-            print("🌐 Downloading webpage...")
+            print("Downloading webpage...")
             response = requests.get(url, headers=headers, timeout=15)
             response.raise_for_status()
-            print(f"✅ Webpage downloaded successfully (Status: {response.status_code})")
+            print(f"Webpage downloaded successfully (Status: {response.status_code})")
 
-            print("🔍 Finding images...")
+            print("Finding images...")
             soup = BeautifulSoup(response.content, 'html.parser')
             
             # Look for images in multiple ways
@@ -153,17 +153,17 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
                     if bg_match:
                         img_urls.append(bg_match.group(1))
             
-            print(f"📊 Found {len(img_urls)} images")
+            print(f"Found {len(img_urls)} images")
             
             if len(img_urls) == 0:
-                print("⚠️  No images found on this webpage")
-                print("💡 SUGGESTIONS:")
+                print("WARNING: No images found on this webpage")
+                print("SUGGESTIONS:")
                 print("   • Try a different website (like Unsplash, Pexels, or Pixabay)")
                 print("   • Use a direct image URL")
                 print("   • Upload images manually from the Images tab")
                 return create_helpful_placeholder_images(output_folder, max_images, "No images found on this webpage")
 
-            print("⬇️  Processing images...")
+            print("Processing images...")
             image_paths = []
             successful_downloads = 0
             
@@ -180,7 +180,7 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
 
                     img_path = os.path.join(output_folder, f"{successful_downloads}.jpg")
                     
-                    print(f"📥 Downloading image {successful_downloads + 1}: {img_url[:100]}...")
+                    print(f"Downloading image {successful_downloads + 1}: {img_url[:100]}...")
                     
                     img_response = requests.get(img_url, headers=headers, timeout=10)
                     img_response.raise_for_status()
@@ -188,7 +188,7 @@ def download_images(url, output_folder, max_images=10, placeholder_count=4):
                     # Check if it's actually an image by content type
                     content_type = img_response.headers.get('content-type', '')
                     if not content_type.startswith('image/'):
-                        print(f"⚠️  Skipping non-image content: {content_type}")
+                        print(f"WARNING: Skipping non-image content: {content_type}")
                         continue
                     
                     with open(img_path, "wb") as f:

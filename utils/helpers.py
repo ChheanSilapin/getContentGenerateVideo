@@ -9,10 +9,14 @@ import emoji
 import shutil
 import traceback
 import subprocess
+import tempfile
 import requests
 from bs4 import BeautifulSoup
 import urllib.parse
 from config import SUPPORTED_IMAGE_EXTENSIONS
+
+# Import text processing functions from centralized module
+from utils.text_processing import get_title_content, process_text_for_tts
 
 def get_app_data_dir():
     """
@@ -71,7 +75,6 @@ def get_app_data_dir():
     except Exception as e:
         print(f"Warning: Could not create app data directory {app_data_dir}: {e}")
         # Fallback to temp directory
-        import tempfile
         app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
         try:
             os.makedirs(app_data_dir, exist_ok=True)
@@ -104,7 +107,6 @@ def get_output_directory():
     except Exception as e:
         print(f"Warning: Could not create output directory {output_dir}: {e}")
         # Last resort - use temp directory
-        import tempfile
         output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
         try:
             os.makedirs(output_dir, exist_ok=True)
@@ -168,71 +170,6 @@ def get_ffmpeg_path():
 
     # Fallback to system PATH
     return 'ffmpeg'
-
-def get_title_content(text):
-    """
-    Extract title and content from a text
-
-    Args:
-        text: Input text
-
-    Returns:
-        tuple: (title, content)
-    """
-    lines = text.strip().split('\n')
-
-    # If there's only one line, use it as both title and content
-    if len(lines) == 1:
-        return lines[0], lines[0]
-
-    # Use the first line as title and the rest as content
-    title = lines[0]
-    content = '\n'.join(lines[1:])
-
-    return title, content
-
-def process_text_for_tts(text):
-    """
-    Process text for text-to-speech by removing emojis and non-ASCII characters
-
-    Args:
-        text: Text to process
-
-    Returns:
-        str: Processed text
-    """
-    if not text:
-        return ""
-
-    # Remove emojis
-    text = emoji.replace_emoji(text, replace='')
-
-    # Remove non-ASCII characters
-    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-
-    # Clean up whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-
-    return text
-
-def ensure_directory_exists(directory_path):
-    """
-    Create a directory if it doesn't exist
-
-    Args:
-        directory_path: Path to directory
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        if not os.path.exists(directory_path):
-            os.makedirs(directory_path, exist_ok=True)
-            print(f"Created directory: {directory_path}")
-        return True
-    except Exception as e:
-        print(f"Error creating directory {directory_path}: {e}")
-        return False
 
 def get_file_extension(file_path):
     """
@@ -328,7 +265,6 @@ def test_subtitle_functionality():
         print(f"FFmpeg available at: {ffmpeg_path}")
 
         # Test subtitle file creation
-        import tempfile
         with tempfile.NamedTemporaryFile(suffix='.ass', delete=False) as temp_sub:
             temp_subtitle_path = temp_sub.name
 
@@ -354,4 +290,23 @@ def test_subtitle_functionality():
 
     except Exception as e:
         print(f"Error testing subtitle functionality: {e}")
+        return False
+
+def ensure_directory_exists(directory_path):
+    """
+    Create a directory if it doesn't exist
+
+    Args:
+        directory_path: Path to directory
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if not os.path.exists(directory_path):
+            os.makedirs(directory_path, exist_ok=True)
+            print(f"Created directory: {directory_path}")
+        return True
+    except Exception as e:
+        print(f"Error creating directory {directory_path}: {e}")
         return False

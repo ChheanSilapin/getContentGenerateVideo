@@ -1,9 +1,4 @@
-import subprocess
-import os
-import traceback
-import shutil
-import sys
-import time
+from utils.common_imports import subprocess, os, traceback, shutil, sys, time, tempfile, glob
 
 # Use centralized path management
 try:
@@ -109,7 +104,6 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         
         # ENHANCED: Ensure no leftover temp files exist
         temp_pattern = os.path.join(temp_dir, "temp_subtitle*.ass")
-        import glob
         old_temp_files = glob.glob(temp_pattern)
         for old_file in old_temp_files:
             try:
@@ -125,8 +119,6 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         print(f"Error creating local subtitle file: {e}")
         # Fall back to using system temp directory
         try:
-            import tempfile
-            import time
             timestamp = str(int(time.time() * 1000))
             temp_dir = tempfile.gettempdir()
             local_subtitle_path = os.path.join(temp_dir, f"temp_subtitle_{timestamp}.ass")
@@ -259,15 +251,13 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     # Clean up temporary subtitle file if it was created
     if temp_subtitle_path != subtitle_path and os.path.exists(temp_subtitle_path):
         try:
-            # DEBUGGING: Keep temp files to investigate "150" issue
-            # os.remove(temp_subtitle_path)
-            print(f"DEBUG: Keeping temporary subtitle file for inspection: {temp_subtitle_path}")
+            os.remove(temp_subtitle_path)
+            print(f"Cleaned up temporary subtitle file: {temp_subtitle_path}")
         except Exception as e:
             print(f"Warning: Could not remove temporary subtitle file: {e}")
     
-    # ENHANCED: Additional cleanup for any remaining temp subtitle files
+    # Clean up any remaining temp subtitle files in the area
     try:
-        import glob
         if getattr(sys, 'frozen', False):
             cleanup_dir = os.path.dirname(output_file)
         else:
@@ -277,13 +267,12 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         remaining_temp_files = glob.glob(temp_pattern)
         for temp_file in remaining_temp_files:
             try:
-                # DEBUGGING: Keep temp files to investigate "150" issue
-                # os.remove(temp_file)
-                print(f"DEBUG: Found temp subtitle file (keeping for inspection): {temp_file}")
+                os.remove(temp_file)
+                print(f"Cleaned up temp subtitle file: {temp_file}")
             except Exception as cleanup_e:
                 print(f"Warning: Could not remove temp file {temp_file}: {cleanup_e}")
     except Exception as final_cleanup_e:
-        print(f"Warning: Error in final temp file cleanup: {final_cleanup_e}")
+        print(f"Warning: Error in temp subtitle cleanup: {final_cleanup_e}")
 
     # Final verification
     if os.path.exists(output_file):
@@ -293,3 +282,23 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     else:
         print(f"ERROR: Output file was not created: {output_file}")
         return None
+
+    if temp_subtitle_path and os.path.exists(temp_subtitle_path):
+        final_subtitle_path = os.path.join(output_dir, "subtitles.ass")
+        try:
+            shutil.move(temp_subtitle_path, final_subtitle_path)
+            print(f"Moved subtitle file to: {final_subtitle_path}")
+        except Exception as move_error:
+            print(f"Error moving subtitle file: {move_error}")
+            try:
+                shutil.copy2(temp_subtitle_path, final_subtitle_path)
+                print(f"Copied subtitle file to: {final_subtitle_path}")
+            except Exception as copy_error:
+                print(f"Error copying subtitle file: {copy_error}")
+    
+    # Remove temporary files from output directory
+    for temp_file in glob.glob(os.path.join(output_dir, "temp_subtitle_*.ass")):
+        try:
+            os.remove(temp_file)
+        except Exception as e:
+            print(f"Warning: Could not remove temp file {temp_file}: {e}")

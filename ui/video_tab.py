@@ -1,141 +1,17 @@
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+# Use centralized UI imports
+from utils.common_imports import tk, messagebox, ttk, filedialog
+from ui.components.settings_popup import show_settings_popup
+from ui.components.group_entry import GroupEntry, SmartNotification
+from ui.components.video_entry import VideoEntry
+
 import threading
 import os
+import config
+from utils.helpers import get_output_directory
 
-
-class VideoEntry:
-    """Individual video entry with file selector and prompt input"""
-
-    def __init__(self, parent_frame, main_gui, remove_callback, entry_id):
-        self.parent_frame = parent_frame
-        self.main_gui = main_gui
-        self.remove_callback = remove_callback
-        self.entry_id = entry_id
-
-        # Entry data
-        self.video_file_path = tk.StringVar()
-        self.prompt_text = tk.StringVar()
-
-        # UI components
-        self.entry_frame = None
-        self.setup_entry()
-
-    def setup_entry(self):
-        """Set up the UI for this video entry"""
-        # Main entry frame with better styling
-        self.entry_frame = ttk.LabelFrame(
-            self.parent_frame,
-            text=f"🎥 Video {self.entry_id}",
-            padding=8
-        )
-        self.entry_frame.pack(fill="x", padx=6, pady=4)
-
-        # Video file selection section
-        file_section = ttk.Frame(self.entry_frame)
-        file_section.pack(fill="x", pady=(0, 6))
-
-        # File label with icon
-        file_label_frame = ttk.Frame(file_section)
-        file_label_frame.pack(fill="x", pady=(0, 3))
-
-        ttk.Label(
-            file_label_frame,
-            text="📁 Video File:",
-            font=("Cascadia Code", 10, "bold")
-        ).pack(side="left")
-
-        # File input row
-        file_input_frame = ttk.Frame(file_section)
-        file_input_frame.pack(fill="x")
-
-        file_entry = ttk.Entry(
-            file_input_frame,
-            textvariable=self.video_file_path,
-            state="readonly",
-            font=("Cascadia Code", 10),
-            width=50
-        )
-        file_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
-
-        browse_button = self.main_gui.ui_factory.create_icon_button(
-            file_input_frame, "Browse", self.browse_video_file,
-            icon="📂", width=12
-        )
-        browse_button.pack(side="right")
-
-        # Prompt input section
-        prompt_section = ttk.Frame(self.entry_frame)
-        prompt_section.pack(fill="x")
-
-        # Prompt label with icon
-        prompt_label_frame = ttk.Frame(prompt_section)
-        prompt_label_frame.pack(fill="x", pady=(0, 3))
-
-        ttk.Label(
-            prompt_label_frame,
-            text="💬 Voice-over Prompt:",
-            font=("Cascadia Code", 10, "bold")
-        ).pack(side="left")
-
-        # Prompt input row
-        prompt_input_frame = ttk.Frame(prompt_section)
-        prompt_input_frame.pack(fill="x")
-
-        prompt_text = tk.Text(
-            prompt_input_frame,
-            height=2,
-            wrap="word",
-            font=("Cascadia Code", 10),
-            relief="solid",
-            borderwidth=1,
-            padx=6,
-            pady=4
-        )
-        prompt_text.pack(side="left", fill="x", expand=True, padx=(0, 12))
-
-        # Bind text changes to update the StringVar
-        prompt_text.bind('<KeyRelease>', lambda e: self.prompt_text.set(prompt_text.get("1.0", tk.END).strip()))
-
-        # Remove button with clean styling
-        remove_button = self.main_gui.ui_factory.create_icon_button(
-            prompt_input_frame, "Remove", lambda: self.remove_callback(self.entry_id),
-            icon="🗑️", width=12
-        )
-        remove_button.pack(side="right", anchor="n", pady=(0, 0))
-
-        # Store text widget reference for getting content
-        self.prompt_widget = prompt_text
-
-    def browse_video_file(self):
-        """Open file dialog to select a video file"""
-        file_path = filedialog.askopenfilename(
-            title="Select Video File",
-            filetypes=[
-                ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm"),
-                ("All files", "*.*")
-            ]
-        )
-        if file_path:
-            self.video_file_path.set(file_path)
-            self.main_gui.log(f"Selected video file: {os.path.basename(file_path)}")
-
-    def get_data(self):
-        """Get the video file path and prompt text"""
-        return {
-            "video_file": self.video_file_path.get(),
-            "prompt": self.prompt_widget.get("1.0", tk.END).strip()
-        }
-
-    def is_valid(self):
-        """Check if this entry has valid data"""
-        data = self.get_data()
-        return bool(data["video_file"] and data["prompt"])
-
-    def destroy(self):
-        """Remove this entry from the UI"""
-        if self.entry_frame:
-            self.entry_frame.destroy()
+# Import folder processing utilities
+from utils.folder_processor import FolderProcessor
+from utils.settings_manager import SettingsManager
 
 
 class VideoTab:
@@ -147,11 +23,25 @@ class VideoTab:
 
         # Video entries management
         self.video_entries = {}  # Dictionary to store VideoEntry objects
+        self.group_entries = {}  # Dictionary to store GroupEntry objects
         self.next_entry_id = 1
+        self.next_group_id = 1
+        self.current_mode = "individual"  # "individual" or "grouped"
 
-        # Audio settings
-        self.mute_original_audio = tk.BooleanVar(value=False)  # Default: keep original audio
-        self.original_audio_volume = tk.DoubleVar(value=0.3)  # Default: 30% volume
+        # Settings manager for persistence
+        self.settings_manager = SettingsManager()
+        
+        # Settings popup and current settings (load from persistent storage)
+        self.settings_popup = None
+        self.current_settings = self.settings_manager.load_settings()
+        
+        # Audio settings variables (for backward compatibility)
+        self.mute_original_audio = tk.BooleanVar(value=False)
+        self.original_audio_volume = tk.DoubleVar(value=0.3)
+
+        # Folder processing components
+        self.folder_processor = FolderProcessor()
+        self.folder_processor.set_logger(self.main_gui.log)
 
         # UI components
         self.video_progress_bar = None
@@ -161,9 +51,12 @@ class VideoTab:
         self.entries_frame = None
         self.scroll_canvas = None
         self.scrollable_frame = None
-
+        self.settings_info_label = None
+        
         # Set up the tab
         self.setup_video_tab()
+        # In VideoTab.__init__, after self.setup_video_tab():
+         # This would activate Phase 1
 
     def setup_video_tab(self):
         """Set up the video tab UI"""
@@ -186,11 +79,8 @@ class VideoTab:
         )
         title_label.pack(anchor="w")
 
-        # Description with better styling
-        
-
-        # Audio settings section
-        self.setup_audio_settings(main_frame)
+        # Settings control section - compact settings button instead of full audio settings
+        self.setup_settings_section(main_frame)
 
         # Scrollable area for video entries
         self.setup_scrollable_area(main_frame)
@@ -233,93 +123,90 @@ class VideoTab:
         )
         self.stop_button.pack(side="right")
 
-    def setup_audio_settings(self, parent):
-        """Set up audio settings section"""
-        # Audio settings frame with better styling
-        audio_frame = ttk.LabelFrame(
-            parent,
-            text="🔊 Audio Settings",
-            padding=8
+    def setup_settings_section(self, parent):
+        """Set up compact settings section with settings button"""
+        # Settings control row
+        settings_row = ttk.Frame(parent)
+        settings_row.pack(fill="x", pady=(0, 8))
+        
+        # Settings info label (left side)
+        self.settings_info_label = ttk.Label(
+            settings_row,
+            text="Audio: Default Voice, 80% Speed, 70% Volume | Output: Default Folder",
+            font=("Cascadia Code", 9),
+            foreground="#7f8c8d"
         )
-        audio_frame.pack(fill="x", pady=(0, 8))
-
-        # Settings grid container
-        settings_container = ttk.Frame(audio_frame)
-        settings_container.pack(fill="x")
-
-        # Mute original audio checkbox with better styling
-        mute_frame = ttk.Frame(settings_container)
-        mute_frame.pack(fill="x", pady=(0, 6))
-
-        mute_checkbox = ttk.Checkbutton(
-            mute_frame,
-            text="🔇 Mute original video audio (voice-over only)",
-            variable=self.mute_original_audio,
-            command=self.on_mute_setting_changed
+        self.settings_info_label.pack(side="left", anchor="w")
+        
+        # Settings button (right side)
+        settings_button = self.main_gui.ui_factory.create_icon_button(
+            settings_row,
+            text="⚙️",
+            command=self._show_settings_popup,
+            width=5
         )
-        mute_checkbox.pack(side="left")
+        settings_button.pack(side="right")
+        
+        # Update info label with current settings
+        self._update_settings_info_label()
 
-        # Volume control section
-        volume_section = ttk.Frame(settings_container)
-        volume_section.pack(fill="x")
-
-        # Volume label with icon
-        volume_label_frame = ttk.Frame(volume_section)
-        volume_label_frame.pack(fill="x", pady=(0, 4))
-
-        ttk.Label(
-            volume_label_frame,
-            text="🔉 Original audio volume:",
-            font=("Cascadia Code", 10, "bold")
-        ).pack(side="left")
-
-        # Volume control frame
-        volume_control_frame = ttk.Frame(volume_section)
-        volume_control_frame.pack(fill="x")
-
-        # Volume scale with better styling
-        self.volume_scale = ttk.Scale(
-            volume_control_frame,
-            from_=0.0,
-            to=1.0,
-            orient="horizontal",
-            variable=self.original_audio_volume,
-            length=300
+    def _show_settings_popup(self):
+        """Show the settings popup dialog"""
+        if self.settings_popup and hasattr(self.settings_popup, 'popup_window') and self.settings_popup.popup_window and self.settings_popup.popup_window.winfo_exists():
+            # Popup already exists, bring it to front
+            self.settings_popup.popup_window.lift()
+            self.settings_popup.popup_window.focus_set()
+            return
+        
+        # Show settings popup with both audio and output folder settings
+        self.settings_popup = show_settings_popup(
+            parent=self.main_gui.root,
+            title="Video Generation Settings",
+            main_gui=self.main_gui,
+            current_settings=self.current_settings,
+            callback=self._on_settings_applied,
+            include_audio=True,
+            include_output_folder=True
         )
-        self.volume_scale.pack(side="left", padx=(0, 15))
 
-        # Volume percentage label with better styling
-        self.volume_label = ttk.Label(
-            volume_control_frame,
-            text="30%",
-            font=("Cascadia Code", 10, "bold"),
-            foreground="#2c3e50"
-        )
-        self.volume_label.pack(side="left")
-
-        # Bind scale changes to update label
-        self.volume_scale.configure(command=self.on_volume_changed)
-
-        # Initial state
-        self.on_mute_setting_changed()
-
-    def on_mute_setting_changed(self):
-        """Handle mute setting change"""
-        if self.mute_original_audio.get():
-            # Disable volume controls when muted
-            self.volume_scale.configure(state="disabled")
-            self.volume_label.configure(text="Muted", foreground="gray")
+    def _on_settings_applied(self, settings):
+        """Handle when settings are applied from the popup"""
+        # Update current settings
+        self.current_settings.update(settings)
+        
+        # Save settings persistently
+        if self.settings_manager.save_settings(self.current_settings):
+            self.main_gui.log("Settings saved successfully")
         else:
-            # Enable volume controls
-            self.volume_scale.configure(state="normal")
-            self.volume_label.configure(foreground="black")
-            self.on_volume_changed(self.original_audio_volume.get())
+            self.main_gui.log("Warning: Failed to save settings")
+        
+        # Sync output folder with the model
+        if 'output_folder' in settings:
+            self.main_gui.model.output_folder = settings['output_folder']
+        
+        # Sync audio settings with tkinter variables (for backward compatibility)
+        if 'mute' in settings:
+            self.mute_original_audio.set(settings['mute'])
+        if 'volume' in settings:
+            self.original_audio_volume.set(settings['volume'])
+        
+        # Update the info label
+        self._update_settings_info_label()
 
-    def on_volume_changed(self, value):
-        """Handle volume scale change"""
-        if not self.mute_original_audio.get():
-            volume_percent = int(float(value) * 100)
-            self.volume_label.configure(text=f"{volume_percent}%")
+    def _update_settings_info_label(self):
+        """Update the settings info label with current settings"""
+        # Audio info
+        voice = self.current_settings.get('voice_actor', 'Default')
+        speed = int(self.current_settings.get('speed', 0.8) * 100)
+        volume = "Muted" if self.current_settings.get('mute', False) else f"{int(self.current_settings.get('volume', 0.7) * 100)}%"
+        
+        # Output info
+        output_folder = self.current_settings.get('output_folder', 'Default (Auto)')
+        output_name = "Default" if output_folder == "Default (Auto)" else "Custom"
+        
+        # Update label
+        info_text = f"Audio: {voice}, {speed}% Speed, {volume} | Output: {output_name} Folder"
+        self.settings_info_label.config(text=info_text)
 
     def setup_scrollable_area(self, parent):
         """Set up scrollable area for video entries"""
@@ -333,6 +220,13 @@ class VideoTab:
             font=("Cascadia Code", 14, "bold")
         )
         entries_title.pack(side="left")
+
+        # Load from folder button (renamed and improved)
+        load_folder_button = self.main_gui.ui_factory.create_icon_button(
+            entries_header, "Load from Folder", self.load_videos_from_folder,
+            icon="📁", width=20
+        )
+        load_folder_button.pack(side="right", padx=(8, 8))
 
         # Add video button moved to header
         add_video_button = self.main_gui.ui_factory.create_icon_button(
@@ -390,7 +284,7 @@ class VideoTab:
         """Handle mouse wheel scrolling in the canvas"""
         self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-    def add_video_entry(self):
+    def add_video_entry(self, video_file=None, prompt=None):
         """Add a new video entry to the list"""
         entry_id = self.next_entry_id
         self.next_entry_id += 1
@@ -403,6 +297,10 @@ class VideoTab:
             entry_id
         )
 
+        # Set data if provided
+        if video_file and prompt:
+            video_entry.set_data(video_file, prompt)
+
         # Store the entry
         self.video_entries[entry_id] = video_entry
 
@@ -411,6 +309,7 @@ class VideoTab:
         self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
 
         self.main_gui.log(f"Added video entry #{entry_id}")
+        return entry_id
 
     def remove_video_entry(self, entry_id):
         """Remove a video entry from the list"""
@@ -431,73 +330,375 @@ class VideoTab:
             self.main_gui.log(f"Removed video entry #{entry_id}")
 
     def get_valid_entries(self):
-        """Get all valid video entries"""
+        """Get all valid video entries (individual or grouped)"""
+        if self.current_mode == "grouped":
+            return self.get_valid_groups()
+        else:
+            return self.get_valid_individual_entries()
+
+    def get_valid_individual_entries(self):
+        """Get all valid individual video entries"""
         valid_entries = []
         for entry_id, entry in self.video_entries.items():
             if entry.is_valid():
                 valid_entries.append(entry.get_data())
         return valid_entries
 
+    def get_valid_groups(self):
+        """Get all valid group entries"""
+        valid_groups = []
+        self.main_gui.log(f"Checking {len(self.group_entries)} group entries for validity...")
+        
+        for group_id, group_entry in self.group_entries.items():
+            group_data = group_entry.get_group_data()
+            is_valid = group_entry.is_valid()
+            
+            self.main_gui.log(f"Group {group_id} ({group_data.get('folder_name', 'Unknown')}): {'Valid' if is_valid else 'Invalid'}")
+            
+            if is_valid:
+                valid_groups.append(group_data)
+            else:
+                # Debug invalid groups
+                pairs = group_data.get('pairs', [])
+                self.main_gui.log(f"  - Has {len(pairs)} pairs")
+                for i, pair in enumerate(pairs):
+                    has_video = bool(pair.get('video_file'))
+                    has_prompt = bool(pair.get('prompt'))
+                    self.main_gui.log(f"  - Pair {i+1}: Video={has_video}, Prompt={has_prompt}")
+        
+        self.main_gui.log(f"Found {len(valid_groups)} valid groups")
+        return valid_groups
+
+    def clear_all_entries(self):
+        """Clear all video entries (both individual and grouped)"""
+        # Remove all individual entries
+        for entry_id in list(self.video_entries.keys()):
+            self.video_entries[entry_id].destroy()
+        
+        # Remove all group entries  
+        for group_id in list(self.group_entries.keys()):
+            self.group_entries[group_id].destroy()
+        
+        # Clear the dictionaries
+        self.video_entries.clear()
+        self.group_entries.clear()
+        self.next_entry_id = 1
+        self.next_group_id = 1
+        
+        # Reset to individual mode
+        self.current_mode = "individual"
+
+        # Update scroll region
+        self.scrollable_frame.update_idletasks()
+        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+    def load_videos_from_folder(self):
+        """SMART AUTO-DETECTION: Load videos with intelligent grouping detection"""
+        # Show simple Windows folder dialog
+        folder_path = filedialog.askdirectory(
+            title="Select Folder to Load Videos From",
+            mustexist=True
+        )
+        
+        if not folder_path:
+            return
+            
+        try:
+            self.main_gui.log(f"Smart-analyzing folder: {os.path.basename(folder_path)}")
+            
+            # Use smart auto-detection logic
+            detection_result = self.folder_processor.smart_analyze_folder(folder_path)
+            
+            # Check if any videos were found
+            if detection_result['processing_mode'] == 'grouped':
+                if not detection_result.get('groups'):
+                    self._show_no_videos_found()
+                    return
+            else:
+                if not detection_result.get('pairs'):
+                    self._show_no_videos_found()
+                    return
+            
+            # Apply the smart detection result
+            if detection_result['processing_mode'] == 'grouped':
+                self._load_as_groups(detection_result)
+            else:
+                self._load_as_individual(detection_result)
+            
+            # Show smart notification
+            SmartNotification.show_detection_result(
+                self.scrollable_frame, 
+                detection_result, 
+                self._handle_detection_override
+            )
+            
+
+            
+        except Exception as e:
+            messagebox.showerror("Error Loading Folder", f"Unexpected error: {str(e)}")
+            self.main_gui.log(f"Folder loading error: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _show_no_videos_found(self):
+        """Show user-friendly message when no videos are found"""
+        messagebox.showwarning(
+            "No Video Pairs Found",
+            "No matching video and text file pairs found in the selected folder.\n\n"
+            "Expected patterns:\n"
+            "• video1.mp4 + video1.txt (exact match)\n" 
+            "• video.mp4 + prompt.txt or script.txt (common names)\n"
+            "• Single video + single text in same folder"
+        )
+
+    def _load_as_groups(self, detection_result):
+        """Load videos as grouped entries"""
+        groups = detection_result['groups']
+        
+        # Clear existing entries first
+        self.clear_all_entries()
+        
+        # Set to grouped mode AFTER clearing (since clear resets to individual)
+        self.current_mode = "grouped"
+        
+        # Create group entries
+        for group_name, group_info in groups.items():
+            self.add_group_entry(group_info)
+        
+        self.main_gui.log(f"Loaded {len(groups)} groups in grouped mode")
+
+    def _load_as_individual(self, detection_result):
+        """Load videos as individual entries"""
+        self.current_mode = "individual"
+        
+        # Extract all pairs from all groups
+        all_pairs = []
+        if 'groups' in detection_result:
+            groups = detection_result['groups']
+            if isinstance(groups, dict):
+                # groups is a dictionary {group_name: group_info}
+                for group_name, group_info in groups.items():
+                    all_pairs.extend(group_info.get('pairs', []))
+            else:
+                # groups is a list of group_info objects
+                for group_info in groups:
+                    all_pairs.extend(group_info.get('pairs', []))
+        else:
+            # Fallback for direct pairs (shouldn't happen in current implementation)
+            all_pairs = detection_result.get('pairs', [])
+        
+        # Check for duplicates and handle them
+        existing_files = self._get_existing_video_files()
+        new_pairs = [pair for pair in all_pairs if pair['video_file'] not in existing_files]
+        
+        # Add individual entries
+        for pair in new_pairs:
+            self.add_video_entry(pair['video_file'], pair['prompt'])
+        
+        self.main_gui.log(f"Loaded {len(new_pairs)} individual videos")
+
+    def _handle_detection_override(self, detection_result):
+        """Handle user override of smart detection"""
+        # Toggle between modes
+        if detection_result['processing_mode'] == 'grouped':
+            # Switch to individual mode
+            self._load_as_individual(detection_result)
+            self.main_gui.log("Switched to individual video mode")
+        else:
+            # Switch to grouped mode
+            self._load_as_groups(detection_result)
+            self.main_gui.log("Switched to grouped video mode")
+
+    def add_group_entry(self, group_info):
+        """Add a new group entry to the UI"""
+        group_id = self.next_group_id
+        self.next_group_id += 1
+        
+        # Debug: Log group info details
+        self.main_gui.log(f"Creating group {group_id}: {group_info.get('folder_name', 'Unknown')}")
+        pairs = group_info.get('pairs', [])
+        self.main_gui.log(f"  - Group has {len(pairs)} pairs")
+        for i, pair in enumerate(pairs):
+            video_file = pair.get('video_file', 'No video')
+            prompt = pair.get('prompt', 'No prompt')
+            self.main_gui.log(f"  - Pair {i+1}: Video={bool(video_file)}, Prompt length={len(prompt) if prompt else 0}")
+        
+        # Create group entry
+        group_entry = GroupEntry(
+            self.scrollable_frame, 
+            self.main_gui, 
+            self.remove_group_entry, 
+            group_id, 
+            group_info
+        )
+        
+        self.group_entries[group_id] = group_entry
+        return group_id
+
+    def remove_group_entry(self, group_id):
+        """Remove a group entry from the UI"""
+        if group_id in self.group_entries:
+            self.group_entries[group_id].destroy()
+            del self.group_entries[group_id]
+
+    def _scan_folder_for_pairs(self, folder_path):
+        """Scan folder for video+text file pairs"""
+        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
+        text_extensions = {'.txt'}
+        
+        pairs = []
+        
+        # Scan recursively for all files
+        all_files = []
+        for root, dirs, files in os.walk(folder_path):
+            for file in files:
+                all_files.append(os.path.join(root, file))
+        
+        # Group files by directory
+        dir_files = {}
+        for file_path in all_files:
+            dir_name = os.path.dirname(file_path)
+            if dir_name not in dir_files:
+                dir_files[dir_name] = {'videos': [], 'texts': []}
+            
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext in video_extensions:
+                dir_files[dir_name]['videos'].append(file_path)
+            elif ext in text_extensions:
+                dir_files[dir_name]['texts'].append(file_path)
+        
+        # Find pairs in each directory
+        for dir_path, files in dir_files.items():
+            videos = files['videos']
+            texts = files['texts']
+            
+            if not videos or not texts:
+                continue
+            
+            # Try to match pairs
+            matched_pairs = self._match_video_text_pairs(videos, texts)
+            pairs.extend(matched_pairs)
+        
+        return pairs
+
+    def _match_video_text_pairs(self, videos, texts):
+        """Match video and text files with priority-based matching"""
+        pairs = []
+        used_texts = set()
+        
+        for video_path in videos:
+            video_name = os.path.splitext(os.path.basename(video_path))[0]
+            best_match = None
+            best_priority = 0
+            
+            for text_path in texts:
+                if text_path in used_texts:
+                    continue
+                
+                text_name = os.path.splitext(os.path.basename(text_path))[0]
+                priority = 0
+                
+                # Priority 1: Exact name match
+                if video_name.lower() == text_name.lower():
+                    priority = 3
+                # Priority 2: Common prompt names
+                elif text_name.lower() in ['prompt', 'script', 'text', 'voiceover']:
+                    priority = 2
+                # Priority 3: Text name contained in video name or vice versa
+                elif (text_name.lower() in video_name.lower() or 
+                      video_name.lower() in text_name.lower()):
+                    priority = 1
+                
+                if priority > best_priority:
+                    best_match = text_path
+                    best_priority = priority
+            
+            # If we found a match, create pair
+            if best_match:
+                try:
+                    with open(best_match, 'r', encoding='utf-8') as f:
+                        prompt_text = f.read().strip()
+                    
+                    if prompt_text:  # Only add if there's actual text content
+                        pairs.append({
+                            'video_file': video_path,
+                            'prompt': prompt_text,
+                            'confidence': best_priority
+                        })
+                        used_texts.add(best_match)
+                
+                except Exception as e:
+                    self.main_gui.log(f"Failed to read text file {os.path.basename(best_match)}: {e}")
+        
+        return pairs
+
+    def _get_existing_video_files(self):
+        """Get list of video files already loaded in entries"""
+        existing_files = []
+        for entry in self.video_entries.values():
+            data = entry.get_data()
+            if data['video_file']:
+                existing_files.append(data['video_file'])
+        return existing_files
+
     def start_video_generation(self):
         """Start the multi-video generation process"""
+        self.main_gui.log(f"DEBUG: start_video_generation called, current_mode={self.current_mode}")
+        
         # Check if generation is already running
         if self.main_gui.generation_thread and self.main_gui.generation_thread.is_alive():
             messagebox.showwarning("Process Running", "Video generation is already in progress")
             return
 
         # Get valid entries
+        self.main_gui.log("DEBUG: About to call get_valid_entries()")
         valid_entries = self.get_valid_entries()
+        self.main_gui.log(f"DEBUG: get_valid_entries returned {len(valid_entries) if valid_entries else 0} entries")
 
         if not valid_entries:
-            messagebox.showwarning("No Valid Entries", "Please add at least one video with a prompt.")
+            if self.current_mode == "grouped":
+                messagebox.showwarning("No Valid Groups", "Please add at least one group with videos and prompts.")
+            else:
+                messagebox.showwarning("No Valid Entries", "Please add at least one video with a prompt.")
             return
 
         # Confirm with user
-        response = messagebox.askyesno(
-            "Confirm Generation",
-            f"Generate videos for {len(valid_entries)} entries?\n\nThis may take a while."
-        )
+        if self.current_mode == "grouped":
+            total_videos = sum(len(group['pairs']) for group in valid_entries)
+            response = messagebox.askyesno(
+                "Confirm Group Generation",
+                f"Generate {len(valid_entries)} combined videos from {total_videos} source videos?\n\nThis may take a while."
+            )
+        else:
+            response = messagebox.askyesno(
+                "Confirm Generation",
+                f"Generate videos for {len(valid_entries)} entries?\n\nThis may take a while."
+            )
 
         if not response:
             return
 
-        # ✅ RESPECT OUTPUT FOLDER FROM INPUT TAB
-        # Apply the same output folder configuration that Input tab uses
-        if self.main_gui.input_tab_component:
-            output_folder_value = self.main_gui.input_tab_component.output_folder.get()
-            if output_folder_value and output_folder_value != "Default (Auto)":
-                if os.path.isdir(output_folder_value):
-                    self.main_gui.model.output_folder = output_folder_value
-                    self.main_gui.log(f"🎬 Video tab using custom output folder: {output_folder_value}")
-                else:
-                    self.main_gui.log(f"⚠️ Selected output folder doesn't exist, using default")
-                    self.main_gui.model.output_folder = None
-            else:
-                self.main_gui.model.output_folder = None
-                self.main_gui.log("🎬 Video tab using default output folder")
+        # Use the selected output folder from the current settings
+        output_folder_value = self.current_settings.get('output_folder', 'Default (Auto)')
+        
+        if output_folder_value and output_folder_value.strip() and output_folder_value != "Default (Auto)" and os.path.exists(output_folder_value):
+            self.main_gui.log(f"Using selected output folder: {output_folder_value}")
+            self.main_gui.model.output_folder = output_folder_value
         else:
-            self.main_gui.log("⚠️ Could not access Input tab settings, using default output folder")
+            # Use default output folder
+            from utils.helpers import get_output_directory
+            default_folder = get_output_directory()
+            self.main_gui.model.output_folder = default_folder
+            self.main_gui.log(f"Using default output folder: {default_folder}")
 
         # Clear any existing batch jobs
         self.main_gui.model.batch_jobs.clear()
 
-        # Add video jobs to batch processing with audio settings
-        for i, entry_data in enumerate(valid_entries):
-            # Add audio settings to the entry data
-            entry_data["mute_original_audio"] = self.mute_original_audio.get()
-            entry_data["original_audio_volume"] = self.original_audio_volume.get()
-
-            # For video processing, we'll use the video file as the "image source"
-            # and the prompt as the text input
-            job_id = self.main_gui.model.add_video_batch_job(
-                text_input=entry_data["prompt"],
-                video_file=entry_data["video_file"],
-                audio_settings={
-                    "mute_original": entry_data["mute_original_audio"],
-                    "original_volume": entry_data["original_audio_volume"]
-                }
-            )
-            self.main_gui.log(f"Added video job #{job_id}: {os.path.basename(entry_data['video_file'])}")
+        # Process differently based on current mode
+        if self.current_mode == "grouped":
+            self._add_grouped_batch_jobs(valid_entries)
+        else:
+            self._add_individual_batch_jobs(valid_entries)
 
         # Set up progress callback
         self.main_gui.model.set_progress_callback(self.update_video_progress)
@@ -514,7 +715,41 @@ class VideoTab:
         self.main_gui.generation_thread.daemon = True
         self.main_gui.generation_thread.start()
 
-        self.main_gui.log(f"Started processing {len(valid_entries)} video(s)")
+        entry_count = len(valid_entries)
+        mode_text = "group(s)" if self.current_mode == "grouped" else "video(s)"
+        self.main_gui.log(f"Started processing {entry_count} {mode_text}")
+
+    def _add_individual_batch_jobs(self, valid_entries):
+        """Add individual video jobs to batch processing"""
+        for i, entry_data in enumerate(valid_entries):
+            # Add audio settings to the entry data from current settings
+            entry_data["mute_original_audio"] = self.current_settings.get('mute', False)
+            entry_data["original_audio_volume"] = self.current_settings.get('volume', 0.7)
+
+            # For video processing, we'll use the video file as the "image source"
+            # and the prompt as the text input
+            job_id = self.main_gui.model.add_video_batch_job(
+                text_input=entry_data["prompt"],
+                video_file=entry_data["video_file"],
+                audio_settings={
+                    "mute_original": entry_data["mute_original_audio"],
+                    "original_volume": entry_data["original_audio_volume"]
+                }
+            )
+            self.main_gui.log(f"Added video job #{job_id}: {os.path.basename(entry_data['video_file'])}")
+
+    def _add_grouped_batch_jobs(self, valid_groups):
+        """Add grouped video jobs to batch processing"""
+        for group_data in valid_groups:
+            # Add group job to batch processing
+            job_id = self.main_gui.model.add_group_batch_job(
+                group_data=group_data,
+                audio_settings={
+                    "mute_original": self.current_settings.get('mute', False),
+                    "original_volume": self.current_settings.get('volume', 0.7)
+                }
+            )
+            self.main_gui.log(f"Added group job #{job_id}: {group_data['output_name']} ({len(group_data['pairs'])} videos)")
 
     def process_video_batch(self):
         """Process the video batch in a separate thread"""
@@ -544,45 +779,60 @@ class VideoTab:
         self.update_video_progress(100, f"Completed: {successful}/{total} videos")
         self.reset_video_ui()
 
-        # ✅ AUTOMATIC CLEANUP FOR MULTI-VIDEO GENERATION
-        if successful > 0:
-            self.main_gui.log("🧹 Starting automatic cleanup of intermediate files...")
-            total_cleaned = 0
+        # Initialize total_cleaned variable to prevent UnboundLocalError
+        total_cleaned = 0
+
+        # Auto-cleanup for ALL video generation to keep only final outputs
+        cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+        
+        if successful > 0 and cleanup_enabled:  # Clean up if any videos were successful and cleanup is enabled
+            self.main_gui.log("Starting automatic cleanup of intermediate files...")
             
-            for job, video_path in results:
-                if video_path and os.path.exists(video_path):
-                    output_dir = os.path.dirname(video_path)
-                    try:
-                        # For multi-video generation, always clean up intermediate files to save space
-                        # Don't keep debug files by default for multi-video to avoid clutter
-                        cleaned_count = self.main_gui.model.cleanup_after_video_complete(
-                            output_dir, 
-                            keep_debug_files=False  # Clean everything except final_output.mp4
-                        )
+            # Track which output directories we've already cleaned to avoid duplicates
+            cleaned_dirs = set()
+            
+            for job, video_path in results:  # Fixed: correct order (job, video_path)
+                try:
+                    # Check if video_path is valid and not None
+                    if video_path and isinstance(video_path, str) and os.path.exists(video_path):
+                        # Extract output directory from the video path
+                        output_dir = os.path.dirname(video_path)
+                        
+                        # Skip if we've already cleaned this directory
+                        if output_dir in cleaned_dirs:
+                            continue
+                        
+                        cleaned_dirs.add(output_dir)
+                        
+                        # Extract video name from the path for context
+                        video_name = os.path.splitext(os.path.basename(video_path))[0]
+                        
+                        # Clean up intermediate files for this video
+                        cleaned_count = self._cleanup_intermediate_files(video_path)
                         total_cleaned += cleaned_count
                         
-                        # Log cleanup for this specific video
-                        video_name = os.path.basename(video_path)
                         if cleaned_count > 0:
-                            self.main_gui.log(f"✅ Cleaned {cleaned_count} files for {video_name}")
+                            self.main_gui.log(f"Cleaned {cleaned_count} files for {video_name}")
                         else:
-                            self.main_gui.log(f"ℹ️ No cleanup needed for {video_name}")
-                            
-                    except Exception as e:
-                        self.main_gui.log(f"⚠️ Cleanup failed for {os.path.basename(video_path)}: {e}")
+                            self.main_gui.log(f"No cleanup needed for {video_name}")
+                except Exception as e:
+                    self.main_gui.log(f"Cleanup failed for a video: {e}")
             
-            # Summary of cleanup
             if total_cleaned > 0:
-                self.main_gui.log(f"🎉 Auto-cleanup completed: Removed {total_cleaned} intermediate files")
-                self.main_gui.log("🗑️ Only final_output.mp4 files remain for each video")
+                self.main_gui.log(f"Auto-cleanup completed: Removed {total_cleaned} intermediate files")
+                self.main_gui.log("Only final_output.mp4 files remain for each video")
             else:
-                self.main_gui.log("ℹ️ No intermediate files needed cleanup")
+                self.main_gui.log("No intermediate files needed cleanup")
+        elif not cleanup_enabled:
+            self.main_gui.log("Auto-cleanup disabled in config - keeping all files")
+        else:
+            self.main_gui.log("No successful videos to clean up")
 
         # Create completion message
         message = f"Successfully generated {successful} out of {total} videos."
         
         if successful > 0 and total_cleaned > 0:
-            message += f"\n\n🧹 Auto-cleanup completed\n🗑️ Removed {total_cleaned} intermediate files\n💾 Only final_output.mp4 files remain"
+            message += f"\n\nAuto-cleanup completed\nRemoved {total_cleaned} intermediate files\nOnly final_output.mp4 files remain"
         
         # Show completion message
         if successful > 0:
@@ -590,8 +840,8 @@ class VideoTab:
             response = messagebox.askyesno("Processing Complete", message)
             if response and results:
                 # Find the first successful result and open its parent directory
-                for job, video_path in results:
-                    if video_path and os.path.exists(video_path):
+                for job, video_path in results:  # Fixed: correct order (job, video_path)
+                    if video_path and isinstance(video_path, str) and os.path.exists(video_path):
                         # Go up one level to show all video folders
                         video_dir = os.path.dirname(video_path)
                         parent_dir = os.path.dirname(video_dir)
@@ -613,10 +863,26 @@ class VideoTab:
     def update_video_progress(self, value, message=None):
         """Update the video processing progress"""
         self.video_progress_bar["value"] = value
-        if message:
-            self.video_progress_label.config(text=message)
-        else:
-            self.video_progress_label.config(text=f"{value}%")
+        
+        # Get display mode from config
+        display_mode = getattr(config, 'PROGRESS_DISPLAY_MODE', 'descriptive')
+        percentage = int(round(value))
+        
+        if display_mode == "percentage":
+            # Always show just percentage
+            self.video_progress_label.config(text=f"{percentage}%")
+        elif display_mode == "both":
+            # Show both percentage and message
+            if message:
+                self.video_progress_label.config(text=f"{percentage}% - {message}")
+            else:
+                self.video_progress_label.config(text=f"{percentage}%")
+        else:  # descriptive (default)
+            # Show descriptive messages when available, percentage otherwise
+            if message:
+                self.video_progress_label.config(text=message)
+            else:
+                self.video_progress_label.config(text=f"{percentage}%")
 
     def reset_video_ui(self):
         """Reset the video tab UI to initial state"""
@@ -624,3 +890,19 @@ class VideoTab:
         self.stop_button.config(state="disabled")
         self.video_progress_bar["value"] = 0
         self.video_progress_label.config(text="0%")
+
+    def _cleanup_intermediate_files(self, video_path):
+        """Clean up intermediate files for a video - calls main cleanup function"""
+        output_dir = os.path.dirname(video_path)
+        try:
+            # Use the consolidated cleanup function from the model
+            cleaned_count = self.main_gui.model.cleanup_after_video_complete(
+                output_dir, 
+                keep_debug_files=False  # For multi-video, always clean everything except final_output.mp4
+            )
+            return cleaned_count
+        except Exception as e:
+            self.main_gui.log(f"Cleanup failed for {os.path.basename(video_path)}: {e}")
+            return 0
+    
+    

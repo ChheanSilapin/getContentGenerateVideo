@@ -4,9 +4,9 @@ Option Tab Component for Video Generator GUI
 Handles video enhancement options, aspect ratio settings, and advanced controls
 """
 import os
-import tkinter as tk
-from tkinter import ttk
-import tkinter.font as tkFont
+
+# Use centralized UI imports
+from utils.common_imports import tk, ttk, tkFont
 
 
 class OptionTab:

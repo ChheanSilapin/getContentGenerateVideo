@@ -1,13 +1,10 @@
 """
 Audio service for generating speech from text with emotional expression
 """
-import os
-import sys
+from utils.common_imports import os, sys, subprocess, traceback
 import platform
-import subprocess
 import re
 import emoji
-import traceback
 
 # Try to import pyttsx3 for TTS
 try:
@@ -18,7 +15,8 @@ except ImportError:
     print("pyttsx3 not available. Will use system TTS as fallback.")
 
 # Import from utils
-from utils.helpers import process_text_for_tts, ensure_directory_exists
+from utils.helpers import ensure_directory_exists
+from utils.text_processing import process_text_for_tts
 
 def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral"):
     """
@@ -51,7 +49,7 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
     print("Processing text for TTS...")
 
     # Process text for TTS with emotional enhancement
-    processed_text = process_text_for_emotional_tts(text, emotion)
+    processed_text = process_text_for_tts(text, emotion)
     print(f"Processed text: {processed_text[:100]}...")
 
     # Try different TTS methods in order of preference
@@ -61,56 +59,6 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
 
     # Fallback to system TTS
     return generate_audio_system_emotional(processed_text, output_file, emotion)
-
-def process_text_for_emotional_tts(text, emotion="neutral"):
-    """
-    Process text for emotional text-to-speech
-    
-    Args:
-        text: Text to process
-        emotion: Emotion to apply
-        
-    Returns:
-        str: Processed text with emotional cues
-    """
-    if not text:
-        return ""
-
-    # Remove emojis but keep emotional context
-    text = emoji.replace_emoji(text, replace='')
-    
-    # Remove non-ASCII characters
-    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-    
-    # Add emotional pauses and emphasis based on emotion
-    if emotion == "excited":
-        # Add excitement with emphasis and shorter pauses
-        text = re.sub(r'[.!?]', '!', text)  # Convert periods to exclamations
-        text = re.sub(r'([.!?])', r'\1 ', text)  # Add short pauses
-        text = text.replace(' ', ' ')  # Slightly faster pacing
-        
-    elif emotion == "dramatic":
-        # Add dramatic pauses and emphasis
-        text = re.sub(r'([.!?])', r'\1... ', text)  # Add dramatic pauses
-        text = re.sub(r'(\w+)', r'\1', text)  # Slight emphasis on words
-        
-    elif emotion == "calm":
-        # Add calming pauses
-        text = re.sub(r'([.!?])', r'\1... ', text)  # Add longer pauses
-        text = text.replace('!', '.')  # Convert exclamations to periods
-        
-    elif emotion == "energetic":
-        # Add energy with varied intonation
-        text = re.sub(r'([.!?])', r'\1 ', text)  # Quick pauses
-        # Add emphasis to important words
-        important_words = ['amazing', 'incredible', 'fantastic', 'awesome', 'great', 'wonderful']
-        for word in important_words:
-            text = re.sub(rf'\b{word}\b', f'{word.upper()}', text, flags=re.IGNORECASE)
-    
-    # Clean up whitespace
-    text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text
 
 def generate_audio_pyttsx3_emotional(text, output_file, speed=0.8, emotion="neutral"):
     """
@@ -125,6 +73,7 @@ def generate_audio_pyttsx3_emotional(text, output_file, speed=0.8, emotion="neut
     Returns:
         bool: True if successful, False otherwise
     """
+    engine = None
     try:
         engine = pyttsx3.init()
         
@@ -174,6 +123,16 @@ def generate_audio_pyttsx3_emotional(text, output_file, speed=0.8, emotion="neut
         engine.save_to_file(text, output_file)
         engine.runAndWait()
 
+        # IMPORTANT: Properly clean up the engine to release file handles
+        try:
+            engine.stop()  # Stop any ongoing speech
+        except:
+            pass
+        
+        # Give a small delay to ensure file handle is released
+        import time
+        time.sleep(0.1)
+
         # Verify the file was actually created and has content
         if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
             print(f"Audio generated successfully with {emotion} emotion: {output_file}")
@@ -181,10 +140,21 @@ def generate_audio_pyttsx3_emotional(text, output_file, speed=0.8, emotion="neut
         else:
             print(f"Error: Audio file not created or empty: {output_file}")
             return False
+            
     except Exception as e:
         print(f"Error generating audio with pyttsx3: {e}")
         traceback.print_exc()
         return False
+    finally:
+        # Ensure engine is always cleaned up, even on exceptions
+        if engine:
+            try:
+                engine.stop()
+                # Small delay to ensure proper cleanup
+                import time
+                time.sleep(0.1)
+            except:
+                pass  # Ignore cleanup errors
 
 def generate_audio_system_emotional(text, output_file, emotion="neutral"):
     """

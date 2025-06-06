@@ -2,13 +2,22 @@
 Video optimization service with advanced enhancement techniques
 """
 import os
-import cv2
 import numpy as np
 import subprocess
 import time
 import shutil
 import traceback
 import sys
+
+# Make cv2 import optional for smaller bundles and better compatibility
+try:
+    import cv2
+    CV2_AVAILABLE = True
+    print("OpenCV available - enhanced video optimization enabled")
+except ImportError:
+    print("OpenCV not available - using basic video optimization")
+    CV2_AVAILABLE = False
+    cv2 = None
 from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, AudioClip
 from moviepy.audio.fx.all import volumex, audio_normalize
 
@@ -311,6 +320,10 @@ def enhance_video(input_video, output_video, options=None, stop_event=None):
 
 def apply_color_correction(clip, intensity=1.0):
     """Apply color correction to improve visual quality"""
+    if not CV2_AVAILABLE:
+        print("Color correction requires OpenCV - skipping enhancement")
+        return clip
+        
     def color_process(frame):
         # Convert to LAB color space for better color manipulation
         lab = cv2.cvtColor(frame, cv2.COLOR_RGB2LAB)
@@ -336,6 +349,10 @@ def apply_color_correction(clip, intensity=1.0):
 
 def replace_background(clip, bg_color="#000000"):
     """Replace or clean up the background"""
+    if not CV2_AVAILABLE:
+        print("Background replacement requires OpenCV - skipping enhancement")
+        return clip
+        
     # Convert hex color to RGB
     bg_color = bg_color.lstrip('#')
     bg_rgb = tuple(int(bg_color[i:i+2], 16) for i in (0, 2, 4))
@@ -373,6 +390,10 @@ def optimize_framing(clip, crop_percent=0.95):
 
 def add_motion_graphics(clip, opacity=0.15):
     """Add subtle motion graphics to enhance visual appeal"""
+    if not CV2_AVAILABLE:
+        print("Motion graphics require OpenCV - skipping enhancement")
+        return clip
+        
     # Create a simple overlay with moving elements
     w, h = clip.size
     duration = clip.duration

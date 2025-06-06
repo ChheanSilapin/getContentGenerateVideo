@@ -2,8 +2,7 @@
 Base UI component for the Video Generator application
 Provides common functionality and standardized patterns for UI components
 """
-import tkinter as tk
-from tkinter import messagebox, ttk
+from utils.common_imports import tk, messagebox, ttk
 
 class BaseUIComponent:
     """Base class for UI components with common functionality"""

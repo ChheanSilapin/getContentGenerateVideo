@@ -2,7 +2,7 @@
 ImageSelector - Component for selecting images from a folder
 """
 import os
-import tkinter as tk
+from utils.common_imports import tk
 from PIL import Image, ImageTk
 from config import SUPPORTED_IMAGE_EXTENSIONS
 

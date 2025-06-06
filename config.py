@@ -95,38 +95,196 @@ def get_gui_fonts():
         }
 
 # Initialize fonts at module load
-try:
-    GUI_FONTS = get_gui_fonts()
-except:
-    # Emergency fallback if everything fails
-    GUI_FONTS = {
-        "default": ("Arial", 12),
-        "button": ("Arial", 12),
-        "label": ("Arial", 12),
-        "heading": ("Arial", 12, "bold"),
-        "console": ("Courier New", 12),
-        "tab": ("Arial", 12)
-    }
+GUI_FONTS = get_gui_fonts()
 
-# ENHANCED: Performance Optimization Settings
-SUBTITLE_PERFORMANCE_MODE = "auto"  # "auto", "speed", "quality"
-LONG_AUDIO_THRESHOLD = 10.0  # Seconds - switch to ultra-fast mode above this
-ULTRA_FAST_MIN_OVERLAP = 0.05  # Minimal overlap for long audio (seconds)
-STANDARD_OVERLAP = 0.1  # Standard overlap for shorter audio (seconds)
-FAST_READING_SPEED_WPM = 200  # Words per minute for subtitle timing
-ADAPTIVE_GROUP_SIZING = True  # Use adaptive word group sizing based on text length
+# =============================================================================
+# SUBTITLE CONFIGURATION - Single source of truth for all subtitle settings
+# =============================================================================
 
-# File Cleanup Settings  
-AUTO_CLEANUP_INTERMEDIATE_FILES = False  # Ask user by default
-KEEP_DEBUG_FILES_BY_DEFAULT = False  # Clean by default to save space
+SUBTITLE_CONFIG = {
+    # Font and Styling
+    "default_font": "Times New Roman",
+    "font_size": 48,
+    "font_bold": False,
+    
+    # Word Grouping (words per subtitle)
+    "words_per_group_short": 5,    # For text < 100 words
+    "words_per_group_medium": 4,   # For text 100-200 words  
+    "words_per_group_long": 3,     # For text > 200 words
+    
+    # Timing Settings
+    "reading_speed_wpm": 120,      # Words per minute for timing calculations
+    "min_display_time": 1.2,       # Minimum seconds to display each subtitle
+    "early_start_offset": 0.6,     # Start subtitles X seconds before speech
+    "overlap_time": 0.3,           # Overlap between consecutive subtitles
+    
+    #Text Formart Settings
+    "uppercase": True,
+    "preserve_specail_formartting": True,
+
+
+    
+    # Speech Analysis
+    "use_speech_analysis": True,
+    "speech_analysis_max_duration": 60.0,  # Max audio length for speech analysis
+    "silence_threshold_db": 16,    # dB below average for silence detection
+    "min_silence_length_ms": 150,  # Minimum silence length in milliseconds
+    
+    # Style Presets
+    "available_styles": {
+        "modern_glow": {
+            "name": "Modern Glow",
+            "description": "White text with blue glow effect",
+            "font": "Times New Roman",
+            "size": 48,
+            "primary_color": "&H00FFFFFF",  # White
+            "outline_color": "&H00FF8000",  # Blue glow
+            "outline_width": 3,
+            "shadow": 2,
+            "bold": True,
+            "alignment": 2,  # Bottom center
+            "margin_v": 80
+        },
+        "gradient_gold": {
+            "name": "Gradient Gold", 
+            "description": "Gold gradient with black shadow",
+            "font": "Times New Roman",
+            "size": 46,
+            "primary_color": "&H0000D7FF",  # Gold
+            "secondary_color": "&H000080FF",  # Orange
+            "outline_color": "&H00000000",  # Black
+            "outline_width": 2,
+            "shadow": 2,
+            "bold": True,
+            "alignment": 2,
+            "margin_v": 90
+        },
+        "fire_red": {
+            "name": "Fire Red",
+            "description": "Red to orange gradient with glow", 
+            "font": "Times New Roman",
+            "size": 50,
+            "primary_color": "&H000000FF",  # Red
+            "secondary_color": "&H000080FF",  # Orange
+            "outline_color": "&H00000080",  # Dark red
+            "outline_width": 3,
+            "shadow": 2,
+            "bold": True,
+            "alignment": 2,
+            "margin_v": 85
+        },
+        "ice_blue": {
+            "name": "Ice Blue",
+            "description": "Light blue with white glow",
+            "font": "Times New Roman", 
+            "size": 45,
+            "primary_color": "&H00FFFF80",  # Light blue
+            "outline_color": "&H00FFFFFF",  # White glow
+            "outline_width": 2,
+            "shadow": 1,
+            "bold": True,
+            "alignment": 2,
+            "margin_v": 75
+        }
+    },
+    
+    # Default style to use
+    "default_style": "modern_glow"
+}
+
+# File Cleanup Settings - CONSOLIDATED SYSTEM
+# All cleanup now handled by models/video_generator.py cleanup_after_video_complete()
+AUTO_CLEANUP_INTERMEDIATE_FILES = True   # Enable auto-cleanup by default to save space
+KEEP_DEBUG_FILES_BY_DEFAULT = False      # Clean all files by default, keep only final_output.mp4
 CLEANUP_TEMP_FILES_DURING_GENERATION = True  # Clean temp files during generation
+AUTO_CLEANUP_AFTER_COMPLETION = True     # NEW: Enable auto-cleanup after video completion (single or batch)
 
-# Audio Analysis Settings
-ENABLE_SPEECH_ANALYSIS = True  # Use audio analysis for better sync
-SPEECH_ANALYSIS_MAX_DURATION = 15.0  # Max duration for speech analysis (seconds)
-SILENCE_DETECTION_THRESHOLD = 14  # dB below average for silence detection
-MIN_SILENCE_LENGTH = 200  # Milliseconds
+# Cleanup Policy: Keep ONLY final_output.mp4, remove all intermediate files:
+# - voice.mp3, voice.mp3.txt (voice generation files)
+# - subtitles.ass (subtitle files) 
+# - slideshow.mp4 (intermediate video)
+# - temp_subtitle_*.ass (temporary subtitle files)
+# - temp_audio_*.m4a (temporary audio files)
+# - *TEMP_MPY_wvf_snd.mp3 (MoviePy temporary files)
+# - images/ directory (unless from URL download)
 
-# Video Processing Options
-VIDEO_RESOLUTIONS = ["1920x1080", "1280x720", "854x480", "640x360"]
-DEFAULT_RESOLUTION = "1280x720"
+# =============================================================================
+# TAB VISIBILITY CONFIGURATION - Control which tabs are shown in the UI
+# =============================================================================
+
+# Individual Tab Visibility Controls
+TAB_VISIBILITY = {
+    'input': True,      # Core functionality - always recommended
+    'images': True,     # Core functionality - always recommended
+    'video': True,      # Advanced video processing features
+    'merge': False,     # Advanced video merging - hide by default
+    'options': True,    # Settings and configuration
+    'batch': False,     # Batch processing - hide by default
+    'log': True,        # Always visible for debugging and progress tracking
+}
+
+# UI Mode Presets - Override individual settings when selected
+UI_MODE = "custom"  # Options: "simple", "standard", "advanced", "custom"
+
+# UI Mode Definitions
+UI_MODE_PRESETS = {
+    "simple": {
+        # Minimal interface for basic users
+        'input': True,
+        'images': True,
+        'video': False,
+        'merge': False,
+        'options': False,
+        'batch': False,
+        'log': True,
+    },
+    "standard": {
+        # Default interface with core features
+        'input': True,
+        'images': True,
+        'video': True,
+        'merge': False,
+        'options': True,
+        'batch': False,
+        'log': True,
+    },
+    "advanced": {
+        # Full interface with all features
+        'input': True,
+        'images': True,
+        'video': True,
+        'merge': True,
+        'options': True,
+        'batch': True,
+        'log': True,
+    },
+    "custom": {
+        'input': False,
+        'images': False,
+        'video': True,
+        'merge': False,
+        'options': False,
+        'batch': False,
+        'log': True,
+    }
+}
+
+def get_tab_visibility():
+    """
+    Get the current tab visibility configuration based on UI_MODE
+    
+    Returns:
+        dict: Tab visibility settings for current UI mode
+    """
+    if UI_MODE in UI_MODE_PRESETS:
+        return UI_MODE_PRESETS[UI_MODE].copy()
+    else:
+        # Fallback to standard mode if invalid mode specified
+        print(f"⚠️ Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
+        return UI_MODE_PRESETS["standard"].copy()
+
+# Progress Display Settings
+PROGRESS_DISPLAY_MODE = "percentage"  # Options: "percentage", "descriptive", "both"
+# - "percentage": Always show just percentage (e.g., "45%")
+# - "descriptive": Show descriptive messages when available (e.g., "Processing video 2 of 5")  
+# - "both": Show both percentage and message (e.g., "45% - Processing video 2 of 5")
