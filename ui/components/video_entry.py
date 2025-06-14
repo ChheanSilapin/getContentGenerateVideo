@@ -109,13 +109,9 @@ class VideoEntry:
 
     def browse_video_file(self):
         """Open file dialog to select a video file"""
-        file_path = filedialog.askopenfilename(
-            title="Select Video File",
-            filetypes=[
-                ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm"),
-                ("All files", "*.*")
-            ]
-        )
+        from utils.dialog_helpers import select_video_files
+
+        file_path = select_video_files(title="Select Video File", multiple=False)
         if file_path:
             self.video_file_path.set(file_path)
             self.main_gui.log(f"Selected video file: {os.path.basename(file_path)}")

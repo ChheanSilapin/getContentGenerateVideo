@@ -1,11 +1,12 @@
 """
 Progress Manager Component - Reusable progress tracking and display
 Handles progress bars, status messages, and threading integration
+Includes dialog helpers and common UI functionality
 """
-from utils.common_imports import tk, ttk, threading
+from utils.common_imports import tk, ttk, threading, messagebox
 
 class ProgressManager:
-    """Manages progress bars and status updates with threading support"""
+    """Manages progress bars, status updates, and common UI functionality with threading support"""
     
     def __init__(self, progress_bar=None, progress_label=None, main_gui=None):
         self.progress_bar = progress_bar
@@ -19,6 +20,78 @@ class ProgressManager:
         # State tracking
         self.is_active = False
         self.current_operation = ""
+    
+    # Dialog helper methods from BaseUIComponent
+    def show_warning(self, title, message):
+        """
+        Standardized warning dialog
+        
+        Args:
+            title: Dialog title
+            message: Warning message
+        """
+        return messagebox.showwarning(title, message)
+    
+    def show_error(self, title, message):
+        """
+        Standardized error dialog
+        
+        Args:
+            title: Dialog title
+            message: Error message
+        """
+        return messagebox.showerror(title, message)
+    
+    def show_info(self, title, message):
+        """
+        Standardized info dialog
+        
+        Args:
+            title: Dialog title
+            message: Info message
+        """
+        return messagebox.showinfo(title, message)
+    
+    def ask_yes_no(self, title, message):
+        """
+        Standardized yes/no dialog
+        
+        Args:
+            title: Dialog title
+            message: Question message
+            
+        Returns:
+            bool: True if yes, False if no
+        """
+        return messagebox.askyesno(title, message)
+    
+    def check_process_running(self):
+        """
+        Check if video generation is already in progress
+        
+        Returns:
+            bool: True if process is running, False otherwise
+        """
+        if self.main_gui and hasattr(self.main_gui, 'generation_thread') and self.main_gui.generation_thread and self.main_gui.generation_thread.is_alive():
+            self.show_warning("Process Running", "Video generation is already in progress")
+            return True
+        return False
+    
+    def validate_text_input(self, text_widget):
+        """
+        Validate text input from a text widget
+        
+        Args:
+            text_widget: tkinter Text widget
+            
+        Returns:
+            str: Validated text or None if invalid
+        """
+        text = text_widget.get("1.0", tk.END).strip()
+        if not text:
+            self.show_warning("Input Error", "Please enter text for voice generation")
+            return None
+        return text
         
     def create_progress_section(self, parent, title="Progress"):
         """Create a standard progress section with bar and label"""
@@ -41,6 +114,19 @@ class ProgressManager:
         self.progress_label.pack(fill="x")
         
         return progress_frame
+    
+    # Log message helper from BaseUIComponent
+    def log_message(self, message):
+        """
+        Log a message to the main GUI log
+        
+        Args:
+            message: Message to log
+        """
+        if self.main_gui and hasattr(self.main_gui, 'log'):
+            self.main_gui.log(message)
+        else:
+            print(message)
     
     def start_operation(self, operation_name, target_function, *args, **kwargs):
         """Start a threaded operation with progress tracking"""

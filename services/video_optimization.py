@@ -23,8 +23,9 @@ from moviepy.audio.fx.all import volumex, audio_normalize
 
 # Use centralized path management
 try:
-    from utils.path_manager import add_utils_to_path
-    add_utils_to_path()
+    from utils.path_manager import setup_project_paths
+    # Set up all project paths at once
+    setup_project_paths()
 except ImportError:
     # Fallback path setup
     current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -35,7 +36,11 @@ except ImportError:
 
 # Import FFmpeg utilities from centralized location
 try:
-    from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
+    from utils.helpers import (
+        get_ffmpeg_path, check_ffmpeg_availability,
+        configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
+        validate_output_file, safe_file_operation
+    )
 except ImportError:
     # Use fallback manager if available
     try:
@@ -43,6 +48,11 @@ except ImportError:
         helpers = get_helpers_with_fallback()
         get_ffmpeg_path = helpers.get_ffmpeg_path
         check_ffmpeg_availability = helpers.check_ffmpeg_availability
+        # Fallback implementations for new functions
+        def configure_ffmpeg_for_moviepy(): return False
+        def setup_temp_directory_for_bundled_exe(path): return tempfile.gettempdir()
+        def validate_output_file(path, size=1024, ftype="file"): return True, "OK"
+        def safe_file_operation(func, *args, **kwargs): return True, func(*args, **kwargs), None
     except ImportError:
         # Critical error - should not happen in production
         print("CRITICAL: Cannot import FFmpeg utilities from utils.helpers or fallback_manager")
@@ -61,36 +71,9 @@ def enhance_video(input_video, output_video, options=None, stop_event=None):
     Returns:
         str: Path to enhanced video if successful, None otherwise
     """
-    # Configure MoviePy for bundled executable (same as video_service.py)
-    import tempfile
-    import sys
-    
-    # Set up proper temporary directory for bundled executable
-    if getattr(sys, 'frozen', False):
-        # Running as bundled executable
-        temp_dir = os.path.join(os.path.dirname(output_video), 'temp')
-        os.makedirs(temp_dir, exist_ok=True)
-        # Set MoviePy temporary directory
-        os.environ['TMPDIR'] = temp_dir
-        os.environ['TEMP'] = temp_dir
-        os.environ['TMP'] = temp_dir
-        
-        # Configure FFmpeg paths for bundled executable
-        try:
-            from utils.helpers import get_ffmpeg_path
-            ffmpeg_path = get_ffmpeg_path()
-            if ffmpeg_path and os.path.exists(ffmpeg_path):
-                # Set FFmpeg path for MoviePy
-                try:
-                    from moviepy.config import change_settings
-                    change_settings({"FFMPEG_BINARY": ffmpeg_path})
-                    print(f"Enhancement: Using FFmpeg from: {ffmpeg_path}")
-                except ImportError:
-                    # Fallback: set environment variable for FFmpeg
-                    os.environ['FFMPEG_BINARY'] = ffmpeg_path
-                    print(f"Enhancement: Set FFmpeg path via environment: {ffmpeg_path}")
-        except Exception as e:
-            print(f"Warning: Could not configure FFmpeg path for enhancement: {e}")
+    # Configure MoviePy for bundled executable (centralized)
+    configure_ffmpeg_for_moviepy()
+    setup_temp_directory_for_bundled_exe(output_video)
 
     # Default enhancement options
     if options is None:

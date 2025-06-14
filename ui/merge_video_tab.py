@@ -238,11 +238,8 @@ class MergeVideoTab:
             return
         
         # Get output path
-        output_path = filedialog.asksaveasfilename(
-            title="Save Merged Video As",
-            defaultextension=".mp4",
-            filetypes=[("MP4 files", "*.mp4"), ("All files", "*.*")]
-        )
+        from utils.dialog_helpers import save_video_file
+        output_path = save_video_file(title="Save Merged Video As", default_name="merged_video.mp4")
         
         if not output_path:
             return

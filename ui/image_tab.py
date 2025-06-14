@@ -121,10 +121,9 @@ class ImageTab:
 
     def select_images(self):
         """Open a file dialog to select images"""
-        file_paths = filedialog.askopenfilenames(
-            title="Select Images",
-            filetypes=[("Image files", "*.jpg *.jpeg *.png *.gif *.bmp *.webp")]
-        )
+        from utils.dialog_helpers import select_image_files
+
+        file_paths = select_image_files(title="Select Images", multiple=True)
         if file_paths:
             self.main_gui.selected_images = list(file_paths)
             self.main_gui.log(f"Selected {len(self.main_gui.selected_images)} images")

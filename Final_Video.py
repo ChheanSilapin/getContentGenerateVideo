@@ -2,8 +2,9 @@ from utils.common_imports import subprocess, os, traceback, shutil, sys, time, t
 
 # Use centralized path management
 try:
-    from utils.path_manager import add_utils_to_path
-    add_utils_to_path()
+    from utils.path_manager import add_utils_to_path, setup_project_paths
+    # Set up all project paths at once
+    setup_project_paths()
 except ImportError:
     # Fallback path setup
     current_dir = os.path.dirname(os.path.abspath(__file__))

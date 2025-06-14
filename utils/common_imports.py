@@ -14,6 +14,8 @@ import shutil
 import glob
 import threading
 import json
+import platform
+import re
 from datetime import datetime
 
 # UI imports (tkinter) used across UI components
@@ -25,8 +27,8 @@ import tkinter.simpledialog
 # Re-export for easy access
 __all__ = [
     # Standard library
-    'os', 'sys', 'subprocess', 'tempfile', 'traceback', 'time', 
-    'shutil', 'glob', 'threading', 'json', 'datetime',
+    'os', 'sys', 'subprocess', 'tempfile', 'traceback', 'time',
+    'shutil', 'glob', 'threading', 'json', 'datetime', 'platform', 're',
     # UI components
     'tk', 'messagebox', 'ttk', 'filedialog', 'tkFont', 'tkinter'
-] 
+]

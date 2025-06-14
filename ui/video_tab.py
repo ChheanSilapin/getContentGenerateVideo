@@ -18,6 +18,7 @@ class VideoTab:
     """Video tab component for multi-video processing with individual prompts"""
 
     def __init__(self, parent_frame, main_gui):
+        """Initialize the video tab"""
         self.parent_frame = parent_frame
         self.main_gui = main_gui
 
@@ -35,13 +36,21 @@ class VideoTab:
         self.settings_popup = None
         self.current_settings = self.settings_manager.load_settings()
         
+        # Sync settings with model when the application starts
+        if hasattr(self.main_gui, 'model'):
+            if 'output_folder' in self.current_settings:
+                self.main_gui.model.output_folder = self.current_settings['output_folder']
+        
         # Audio settings variables (for backward compatibility)
-        self.mute_original_audio = tk.BooleanVar(value=False)
-        self.original_audio_volume = tk.DoubleVar(value=0.3)
+        self.mute_original_audio = tk.BooleanVar(value=self.current_settings.get('mute', False))
+        self.original_audio_volume = tk.DoubleVar(value=self.current_settings.get('volume', 0.7))
 
         # Folder processing components
         self.folder_processor = FolderProcessor()
         self.folder_processor.set_logger(self.main_gui.log)
+
+        # Progress manager for UI operations
+        self.progress_manager = None
 
         # UI components
         self.video_progress_bar = None
@@ -85,11 +94,19 @@ class VideoTab:
         # Scrollable area for video entries
         self.setup_scrollable_area(main_frame)
 
-        # Progress section with better styling
-        progress_frame, self.video_progress_bar, self.video_progress_label = self.main_gui.ui_factory.create_progress_section(
+        # Initialize progress manager
+        from ui.components import ProgressManager
+        self.progress_manager = ProgressManager(main_gui=self.main_gui)
+        
+        # Progress section with better styling using progress manager
+        progress_frame = self.progress_manager.create_progress_section(
             main_frame, "⚡ Processing Progress"
         )
         progress_frame.pack(fill="x", pady=(0, 10))
+        
+        # Store references to progress bar and label
+        self.video_progress_bar = self.progress_manager.progress_bar
+        self.video_progress_label = self.progress_manager.progress_label
 
         # Action buttons with better layout
         self.setup_action_buttons(main_frame)
@@ -163,22 +180,20 @@ class VideoTab:
             parent=self.main_gui.root,
             title="Video Generation Settings",
             main_gui=self.main_gui,
-            current_settings=self.current_settings,
             callback=self._on_settings_applied,
             include_audio=True,
-            include_output_folder=True
+            include_output_folder=True,
+            current_settings=self.current_settings  # Pass current settings explicitly
         )
+        
+        # Settings are loaded automatically from the settings manager
 
     def _on_settings_applied(self, settings):
         """Handle when settings are applied from the popup"""
         # Update current settings
         self.current_settings.update(settings)
         
-        # Save settings persistently
-        if self.settings_manager.save_settings(self.current_settings):
-            self.main_gui.log("Settings saved successfully")
-        else:
-            self.main_gui.log("Warning: Failed to save settings")
+        # Settings are already saved by the popup's settings manager
         
         # Sync output folder with the model
         if 'output_folder' in settings:
@@ -316,7 +331,10 @@ class VideoTab:
         if entry_id in self.video_entries:
             # Don't allow removing the last entry
             if len(self.video_entries) <= 1:
-                messagebox.showwarning("Cannot Remove", "At least one video entry must remain.")
+                if self.progress_manager:
+                    self.progress_manager.show_warning("Cannot Remove", "At least one video entry must remain.")
+                else:
+                    messagebox.showwarning("Cannot Remove", "At least one video entry must remain.")
                 return
 
             # Remove the entry
@@ -435,10 +453,8 @@ class VideoTab:
 
             
         except Exception as e:
-            messagebox.showerror("Error Loading Folder", f"Unexpected error: {str(e)}")
-            self.main_gui.log(f"Folder loading error: {e}")
-            import traceback
-            traceback.print_exc()
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(self.main_gui, "Error Loading Folder", "Unexpected error occurred", e)
 
     def _show_no_videos_found(self):
         """Show user-friendly message when no videos are found"""
@@ -862,6 +878,12 @@ class VideoTab:
 
     def update_video_progress(self, value, message=None):
         """Update the video processing progress"""
+        if self.progress_manager:
+            # Use progress manager if available
+            self.progress_manager.update_progress(value, message)
+            return
+            
+        # Legacy fallback if progress manager is not available
         self.video_progress_bar["value"] = value
         
         # Get display mode from config
@@ -888,8 +910,14 @@ class VideoTab:
         """Reset the video tab UI to initial state"""
         self.generate_button.config(state="normal")
         self.stop_button.config(state="disabled")
-        self.video_progress_bar["value"] = 0
-        self.video_progress_label.config(text="0%")
+        
+        if self.progress_manager:
+            # Use progress manager if available
+            self.progress_manager.reset()
+        else:
+            # Legacy fallback
+            self.video_progress_bar["value"] = 0
+            self.video_progress_label.config(text="0%")
 
     def _cleanup_intermediate_files(self, video_path):
         """Clean up intermediate files for a video - calls main cleanup function"""

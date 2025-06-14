@@ -22,17 +22,9 @@ class VideoLoader:
         """Show file dialog and add selected videos"""
         if existing_videos is None:
             existing_videos = []
-            
-        files = filedialog.askopenfilenames(
-            title="Select Videos to Merge",
-            filetypes=[
-                ("Video files", "*.mp4 *.avi *.mov *.mkv *.wmv *.flv *.webm"),
-                ("MP4 files", "*.mp4"),
-                ("AVI files", "*.avi"),
-                ("MOV files", "*.mov"),
-                ("All files", "*.*")
-            ]
-        )
+
+        from utils.dialog_helpers import select_video_files
+        files = select_video_files(title="Select Videos to Merge", multiple=True)
         
         if not files:
             return []

@@ -18,6 +18,176 @@ from config import SUPPORTED_IMAGE_EXTENSIONS
 # Import text processing functions from centralized module
 from utils.text_processing import get_title_content, process_text_for_tts
 
+# ===== NEW CENTRALIZED UTILITY FUNCTIONS =====
+
+def configure_ffmpeg_for_moviepy():
+    """
+    Centralized FFmpeg configuration for MoviePy
+    Eliminates duplicate FFmpeg setup code across services
+
+    Returns:
+        bool: True if FFmpeg was configured successfully
+    """
+    try:
+        ffmpeg_path = get_ffmpeg_path()
+        if ffmpeg_path and (ffmpeg_path == 'ffmpeg' or os.path.exists(ffmpeg_path)):
+            # Set environment variable first (always works)
+            os.environ['FFMPEG_BINARY'] = ffmpeg_path
+            os.environ['IMAGEIO_FFMPEG_EXE'] = ffmpeg_path
+
+            # Try to configure MoviePy directly
+            try:
+                from moviepy.config import change_settings
+                change_settings({"FFMPEG_BINARY": ffmpeg_path})
+                print(f"FFmpeg configured for MoviePy: {ffmpeg_path}")
+                return True
+            except ImportError:
+                print(f"FFmpeg configured via environment variables: {ffmpeg_path}")
+                return True
+        else:
+            print(f"Warning: FFmpeg path not found or invalid: {ffmpeg_path}")
+            return False
+    except Exception as e:
+        print(f"Warning: Could not configure FFmpeg: {e}")
+        return False
+
+def setup_temp_directory_for_bundled_exe(output_file_path):
+    """
+    Centralized temp directory setup for bundled executables
+    Eliminates duplicate temp directory code across services
+
+    Args:
+        output_file_path: Path to output file (used to determine temp location)
+
+    Returns:
+        str: Path to temp directory
+    """
+    if getattr(sys, 'frozen', False):
+        # Running as bundled executable
+        temp_dir = os.path.join(os.path.dirname(output_file_path), 'temp')
+        os.makedirs(temp_dir, exist_ok=True)
+
+        # Set environment variables for various temp directory uses
+        os.environ['TMPDIR'] = temp_dir
+        os.environ['TEMP'] = temp_dir
+        os.environ['TMP'] = temp_dir
+
+        print(f"Temp directory configured for bundled executable: {temp_dir}")
+        return temp_dir
+    else:
+        return tempfile.gettempdir()
+
+def validate_output_file(file_path, min_size_bytes=1024, file_type="output"):
+    """
+    Centralized file validation
+    Eliminates duplicate file validation code across services
+
+    Args:
+        file_path: Path to file to validate
+        min_size_bytes: Minimum file size in bytes (default: 1KB)
+        file_type: Type of file for logging (e.g., "video", "audio")
+
+    Returns:
+        tuple: (is_valid: bool, message: str)
+    """
+    if not os.path.exists(file_path):
+        return False, f"{file_type} file not found: {file_path}"
+
+    file_size = os.path.getsize(file_path)
+    if file_size < min_size_bytes:
+        return False, f"{file_type} file too small ({file_size} bytes), likely corrupted"
+
+    return True, f"{file_type} file valid ({file_size} bytes)"
+
+def safe_file_operation(operation_func, *args, operation_name="file operation", **kwargs):
+    """
+    Centralized safe file operation wrapper
+    Eliminates duplicate try-catch patterns across services
+
+    Args:
+        operation_func: Function to execute safely
+        *args: Arguments for the function
+        operation_name: Name of operation for logging
+        **kwargs: Keyword arguments for the function
+
+    Returns:
+        tuple: (success: bool, result: any, error_message: str)
+    """
+    try:
+        result = operation_func(*args, **kwargs)
+        return True, result, None
+    except Exception as e:
+        error_msg = f"Error in {operation_name}: {str(e)}"
+        print(error_msg)
+        return False, None, error_msg
+
+def cleanup_temp_files(*file_paths):
+    """
+    Centralized temp file cleanup
+    Eliminates duplicate cleanup code across services
+
+    Args:
+        *file_paths: Variable number of file paths to clean up
+    """
+    for file_path in file_paths:
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+                print(f"Cleaned up temp file: {os.path.basename(file_path)}")
+            except Exception as e:
+                print(f"Warning: Could not remove temp file {file_path}: {e}")
+
+def get_media_duration_safe(media_file):
+    """
+    Centralized media duration detection with fallbacks
+    Eliminates duplicate duration detection code across services
+
+    Args:
+        media_file: Path to media file
+
+    Returns:
+        float: Duration in seconds, or 0.0 if failed
+    """
+    try:
+        # Try using moviepy first
+        from moviepy.editor import VideoFileClip, AudioFileClip
+
+        # Determine if it's video or audio
+        ext = os.path.splitext(media_file)[1].lower()
+        if ext in ['.mp4', '.avi', '.mov', '.mkv', '.webm']:
+            with VideoFileClip(media_file) as clip:
+                duration = clip.duration
+        else:
+            with AudioFileClip(media_file) as clip:
+                duration = clip.duration
+
+        print(f"Media duration: {duration:.2f} seconds")
+        return duration
+    except Exception as e:
+        print(f"Failed to get media duration with moviepy: {e}")
+
+        # Fallback: try FFprobe
+        try:
+            ffprobe_path = get_ffprobe_path()
+            cmd = [
+                ffprobe_path,
+                '-v', 'quiet',
+                '-show_entries', 'format=duration',
+                '-of', 'csv=p=0',
+                media_file
+            ]
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if result.returncode == 0:
+                duration = float(result.stdout.strip())
+                print(f"Media duration (ffprobe): {duration:.2f} seconds")
+                return duration
+        except Exception as e2:
+            print(f"Failed to get media duration with ffprobe: {e2}")
+
+        # Final fallback
+        print("Using default media duration: 10.0 seconds")
+        return 10.0
+
 def get_app_data_dir():
     """
     Get the application data directory where we can safely write files

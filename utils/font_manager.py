@@ -121,13 +121,22 @@ def get_bundled_font_path():
     Returns:
         str: Path to fonts directory
     """
-    if is_bundled_executable():
-        # In bundled executable, fonts are in the same directory
-        base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
-        return os.path.join(base_path, 'fonts')
-    else:
-        # In development, fonts are in project fonts directory
-        return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fonts')
+    try:
+        from utils.path_manager import get_base_path
+        if is_bundled_executable():
+            # In bundled executable, use base path from path_manager
+            base_path = get_base_path()
+            return os.path.join(base_path, 'fonts')
+        else:
+            # In development, fonts are in project fonts directory
+            return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fonts')
+    except ImportError:
+        # Fallback if path_manager is not available
+        if is_bundled_executable():
+            base_path = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+            return os.path.join(base_path, 'fonts')
+        else:
+            return os.path.join(os.path.dirname(os.path.dirname(__file__)), 'fonts')
 
 def install_bundled_fonts():
     """

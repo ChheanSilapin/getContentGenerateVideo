@@ -55,27 +55,47 @@ def safe_import(module_name, fallback_dict=None):
 # Standard fallback functions
 def fallback_get_app_data_dir():
     """Fallback implementation of get_app_data_dir"""
-    app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
     try:
-        os.makedirs(app_data_dir, exist_ok=True)
-    except Exception:
-        app_data_dir = os.getcwd()
-    return app_data_dir
+        # Try to use the primary implementation first
+        from utils.helpers import get_app_data_dir as primary_get_app_data_dir
+        return primary_get_app_data_dir()
+    except Exception as e:
+        print(f"Primary get_app_data_dir failed: {e}")
+        # Fallback implementation
+        app_data_dir = os.path.join(tempfile.gettempdir(), "Video Generator")
+        try:
+            os.makedirs(app_data_dir, exist_ok=True)
+        except Exception:
+            app_data_dir = os.getcwd()
+        return app_data_dir
 
 def fallback_ensure_directory_exists(directory_path):
     """Fallback implementation of ensure_directory_exists"""
     try:
-        if not os.path.exists(directory_path):
-            os.makedirs(directory_path, exist_ok=True)
-            print(f"Created directory: {directory_path}")
-        return True
+        # Try to use the primary implementation first
+        from utils.helpers import ensure_directory_exists as primary_ensure_directory_exists
+        return primary_ensure_directory_exists(directory_path)
     except Exception as e:
-        print(f"Error creating directory {directory_path}: {e}")
-        return False
+        print(f"Primary ensure_directory_exists failed: {e}")
+        # Fallback implementation
+        try:
+            if not os.path.exists(directory_path):
+                os.makedirs(directory_path, exist_ok=True)
+                print(f"Created directory: {directory_path}")
+            return True
+        except Exception as e:
+            print(f"Error creating directory {directory_path}: {e}")
+            return False
 
 def fallback_get_ffmpeg_path():
     """Fallback implementation of get_ffmpeg_path"""
-    return 'ffmpeg'
+    try:
+        # Try to use the primary implementation first
+        from utils.helpers import get_ffmpeg_path as primary_get_ffmpeg_path
+        return primary_get_ffmpeg_path()
+    except Exception as e:
+        print(f"Primary get_ffmpeg_path failed: {e}")
+        return 'ffmpeg'
 
 def fallback_check_ffmpeg_availability():
     """Fallback implementation of check_ffmpeg_availability"""

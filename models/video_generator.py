@@ -17,7 +17,7 @@ from config import DEFAULT_ASPECT_RATIO
 try:
     from services.audio_service import generate_audio
     from services.image_service import copy_selected_images
-    from services.video_service import create_enhanced_slideshow
+    from services.video_service import create_slideshow
     from services.subtitle_service import generate_subtitles
     from Final_Video import merge_video_subtitle
 except ImportError as e:
@@ -36,10 +36,10 @@ except ImportError as e:
         print("Could not import copy_selected_images")
     
     try:
-        from services.video_service import create_enhanced_slideshow
+        from services.video_service import create_slideshow
     except ImportError:
-        create_enhanced_slideshow = None
-        print("Could not import create_enhanced_slideshow")
+        create_slideshow = None
+        print("Could not import create_slideshow")
     
     try:
         from services.subtitle_service import generate_subtitles
@@ -257,8 +257,8 @@ class VideoGeneratorModel:
         else:
             os.environ["IMAGE_FIT_METHOD"] = "contain"  # Changed back to "contain" to show improved version
  
-        # Pass the processing option, effect settings, and aspect ratio to the create_enhanced_slideshow function
-        result = create_enhanced_slideshow(
+        # Pass the processing option, effect settings, and aspect ratio to the create_slideshow function
+        result = create_slideshow(
             images_dir,
             title,
             content,

@@ -4,6 +4,7 @@ Leverages existing AudioSettings and UI Factory components to avoid duplication
 """
 from utils.common_imports import tk, messagebox, ttk, filedialog
 from .audio_settings import AudioSettings
+from utils.settings_manager import SettingsManager
 import os
 
 class SettingsPopup:
@@ -25,6 +26,9 @@ class SettingsPopup:
         # Reusable components
         self.audio_settings = None
         
+        # Settings manager for persistence
+        self.settings_manager = SettingsManager()
+        
         # Callbacks
         self.on_settings_changed = None
         
@@ -35,10 +39,17 @@ class SettingsPopup:
     def _initialize_output_folder(self):
         """Initialize the output folder with default value"""
         try:
+            # Try to load from settings manager first
+            settings = self.settings_manager.load_settings()
+            if 'output_folder' in settings:
+                self.output_folder.set(settings['output_folder'])
+                return
+                
+            # Fallback to helper function
             from utils.helpers import get_output_directory
             default_folder = get_output_directory()
             self.output_folder.set(default_folder)
-        except:
+        except Exception as e:
             self.output_folder.set("Default (Auto)")
     
     def show(self):
@@ -111,7 +122,7 @@ class SettingsPopup:
         title_label = ttk.Label(
             main_frame,
             text=f"⚙️ {self.title}",
-            font=("Cascadia Code", 16, "bold")
+            font=("Cascadia Code", 12, "bold")
         )
         title_label.pack(anchor="w", pady=(0, 15))
         
@@ -224,6 +235,9 @@ class SettingsPopup:
         """Apply the settings and close popup"""
         settings = self.get_settings()
         
+        # Save settings using settings manager
+        self.settings_manager.save_settings(settings)
+        
         if self.on_settings_changed:
             self.on_settings_changed(settings)
         
@@ -234,17 +248,20 @@ class SettingsPopup:
     
     def _reset_settings(self):
         """Reset settings to defaults"""
+        # Get default settings from settings manager
+        default_settings = self.settings_manager.default_settings
+        
         if self.include_output_folder:
-            self._initialize_output_folder()
+            self.output_folder.set(default_settings.get('output_folder', 'Default (Auto)'))
         
         if self.include_audio and self.audio_settings:
             # Reset audio settings to defaults
             self.audio_settings.set_settings({
-                'voice_actor': 'Default',
-                'speed': 0.8,
-                'emotion': 'neutral',
-                'mute': False,
-                'volume': 0.7
+                'voice_actor': default_settings.get('voice_actor', 'Default'),
+                'speed': default_settings.get('speed', 0.8),
+                'emotion': default_settings.get('emotion', 'neutral'),
+                'mute': default_settings.get('mute', False),
+                'volume': default_settings.get('volume', 0.7)
             })
         
         if self.main_gui:
@@ -263,10 +280,11 @@ class SettingsPopup:
         
         return settings
     
-    def set_settings(self, settings):
+    def set_settings(self, settings=None):
         """Set settings from dictionary"""
-        if not settings:
-            return
+        if settings is None:
+            # Load from settings manager if no settings provided
+            settings = self.settings_manager.load_settings()
             
         # If components aren't created yet, store settings for later
         if not hasattr(self, 'popup_window') or not self.popup_window:

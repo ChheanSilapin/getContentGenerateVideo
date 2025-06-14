@@ -10,7 +10,7 @@ from .audio_settings import AudioSettings
 from .video_entry import VideoEntry
 from .layout_factory import LayoutFactory
 from .video_loader import VideoLoader
-from .progress_manager import ProgressManager
+from .progress_manager import ProgressManager  # Enhanced with dialog helpers and UI utilities
 from .video_grid import VideoGrid
 
 # Export all components
@@ -22,6 +22,6 @@ __all__ = [
     'VideoEntry',
     'LayoutFactory',
     'VideoLoader',
-    'ProgressManager',
+    'ProgressManager',  # Now includes BaseUIComponent functionality
     'VideoGrid',
 ] 

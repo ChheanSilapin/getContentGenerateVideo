@@ -178,7 +178,7 @@ try:
 
     # Import config
     from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS, get_tab_visibility
-    from models.video_generator import VideoGeneratorModel
+    from models.video_generator_refactored import VideoGeneratorModel
     from ui.image_selector import ImageSelector
     from ui.text_redirector import TextRedirector
 except ImportError as e:
@@ -564,8 +564,7 @@ class VideoGeneratorGUI:
 
     def open_file(self, file_path):
         try:
-            import platform
-            import subprocess
+            from utils.common_imports import platform, subprocess
             if platform.system() == "Windows":
                 os.startfile(file_path)
             elif platform.system() == "Darwin":
@@ -574,8 +573,8 @@ class VideoGeneratorGUI:
                 subprocess.run(["xdg-open", file_path], check=True)
             self.log(f"Opened file: {os.path.basename(file_path)}")
         except Exception as e:
-            self.log(f"Error opening file: {e}")
-            messagebox.showerror("Error", f"Could not open file: {e}")
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(self, "Error", f"Could not open file", e)
 
     def clean_button_click(self):
         """Clear all images by delegating to ImageTab component"""
