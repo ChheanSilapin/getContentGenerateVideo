@@ -12,7 +12,8 @@ class FolderProcessor:
     
     # Supported file extensions
     VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
-    TEXT_EXTENSIONS = {'.txt'}
+    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp'}
+    TEXT_EXTENSIONS = {'.txt', '.md'}
     
     def __init__(self):
         """Initialize the folder processor"""
@@ -423,6 +424,120 @@ class FolderProcessor:
         }
 
 
+    def process_folder_structure(self, root_folder: str) -> List[Dict]:
+        """
+        Process folder structure for image-to-video generation
+
+        Args:
+            root_folder: Root folder to process
+
+        Returns:
+            list: List of folder data with images and text
+        """
+        if not os.path.exists(root_folder):
+            raise ValueError(f"Folder does not exist: {root_folder}")
+
+        folder_data = []
+
+        # Check root level first
+        root_images, root_text = self._scan_folder_for_images_and_text(root_folder)
+        if root_images:
+            folder_data.append({
+                'type': 'root',
+                'folder_path': root_folder,
+                'folder_name': os.path.basename(root_folder),
+                'images': root_images,
+                'prompt': root_text,
+                'text_file': None  # We read the content directly
+            })
+
+        # Check subfolders
+        for item in os.listdir(root_folder):
+            item_path = os.path.join(root_folder, item)
+            if os.path.isdir(item_path):
+                subfolder_images, subfolder_text = self._scan_folder_for_images_and_text(item_path)
+                if subfolder_images:
+                    folder_data.append({
+                        'type': 'subfolder',
+                        'folder_path': item_path,
+                        'folder_name': item,
+                        'subfolder_name': item,
+                        'images': subfolder_images,
+                        'prompt': subfolder_text,
+                        'text_file': None
+                    })
+
+        return folder_data
+
+    def _scan_folder_for_images_and_text(self, folder_path: str) -> Tuple[List[str], str]:
+        """
+        Scan a single folder for images and text files
+
+        Args:
+            folder_path: Path to folder to scan
+
+        Returns:
+            tuple: (list_of_image_paths, text_content)
+        """
+        images = []
+        text_files = []
+
+        try:
+            for file in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, file)
+                if os.path.isfile(file_path):
+                    ext = os.path.splitext(file)[1].lower()
+                    if ext in self.IMAGE_EXTENSIONS:
+                        images.append(file_path)
+                    elif ext in self.TEXT_EXTENSIONS:
+                        text_files.append(file_path)
+
+            # Sort images naturally
+            images.sort()
+
+            # Find best text file and read content
+            text_content = ""
+            if text_files:
+                best_text_file = self._find_best_text_file(text_files)
+                if best_text_file:
+                    try:
+                        with open(best_text_file, 'r', encoding='utf-8') as f:
+                            text_content = f.read().strip()
+                    except Exception as e:
+                        self.log(f"Error reading text file {best_text_file}: {e}")
+
+            return images, text_content
+
+        except Exception as e:
+            self.log(f"Error scanning folder {folder_path}: {e}")
+            return [], ""
+
+    def _find_best_text_file(self, text_files: List[str]) -> Optional[str]:
+        """
+        Find the best text file to use as prompt
+
+        Args:
+            text_files: List of text file paths
+
+        Returns:
+            str: Path to best text file or None
+        """
+        if not text_files:
+            return None
+
+        # Priority order for text file names
+        priority_names = ['main.txt', 'prompt.txt', 'script.txt', 'text.txt', 'content.txt']
+
+        # Check for priority names first
+        for priority_name in priority_names:
+            for text_file in text_files:
+                if os.path.basename(text_file).lower() == priority_name:
+                    return text_file
+
+        # If no priority match, return the first text file
+        return text_files[0]
+
+
 class FolderProcessingError(Exception):
     """Custom exception for folder processing errors"""
-    pass 
+    pass

@@ -247,19 +247,20 @@ class BatchProcessor:
                 self.update_progress(current_progress,
                                    f"Group {job_index+1}: Processing video {i+1}/{len(pairs)} - {os.path.basename(pair['video_file'])}")
 
-                # Process individual video with output folder
+                # Process individual video with output folder (skip auto-cleanup for group processing)
                 processed_video = video_processor.process_video_with_prompt(
                     pair['video_file'],
                     pair['prompt'],
                     stop_event,
-                    output_folder
+                    output_folder,
+                    skip_auto_cleanup=True  # Skip cleanup for group processing - we'll clean up after merge
                 )
                 
                 if processed_video:
                     processed_videos.append(processed_video)
                 else:
                     print(f"Failed to process video: {os.path.basename(pair['video_file'])}")
-            
+
             # If we have processed videos, combine them
             if processed_videos:
                 return self._combine_group_videos(processed_videos, group_data, job_index, total_jobs)
@@ -276,12 +277,20 @@ class BatchProcessor:
         """Combine processed videos into a single output"""
         try:
             from services.merge_service import VideoService
-            
-            # Create output path for combined video
+
+            # Create output path for combined video with timestamp to prevent overwriting
             output_dir = os.path.dirname(processed_videos[0])
             parent_dir = os.path.dirname(output_dir)
-            combined_output = os.path.join(parent_dir, group_data['output_name'])
-            
+
+            # Add timestamp to prevent overwriting previous videos
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = os.path.splitext(group_data['output_name'])[0]
+            extension = os.path.splitext(group_data['output_name'])[1] or '.mp4'
+            timestamped_name = f"{base_name}_{timestamp}{extension}"
+
+            combined_output = os.path.join(parent_dir, timestamped_name)
+
             # Update progress for merging
             job_weight = 100 / total_jobs
             merge_start_progress = int((job_index / total_jobs) * 100) + int((80 / 100) * job_weight)
@@ -297,11 +306,11 @@ class BatchProcessor:
                 self.update_progress(final_progress, f"Group {job_index+1}: {m}")
             
             merge_result = VideoService.merge_videos_optimized(
-                processed_videos, 
+                processed_videos,
                 combined_output,
                 progress_callback=merge_progress_callback
             )
-            
+
             if merge_result and os.path.exists(combined_output):
                 # Clean up individual video folders after successful merge using unified cleanup
                 cleanup_manager = getattr(self, 'cleanup_manager', None)
@@ -318,26 +327,43 @@ class BatchProcessor:
             return None
     
     def _cleanup_individual_folders(self, processed_videos, cleanup_manager=None):
-        """Clean up individual video folders after successful merge using unified cleanup system"""
+        """Clean up individual video folders after successful merge - REMOVE ENTIRE FOLDERS"""
+        import os
+        import shutil
+        import time
+        import gc
         cleaned_folders = 0
+
+        print(f"🧹 Cleaning up {len(processed_videos)} individual video folders after merge...")
+
+        # Force comprehensive cleanup to ensure all file handles are released
+        from utils.helpers import force_moviepy_cleanup
+        force_moviepy_cleanup()
+        time.sleep(2.0)  # Additional delay for video processing cleanup
+
         for video_path in processed_videos:
             individual_folder = os.path.dirname(video_path)
-            try:
-                if os.path.exists(individual_folder):
-                    # Use unified cleanup system if available
-                    if cleanup_manager:
-                        cleanup_manager.cleanup_after_video_complete(individual_folder, keep_debug_files=False)
+
+            # Try cleanup with retry mechanism for locked files
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    if os.path.exists(individual_folder):
+                        # For group processing, remove the ENTIRE individual folder after successful merge
+                        # since we now have the combined video
+                        shutil.rmtree(individual_folder)
+                        cleaned_folders += 1
+                        print(f"✅ Removed individual folder: {os.path.basename(individual_folder)}")
+                        break  # Success, exit retry loop
+                except PermissionError as e:
+                    if attempt < max_retries - 1:
+                        print(f"Folder locked, retrying in 2.0s: {os.path.basename(individual_folder)} (attempt {attempt + 1}/{max_retries})")
+                        force_moviepy_cleanup()  # Force comprehensive cleanup
+                        time.sleep(2.0)  # Wait longer for file handles to be released
                     else:
-                        # Fallback: remove only intermediate files, keep final_output.mp4
-                        import os
-                        for file in os.listdir(individual_folder):
-                            if file != "final_output.mp4":
-                                file_path = os.path.join(individual_folder, file)
-                                try:
-                                    os.remove(file_path)
-                                except Exception:
-                                    pass
-                    cleaned_folders += 1
-            except Exception as e:
-                print(f"Warning: Could not clean up folder {individual_folder}: {e}")
-                pass  # Continue cleanup even if some folders fail
+                        print(f"Warning: Could not remove folder {individual_folder}: {e}")
+                except Exception as e:
+                    print(f"Warning: Could not remove folder {individual_folder}: {e}")
+                    break  # Don't retry for other types of errors
+
+        print(f"🧹 Cleanup complete: Removed {cleaned_folders} individual video folders")

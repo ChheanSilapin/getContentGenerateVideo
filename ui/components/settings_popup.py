@@ -1,6 +1,7 @@
 """
 Settings Popup Component - Reusable settings dialog for any tab
 Leverages existing AudioSettings and UI Factory components to avoid duplication
+Includes gTTS and Vosk speech recognition settings
 """
 from utils.common_imports import tk, messagebox, ttk, filedialog
 from .audio_settings import AudioSettings
@@ -9,32 +10,58 @@ import os
 
 class SettingsPopup:
     """Reusable settings popup dialog that uses existing components"""
-    
-    def __init__(self, parent, title="Settings", main_gui=None, include_audio=True, include_output_folder=True):
+
+    def __init__(self, parent, title="Settings", main_gui=None, include_audio=True, include_output_folder=True, include_tts=True, include_speech_recognition=True, include_image_processing=False):
         self.parent = parent
         self.title = title
         self.main_gui = main_gui
         self.popup_window = None
-        
+
         # Configuration options
         self.include_audio = include_audio
         self.include_output_folder = include_output_folder
-        
+        self.include_tts = include_tts
+        self.include_speech_recognition = include_speech_recognition
+        self.include_image_processing = include_image_processing
+
         # Settings variables
         self.output_folder = tk.StringVar()
-        
+
+        # TTS settings variables
+        self.tts_language = tk.StringVar()
+        self.tts_voice_actor = tk.StringVar()
+        self.tts_speed = tk.DoubleVar()
+        self.tts_emotion = tk.StringVar()
+
+        # Image processing settings variables
+        self.image_fit_method = tk.StringVar()
+        self.aspect_ratio = tk.StringVar()
+
+        # Speech recognition settings variables
+        self.sr_enabled = tk.BooleanVar()
+        self.sr_language = tk.StringVar()
+        self.sr_model_path = tk.StringVar()
+
+        # Content synchronization is now automatic - no UI variables needed
+
         # Reusable components
         self.audio_settings = None
-        
+
         # Settings manager for persistence
         self.settings_manager = SettingsManager()
-        
+
         # Callbacks
         self.on_settings_changed = None
-        
+
         # Initialize default values
         if self.include_output_folder:
             self._initialize_output_folder()
+        if self.include_tts:
+            self._initialize_tts_settings()
+        if self.include_speech_recognition:
+            self._initialize_speech_recognition_settings()
+
+        # Content sync is now automatic - no initialization needed
     
     def _initialize_output_folder(self):
         """Initialize the output folder with default value"""
@@ -44,14 +71,48 @@ class SettingsPopup:
             if 'output_folder' in settings:
                 self.output_folder.set(settings['output_folder'])
                 return
-                
+
             # Fallback to helper function
             from utils.helpers import get_output_directory
             default_folder = get_output_directory()
             self.output_folder.set(default_folder)
         except Exception as e:
             self.output_folder.set("Default (Auto)")
-    
+
+    def _initialize_tts_settings(self):
+        """Initialize TTS settings with default values"""
+        try:
+            settings = self.settings_manager.load_settings()
+            self.tts_language.set(settings.get('tts_language', 'en'))
+            self.tts_voice_actor.set(settings.get('tts_voice_actor', 'Default'))
+            self.tts_speed.set(settings.get('tts_speed', 1.0))
+            self.tts_emotion.set(settings.get('tts_emotion', 'neutral'))
+            self.image_fit_method.set(settings.get('image_fit_method', 'cover'))
+            self.aspect_ratio.set(settings.get('aspect_ratio', '16:9 (Landscape)'))
+        except Exception as e:
+            # Set defaults
+            self.tts_language.set('en')
+            self.tts_voice_actor.set('Default')
+            self.tts_speed.set(1.0)
+            self.tts_emotion.set('neutral')
+            self.image_fit_method.set('cover')
+            self.aspect_ratio.set('16:9 (Landscape)')
+
+    def _initialize_speech_recognition_settings(self):
+        """Initialize speech recognition settings with default values"""
+        try:
+            settings = self.settings_manager.load_settings()
+            self.sr_enabled.set(settings.get('sr_enabled', False))
+            self.sr_language.set(settings.get('sr_language', 'en-us'))
+            self.sr_model_path.set(settings.get('sr_model_path', ''))
+        except Exception as e:
+            # Set defaults
+            self.sr_enabled.set(False)
+            self.sr_language.set('en-us')
+            self.sr_model_path.set('')
+
+
+
     def show(self):
         """Show the settings popup dialog"""
         if self.popup_window and self.popup_window.winfo_exists():
@@ -70,8 +131,15 @@ class SettingsPopup:
             height += 120
         if self.include_audio:
             height += 200
-            
-        self.popup_window.geometry(f"520x{height}")
+        if self.include_tts:
+            height += 180  # Standard TTS section height
+        if self.include_image_processing:
+            height += 150  # Image processing section height (fit method + aspect ratio)
+        if self.include_speech_recognition:
+            height += 150
+        # Content sync is now automatic - no extra height needed
+
+        self.popup_window.geometry(f"600x{height}")
         self.popup_window.resizable(False, False)
         
         # Make it modal
@@ -129,10 +197,21 @@ class SettingsPopup:
         # Create sections based on configuration
         if self.include_output_folder:
             self._create_output_folder_section(main_frame)
-        
+
         if self.include_audio:
             self._create_audio_section(main_frame)
-        
+
+        if self.include_tts:
+            self._create_tts_section(main_frame)
+
+        if self.include_image_processing:
+            self._create_image_processing_section(main_frame)
+
+        if self.include_speech_recognition:
+            self._create_speech_recognition_section(main_frame)
+
+        # Content synchronization is now automatic - no UI needed
+
         # Buttons
         self._create_buttons(main_frame)
     
@@ -177,11 +256,179 @@ class SettingsPopup:
         # Create container for the audio settings
         audio_container = ttk.Frame(parent)
         audio_container.pack(fill="x", pady=(0, 15))
-        
+
         # Use existing AudioSettings component to avoid duplication
         self.audio_settings = AudioSettings(audio_container, "🔊 Audio Settings")
         self.audio_settings.pack(fill="x")
-    
+
+    def _create_tts_section(self, parent):
+        """Create TTS (Text-to-Speech) settings section"""
+        tts_frame = ttk.LabelFrame(parent, text="🗣️ Text-to-Speech (gTTS)", padding=15)
+        tts_frame.pack(fill="x", pady=(0, 15))
+
+        # Language selection
+        lang_row = ttk.Frame(tts_frame)
+        lang_row.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(lang_row, text="Language:", font=("Cascadia Code", 10)).pack(side="left")
+
+        language_combo = ttk.Combobox(
+            lang_row,
+            textvariable=self.tts_language,
+            values=["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+            state="readonly",
+            width=15
+        )
+        language_combo.pack(side="left", padx=(10, 0))
+
+        # Voice actor selection
+        voice_row = ttk.Frame(tts_frame)
+        voice_row.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(voice_row, text="Voice Style:", font=("Cascadia Code", 10)).pack(side="left")
+
+        voice_combo = ttk.Combobox(
+            voice_row,
+            textvariable=self.tts_voice_actor,
+            values=["Default", "British", "American", "Australian", "Canadian", "Indian"],
+            state="readonly",
+            width=15
+        )
+        voice_combo.pack(side="left", padx=(10, 0))
+
+        # Speed control
+        speed_row = ttk.Frame(tts_frame)
+        speed_row.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(speed_row, text="Speed:", font=("Cascadia Code", 10)).pack(side="left")
+
+        speed_scale = ttk.Scale(
+            speed_row,
+            from_=0.5,
+            to=2.0,
+            variable=self.tts_speed,
+            orient="horizontal",
+            length=200
+        )
+        speed_scale.pack(side="left", padx=(10, 10))
+
+        speed_label = ttk.Label(speed_row, text="1.0x", font=("Cascadia Code", 9))
+        speed_label.pack(side="left")
+
+        # Update speed label when scale changes
+        def update_speed_label(*args):
+            speed_label.config(text=f"{self.tts_speed.get():.1f}x")
+        self.tts_speed.trace("w", update_speed_label)
+
+        # Emotion selection
+        emotion_row = ttk.Frame(tts_frame)
+        emotion_row.pack(fill="x")
+
+        ttk.Label(emotion_row, text="Emotion:", font=("Cascadia Code", 10)).pack(side="left")
+
+        emotion_combo = ttk.Combobox(
+            emotion_row,
+            textvariable=self.tts_emotion,
+            values=["neutral", "excited", "dramatic", "calm", "energetic"],
+            state="readonly",
+            width=15
+        )
+        emotion_combo.pack(side="left", padx=(10, 0))
+
+    def _create_image_processing_section(self, parent):
+        """Create Image Processing settings section"""
+        img_frame = ttk.LabelFrame(parent, text="🖼️ Image Processing", padding=15)
+        img_frame.pack(fill="x", pady=(0, 15))
+
+        # Image fit method selection
+        fit_row = ttk.Frame(img_frame)
+        fit_row.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(fit_row, text="Image Fit Method:", font=("Cascadia Code", 10)).pack(side="left")
+
+        fit_combo = ttk.Combobox(
+            fit_row,
+            textvariable=self.image_fit_method,
+            values=["cover", "contain", "stretch"],
+            state="readonly",
+            width=15
+        )
+        fit_combo.pack(side="left", padx=(10, 0))
+
+        # Aspect ratio presets
+        aspect_row = ttk.Frame(img_frame)
+        aspect_row.pack(fill="x", pady=(10, 0))
+
+        ttk.Label(aspect_row, text="Aspect Ratio:", font=("Cascadia Code", 10)).pack(side="left")
+
+        self.aspect_ratio = tk.StringVar()
+        aspect_combo = ttk.Combobox(
+            aspect_row,
+            textvariable=self.aspect_ratio,
+            values=["16:9 (Landscape)", "9:16 (Portrait)", "1:1 (Square)", "4:3 (Classic)", "21:9 (Ultrawide)"],
+            state="readonly",
+            width=20
+        )
+        aspect_combo.pack(side="left", padx=(10, 0))
+
+    def _create_speech_recognition_section(self, parent):
+        """Create speech recognition settings section"""
+        sr_frame = ttk.LabelFrame(parent, text="🎤 Speech Recognition (Vosk)", padding=15)
+        sr_frame.pack(fill="x", pady=(0, 15))
+
+        # Enable/disable checkbox
+        enable_row = ttk.Frame(sr_frame)
+        enable_row.pack(fill="x", pady=(0, 10))
+
+        enable_check = ttk.Checkbutton(
+            enable_row,
+            text="Enable Speech Recognition",
+            variable=self.sr_enabled,
+            command=self._toggle_speech_recognition
+        )
+        enable_check.pack(side="left")
+
+        # Language selection
+        lang_row = ttk.Frame(sr_frame)
+        lang_row.pack(fill="x", pady=(0, 10))
+
+        ttk.Label(lang_row, text="Language:", font=("Cascadia Code", 10)).pack(side="left")
+
+        sr_language_combo = ttk.Combobox(
+            lang_row,
+            textvariable=self.sr_language,
+            values=["en-us", "en-uk", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+            state="readonly",
+            width=15
+        )
+        sr_language_combo.pack(side="left", padx=(10, 0))
+
+        # Model path selection
+        model_row = ttk.Frame(sr_frame)
+        model_row.pack(fill="x")
+
+        ttk.Label(model_row, text="Model Path:", font=("Cascadia Code", 10)).pack(side="left")
+
+        model_entry = ttk.Entry(
+            model_row,
+            textvariable=self.sr_model_path,
+            font=("Cascadia Code", 9),
+            width=30
+        )
+        model_entry.pack(side="left", padx=(10, 10), fill="x", expand=True)
+
+        browse_model_button = ttk.Button(
+            model_row,
+            text="📁 Browse",
+            command=self._browse_model_path,
+            width=10
+        )
+        browse_model_button.pack(side="right")
+
+        # Store references for enabling/disabling
+        self.sr_widgets = [sr_language_combo, model_entry, browse_model_button]
+        self._toggle_speech_recognition()  # Set initial state
+
     def _create_buttons(self, parent):
         """Create OK and Cancel buttons"""
         button_frame = ttk.Frame(parent)
@@ -230,6 +477,27 @@ class SettingsPopup:
             self.output_folder.set(folder_path)
             if self.main_gui:
                 self.main_gui.log(f"Output folder changed to: {folder_path}")
+
+    def _toggle_speech_recognition(self):
+        """Enable/disable speech recognition widgets based on checkbox"""
+        if hasattr(self, 'sr_widgets'):
+            state = "normal" if self.sr_enabled.get() else "disabled"
+            for widget in self.sr_widgets:
+                widget.config(state=state)
+
+    def _browse_model_path(self):
+        """Browse for Vosk model directory"""
+        current_path = self.sr_model_path.get()
+        initial_dir = current_path if current_path and os.path.exists(current_path) else None
+
+        folder_path = filedialog.askdirectory(
+            title="Select Vosk Model Directory",
+            initialdir=initial_dir
+        )
+        if folder_path:
+            self.sr_model_path.set(folder_path)
+            if self.main_gui:
+                self.main_gui.log(f"Speech recognition model path set to: {folder_path}")
     
     def _apply_settings(self):
         """Apply the settings and close popup"""
@@ -250,10 +518,10 @@ class SettingsPopup:
         """Reset settings to defaults"""
         # Get default settings from settings manager
         default_settings = self.settings_manager.default_settings
-        
+
         if self.include_output_folder:
             self.output_folder.set(default_settings.get('output_folder', 'Default (Auto)'))
-        
+
         if self.include_audio and self.audio_settings:
             # Reset audio settings to defaults
             self.audio_settings.set_settings({
@@ -263,21 +531,52 @@ class SettingsPopup:
                 'mute': default_settings.get('mute', False),
                 'volume': default_settings.get('volume', 0.7)
             })
-        
+
+        if self.include_tts:
+            self.tts_language.set(default_settings.get('tts_language', 'en'))
+            self.tts_voice_actor.set(default_settings.get('tts_voice_actor', 'Default'))
+            self.tts_speed.set(default_settings.get('tts_speed', 1.0))
+            self.tts_emotion.set(default_settings.get('tts_emotion', 'neutral'))
+
+        if self.include_speech_recognition:
+            self.sr_enabled.set(default_settings.get('sr_enabled', False))
+            self.sr_language.set(default_settings.get('sr_language', 'en-us'))
+            self.sr_model_path.set(default_settings.get('sr_model_path', ''))
+            self._toggle_speech_recognition()
+
+        # Content sync settings are automatic - no reset needed
+
         if self.main_gui:
             self.main_gui.log("Settings reset to defaults")
     
     def get_settings(self):
         """Get all current settings"""
         settings = {}
-        
+
         if self.include_output_folder:
             settings['output_folder'] = self.output_folder.get()
-        
+
         if self.include_audio and self.audio_settings:
             audio_settings = self.audio_settings.get_settings()
             settings.update(audio_settings)
-        
+
+        if self.include_tts:
+            settings['tts_language'] = self.tts_language.get()
+            settings['tts_voice_actor'] = self.tts_voice_actor.get()
+            settings['tts_speed'] = self.tts_speed.get()
+            settings['tts_emotion'] = self.tts_emotion.get()
+
+        if self.include_image_processing:
+            settings['image_fit_method'] = self.image_fit_method.get()
+            settings['aspect_ratio'] = self.aspect_ratio.get()
+
+        if self.include_speech_recognition:
+            settings['sr_enabled'] = self.sr_enabled.get()
+            settings['sr_language'] = self.sr_language.get()
+            settings['sr_model_path'] = self.sr_model_path.get()
+
+        # Content sync settings are now automatic - handled by defaults
+
         return settings
     
     def set_settings(self, settings=None):
@@ -285,21 +584,48 @@ class SettingsPopup:
         if settings is None:
             # Load from settings manager if no settings provided
             settings = self.settings_manager.load_settings()
-            
+
         # If components aren't created yet, store settings for later
         if not hasattr(self, 'popup_window') or not self.popup_window:
             self._pending_settings = settings
             return
-            
+
         if self.include_output_folder and 'output_folder' in settings:
             self.output_folder.set(settings['output_folder'])
-        
+
         if self.include_audio and self.audio_settings:
             # Filter out non-audio settings
             audio_keys = ['voice_actor', 'speed', 'emotion', 'mute', 'volume']
             audio_settings = {k: v for k, v in settings.items() if k in audio_keys}
             if audio_settings:
                 self.audio_settings.set_settings(audio_settings)
+
+        if self.include_tts:
+            if 'tts_language' in settings:
+                self.tts_language.set(settings['tts_language'])
+            if 'tts_voice_actor' in settings:
+                self.tts_voice_actor.set(settings['tts_voice_actor'])
+            if 'tts_speed' in settings:
+                self.tts_speed.set(settings['tts_speed'])
+            if 'tts_emotion' in settings:
+                self.tts_emotion.set(settings['tts_emotion'])
+
+        if self.include_image_processing:
+            if 'image_fit_method' in settings:
+                self.image_fit_method.set(settings['image_fit_method'])
+            if 'aspect_ratio' in settings:
+                self.aspect_ratio.set(settings['aspect_ratio'])
+
+        if self.include_speech_recognition:
+            if 'sr_enabled' in settings:
+                self.sr_enabled.set(settings['sr_enabled'])
+            if 'sr_language' in settings:
+                self.sr_language.set(settings['sr_language'])
+            if 'sr_model_path' in settings:
+                self.sr_model_path.set(settings['sr_model_path'])
+            self._toggle_speech_recognition()
+
+        # Content sync settings are automatic - no UI controls to set
     
     def set_callback(self, callback):
         """Set callback function for when settings are applied"""
@@ -313,11 +639,12 @@ class SettingsPopup:
             self.popup_window = None
 
 # Convenience functions for different popup configurations
-def show_settings_popup(parent, title="Settings", main_gui=None, current_settings=None, 
-                       callback=None, include_audio=True, include_output_folder=True):
+def show_settings_popup(parent, title="Settings", main_gui=None, current_settings=None,
+                       callback=None, include_audio=True, include_output_folder=True,
+                       include_tts=True, include_speech_recognition=False, include_image_processing=False):
     """
     Convenience function to create and show a customizable settings popup
-    
+
     Args:
         parent: Parent window
         title: Popup title
@@ -326,19 +653,23 @@ def show_settings_popup(parent, title="Settings", main_gui=None, current_setting
         callback: Function to call when settings are applied
         include_audio: Whether to include audio settings section
         include_output_folder: Whether to include output folder section
-    
+        include_tts: Whether to include TTS settings section
+        include_speech_recognition: Whether to include speech recognition settings section
+        include_image_processing: Whether to include image processing settings section
+
     Returns:
         SettingsPopup: The created popup instance
     """
-    popup = SettingsPopup(parent, title, main_gui, include_audio, include_output_folder)
-    
+    popup = SettingsPopup(parent, title, main_gui, include_audio, include_output_folder,
+                         include_tts, include_speech_recognition, include_image_processing)
+
     # Set current settings before showing (will be stored as pending if needed)
     if current_settings:
         popup.set_settings(current_settings)
-    
+
     if callback:
         popup.set_callback(callback)
-    
+
     # Show the popup (this will apply pending settings after components are created)
     popup.show()
     return popup

@@ -10,7 +10,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip, CompositeAudioClip
 # Import centralized utility functions
 from utils.helpers import (
     configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
-    get_ffmpeg_path, cleanup_temp_files
+    get_ffmpeg_path, cleanup_temp_files, force_moviepy_cleanup, build_ffmpeg_command
 )
 from .video_utils import get_media_duration
 from .video_looping import loop_video
@@ -175,7 +175,10 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
             video.close()
             new_audio.close()
             final_video.close()
-            
+
+            # Force comprehensive MoviePy cleanup
+            force_moviepy_cleanup()
+
             print("Video written successfully with MoviePy")
             return True
             
@@ -190,7 +193,10 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                 final_video.close()
             except:
                 pass
-            
+
+            # Force comprehensive MoviePy cleanup before fallback
+            force_moviepy_cleanup()
+
             # Use FFmpeg fallback
             return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file)
 
@@ -262,19 +268,9 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         # Step 2: Add audio using FFmpeg (replace original audio)
         print(f"Adding voice-over audio using FFmpeg...")
         
-        mix_cmd = [
-            ffmpeg_path,
-            '-i', video_for_mixing,  # Video input
-            '-i', audio_file,        # Audio input
-            '-c:v', 'copy',          # Copy video stream (fast, no quality loss)
-            '-c:a', 'aac',           # AAC audio codec (compatible)
-            '-map', '0:v:0',         # Use video from first input
-            '-map', '1:a:0',         # Use audio from second input  
-            '-t', str(target_duration),  # Use target duration instead of -shortest
-            '-avoid_negative_ts', 'make_zero',
-            '-y',
-            output_file
-        ]
+        # Use centralized FFmpeg command builder for audio mixing
+        mix_cmd = build_ffmpeg_command(ffmpeg_path, video_for_mixing, output_file, "audio_mix",
+                                      audio_file=audio_file, target_duration=target_duration)
         
         result = subprocess.run(mix_cmd, capture_output=True, text=True, timeout=180)
         
@@ -304,7 +300,10 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         if video_for_mixing != video_file and os.path.exists(video_for_mixing):
             cleanup_temp_files(video_for_mixing)
             print(f"Cleaned up temporary looped video: {os.path.basename(video_for_mixing)}")
-        
+
+        # Force comprehensive cleanup to ensure file handles are released
+        force_moviepy_cleanup()
+
         return success
             
     except Exception as e:

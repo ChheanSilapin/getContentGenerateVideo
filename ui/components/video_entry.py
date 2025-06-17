@@ -2,7 +2,7 @@
 Video Entry Component - Individual video input entry
 Extracted from video_tab.py for reusability and maintainability
 """
-from utils.common_imports import tk, ttk, filedialog, os
+from utils.common_imports import tk, ttk, os
 
 class VideoEntry:
     """Individual video entry with file selector and prompt input"""
@@ -42,7 +42,7 @@ class VideoEntry:
         ttk.Label(
             file_label_frame,
             text="📁 Video File:",
-            font=("Cascadia Code", 10, "bold")
+            font=("Cascadia Code", 8, "bold")
         ).pack(side="left")
 
         # File input row
@@ -64,22 +64,12 @@ class VideoEntry:
         )
         browse_button.pack(side="right")
 
-        # Prompt input section
-        prompt_section = ttk.Frame(self.entry_frame)
-        prompt_section.pack(fill="x")
+        # Clean text frame like the selected style
+        text_frame = ttk.LabelFrame(self.entry_frame, text="📝 Text Prompt for Video", padding=8)
+        text_frame.pack(fill="x", pady=(0, 8))
 
-        # Prompt label with icon
-        prompt_label_frame = ttk.Frame(prompt_section)
-        prompt_label_frame.pack(fill="x", pady=(0, 3))
-
-        ttk.Label(
-            prompt_label_frame,
-            text="💬 Voice-over Prompt:",
-            font=("Cascadia Code", 10, "bold")
-        ).pack(side="left")
-
-        # Prompt input row
-        prompt_input_frame = ttk.Frame(prompt_section)
+        # Text input row
+        prompt_input_frame = ttk.Frame(text_frame)
         prompt_input_frame.pack(fill="x")
 
         prompt_text = tk.Text(
@@ -99,8 +89,8 @@ class VideoEntry:
 
         # Remove button with clean styling
         remove_button = self.main_gui.ui_factory.create_icon_button(
-            prompt_input_frame, "Remove", lambda: self.remove_callback(self.entry_id),
-            icon="🗑️", width=12
+            prompt_input_frame, "🗑️ Remove", lambda: self.remove_callback(self.entry_id),
+            width=12
         )
         remove_button.pack(side="right", anchor="n", pady=(0, 0))
 

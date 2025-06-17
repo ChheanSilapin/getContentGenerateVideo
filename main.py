@@ -24,31 +24,38 @@ def check_critical_files():
 
 def setup_environment():
     """Setup environment for standalone operation"""
-    # Set up paths for bundled FFmpeg
-    if getattr(sys, 'frozen', False):
-        # Running as PyInstaller bundle
-        bundle_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
-        
-        # Add bundle directory to PATH for FFmpeg
-        current_path = os.environ.get('PATH', '')
-        if bundle_dir not in current_path:
-            os.environ['PATH'] = bundle_dir + os.pathsep + current_path
-    
-    # Create output directory in user's documents if needed
     try:
-        import tempfile
-        output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
-        os.makedirs(output_dir, exist_ok=True)
-        os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
-    except Exception:
-        pass  # Will use the current directory as fallback
+        # Set up paths for bundled FFmpeg
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller bundle
+            bundle_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+
+            # Add bundle directory to PATH for FFmpeg
+            current_path = os.environ.get('PATH', '')
+            if bundle_dir not in current_path:
+                os.environ['PATH'] = bundle_dir + os.pathsep + current_path
+                print(f"Added bundle directory to PATH: {bundle_dir}")
+
+        # Create output directory in user's documents if needed
+        try:
+            import tempfile
+            output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
+            os.makedirs(output_dir, exist_ok=True)
+            os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
+            print(f"Set up output directory: {output_dir}")
+        except OSError as e:
+            print(f"Warning: Could not create output directory: {e}")
+            # Will use the current directory as fallback
+    except Exception as e:
+        print(f"Warning: Error in environment setup: {e}")
+        # Continue execution - the application should handle missing setup gracefully
 
 def check_ffmpeg_availability():
     """Check if FFmpeg is available (bundled or system-installed)"""
     try:
         # Use the centralized implementation from utils.helpers
         from utils.helpers import check_ffmpeg_availability as centralized_check
-        is_available, ffmpeg_path, error_message = centralized_check()
+        is_available, _, _ = centralized_check()
         return is_available  # Return only boolean for backward compatibility
     except ImportError:
         # Minimal fallback if utils.helpers is completely unavailable

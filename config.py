@@ -36,6 +36,14 @@ DEFAULT_ASPECT_RATIO = "9:16"
 # File paths and extensions
 SUPPORTED_IMAGE_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp')
 
+# Centralized file extension definitions for consistent usage across components
+IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff', '.webp'}
+VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
+TEXT_EXTENSIONS = {'.txt', '.md'}
+
+# Text file priority for automatic selection
+TEXT_FILE_PRIORITY = ['main.txt', 'prompt.txt', 'script.txt', 'text.txt', 'content.txt']
+
 # GUI settings
 GUI_WINDOW_SIZE = "900x780"
 GUI_TITLE = "Video Generator"
@@ -197,7 +205,7 @@ SUBTITLE_CONFIG = {
 AUTO_CLEANUP_INTERMEDIATE_FILES = True   # Enable auto-cleanup by default to save space
 KEEP_DEBUG_FILES_BY_DEFAULT = False      # Clean all files by default, keep only final_output.mp4
 CLEANUP_TEMP_FILES_DURING_GENERATION = True  # Clean temp files during generation
-AUTO_CLEANUP_AFTER_COMPLETION = True     # NEW: Enable auto-cleanup after video completion (single or batch)
+AUTO_CLEANUP_AFTER_COMPLETION = True    # TEMPORARILY DISABLED: Enable auto-cleanup after video completion (single or batch)
 
 # Cleanup Policy: Keep ONLY final_output.mp4, remove all intermediate files:
 # - voice.mp3, voice.mp3.txt (voice generation files)
@@ -214,30 +222,20 @@ AUTO_CLEANUP_AFTER_COMPLETION = True     # NEW: Enable auto-cleanup after video 
 
 # Individual Tab Visibility Controls
 TAB_VISIBILITY = {
-    'input': True,      # Core functionality - always recommended
+    'input': False,     # Removed - functionality integrated into other tabs
     'images': True,     # Core functionality - always recommended
     'video': True,      # Advanced video processing features
     'merge': False,     # Advanced video merging - hide by default
-    'options': True,    # Settings and configuration
+    'options': False,   # Removed - settings now in popup
     'batch': False,     # Batch processing - hide by default
     'log': True,        # Always visible for debugging and progress tracking
 }
 
-# UI Mode Presets - Override individual settings when selected
-UI_MODE = "custom"  # Options: "simple", "standard", "advanced", "custom"
+# UI Mode Presets - Simplified to only used configurations
+UI_MODE = "custom"  # Options: "standard", "custom"
 
-# UI Mode Definitions
+# UI Mode Definitions - Removed unused "simple" and "advanced" presets
 UI_MODE_PRESETS = {
-    "simple": {
-        # Minimal interface for basic users
-        'input': True,
-        'images': True,
-        'video': False,
-        'merge': False,
-        'options': False,
-        'batch': False,
-        'log': True,
-    },
     "standard": {
         # Default interface with core features
         'input': True,
@@ -248,19 +246,10 @@ UI_MODE_PRESETS = {
         'batch': False,
         'log': True,
     },
-    "advanced": {
-        # Full interface with all features
-        'input': True,
-        'images': True,
-        'video': True,
-        'merge': True,
-        'options': True,
-        'batch': True,
-        'log': True,
-    },
     "custom": {
+        # Current custom configuration
         'input': False,
-        'images': False,
+        'images': True,
         'video': True,
         'merge': False,
         'options': False,

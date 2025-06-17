@@ -1,8 +1,8 @@
-from utils.common_imports import subprocess, os, traceback, shutil, sys, time, tempfile, glob
+from utils.common_imports import subprocess, os, traceback, shutil, sys, tempfile, glob
 
 # Use centralized path management
 try:
-    from utils.path_manager import add_utils_to_path, setup_project_paths
+    from utils.path_manager import setup_project_paths
     # Set up all project paths at once
     setup_project_paths()
 except ImportError:
@@ -14,14 +14,15 @@ except ImportError:
 
 # Import FFmpeg utilities from centralized location
 try:
-    from utils.helpers import get_ffmpeg_path, check_ffmpeg_availability
+    from utils.helpers import check_ffmpeg_availability, build_ffmpeg_command, create_temp_file_with_cleanup, cleanup_temp_files
 except ImportError:
     # Use fallback manager if available
     try:
         from utils.fallback_manager import get_helpers_with_fallback
         helpers = get_helpers_with_fallback()
-        get_ffmpeg_path = helpers.get_ffmpeg_path
         check_ffmpeg_availability = helpers.check_ffmpeg_availability
+        # Import centralized functions - no need for fallback implementations
+        from utils.helpers import build_ffmpeg_command, create_temp_file_with_cleanup, cleanup_temp_files
     except ImportError:
         # Critical error - should not happen in production
         print("CRITICAL: Cannot import FFmpeg utilities from utils.helpers or fallback_manager")
@@ -67,7 +68,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     backup_video = os.path.join(output_dir, "original_video_backup.mp4")
     try:
         shutil.copy2(video_path, backup_video)
-        print(f"Created backup of original video: {backup_video}")
+        # Reduced logging: print(f"Created backup of original video: {backup_video}")
     except Exception as e:
         print(f"Failed to create backup: {e}")
 
@@ -89,8 +90,6 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
 
     try:
         # For bundled executables, use a writable temporary directory
-        import tempfile
-        import sys
         
         if getattr(sys, 'frozen', False):
             # Running as bundled executable - use output directory for temp files
@@ -99,19 +98,14 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             # Running as script - use current directory
             temp_dir = os.getcwd()
             
-        # ENHANCED: Create unique temp filename to avoid conflicts
-        timestamp = str(int(time.time() * 1000))  # millisecond timestamp
-        local_subtitle_path = os.path.join(temp_dir, f"temp_subtitle_{timestamp}.ass")
-        
-        # ENHANCED: Ensure no leftover temp files exist
+        # ENHANCED: Create unique temp filename to avoid conflicts using centralized function
+        local_subtitle_path = create_temp_file_with_cleanup(suffix='.ass', prefix='temp_subtitle_', directory=temp_dir)
+
+        # ENHANCED: Ensure no leftover temp files exist using centralized cleanup
         temp_pattern = os.path.join(temp_dir, "temp_subtitle*.ass")
         old_temp_files = glob.glob(temp_pattern)
-        for old_file in old_temp_files:
-            try:
-                os.remove(old_file)
-                print(f"Cleaned up old temp file: {old_file}")
-            except Exception as cleanup_e:
-                print(f"Warning: Could not clean up old temp file {old_file}: {cleanup_e}")
+        if old_temp_files:
+            cleanup_temp_files(*old_temp_files)
         
         shutil.copy2(subtitle_path, local_subtitle_path)
         print(f"Created local subtitle file: {local_subtitle_path}")
@@ -120,9 +114,8 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         print(f"Error creating local subtitle file: {e}")
         # Fall back to using system temp directory
         try:
-            timestamp = str(int(time.time() * 1000))
             temp_dir = tempfile.gettempdir()
-            local_subtitle_path = os.path.join(temp_dir, f"temp_subtitle_{timestamp}.ass")
+            local_subtitle_path = create_temp_file_with_cleanup(suffix='.ass', prefix='temp_subtitle_', directory=temp_dir)
             shutil.copy2(subtitle_path, local_subtitle_path)
             print(f"Created temp subtitle file in system temp: {local_subtitle_path}")
             temp_subtitle_path = local_subtitle_path
@@ -143,30 +136,10 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
 
     try:
         # Use the full path to the subtitle file for better reliability
-        subtitle_filename = os.path.basename(temp_subtitle_path)
         subtitle_dir = os.path.dirname(temp_subtitle_path)
-        
-        cmd = [
-            ffmpeg_cmd, '-y',
-            '-i', video_path,
-            '-vf', f'subtitles={subtitle_filename}',
-            # Video encoding with maximum compatibility
-            '-c:v', 'libx264', 
-            '-profile:v', 'baseline',  # Use baseline profile for maximum compatibility
-            '-level', '3.0',           # Use level 3.0 for wide device support
-            '-crf', '23', 
-            '-preset', 'medium',
-            '-pix_fmt', 'yuv420p',     # Ensure compatible pixel format
-            # Audio encoding with maximum compatibility (removed aac_low profile)
-            '-c:a', 'aac', 
-            '-b:a', '128k',
-            '-ar', '44100',            # Standard sample rate
-            '-ac', '2',                # Stereo audio
-            # Container optimization
-            '-movflags', '+faststart', # Enable fast start for web playback
-            '-f', 'mp4',               # Explicitly specify MP4 format
-            output_file
-        ]
+
+        # Use centralized FFmpeg command builder for subtitle embedding
+        cmd = build_ffmpeg_command(ffmpeg_cmd, video_path, output_file, "subtitle", subtitle_file=temp_subtitle_path)
 
         print(f"Using working method with local file: {' '.join(cmd)}")
 
@@ -179,7 +152,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Warning: Subtitle directory not found, staying in: {original_cwd}")
 
         try:
-            result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
 
             # Verify the output file exists and has content
             if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
@@ -197,7 +170,6 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         print(f"Subtitle embedding failed: {e}")
         if hasattr(e, 'stderr') and e.stderr:
             print(f"Error output: {e.stderr}")
-        import traceback
         traceback.print_exc()
 
     # If all subtitle methods failed, try to use the original video
@@ -205,27 +177,10 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         print("All subtitle embedding methods failed. Using original video.")
         if ffmpeg_available:
             try:
-                # Convert the original video to a more compatible format
-                cmd = [
-                    ffmpeg_cmd, '-i', video_path,
-                    # Video encoding with maximum compatibility
-                    '-c:v', 'libx264', 
-                    '-profile:v', 'baseline', 
-                    '-level', '3.0',
-                    '-crf', '23', 
-                    '-preset', 'medium',
-                    '-pix_fmt', 'yuv420p',
-                    # Audio encoding with maximum compatibility
-                    '-c:a', 'aac', 
-                    '-b:a', '128k',
-                    '-ar', '44100',
-                    '-ac', '2',
-                    # Container optimization
-                    '-f', 'mp4',
-                    output_file
-                ]
+                # Convert the original video to a more compatible format using centralized command builder
+                cmd = build_ffmpeg_command(ffmpeg_cmd, video_path, output_file, "compatibility")
                 print(f"Trying to convert original video: {' '.join(cmd)}")
-                result = subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=60)
                 print(f"Final video saved to {output_file}")
                 return output_file
             except Exception as e:
@@ -249,29 +204,21 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Error copying original video: {copy_e}")
             return None
 
-    # Clean up temporary subtitle file if it was created
-    if temp_subtitle_path != subtitle_path and os.path.exists(temp_subtitle_path):
-        try:
-            os.remove(temp_subtitle_path)
-            print(f"Cleaned up temporary subtitle file: {temp_subtitle_path}")
-        except Exception as e:
-            print(f"Warning: Could not remove temporary subtitle file: {e}")
-    
-    # Clean up any remaining temp subtitle files in the area
+    # Clean up temporary subtitle file if it was created using centralized cleanup
+    if temp_subtitle_path != subtitle_path:
+        cleanup_temp_files(temp_subtitle_path)
+
+    # Clean up any remaining temp subtitle files in the area using centralized cleanup
     try:
         if getattr(sys, 'frozen', False):
             cleanup_dir = os.path.dirname(output_file)
         else:
             cleanup_dir = os.getcwd()
-        
+
         temp_pattern = os.path.join(cleanup_dir, "temp_subtitle*.ass")
         remaining_temp_files = glob.glob(temp_pattern)
-        for temp_file in remaining_temp_files:
-            try:
-                os.remove(temp_file)
-                print(f"Cleaned up temp subtitle file: {temp_file}")
-            except Exception as cleanup_e:
-                print(f"Warning: Could not remove temp file {temp_file}: {cleanup_e}")
+        if remaining_temp_files:
+            cleanup_temp_files(*remaining_temp_files)
     except Exception as final_cleanup_e:
         print(f"Warning: Error in temp subtitle cleanup: {final_cleanup_e}")
 
@@ -283,23 +230,3 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     else:
         print(f"ERROR: Output file was not created: {output_file}")
         return None
-
-    if temp_subtitle_path and os.path.exists(temp_subtitle_path):
-        final_subtitle_path = os.path.join(output_dir, "subtitles.ass")
-        try:
-            shutil.move(temp_subtitle_path, final_subtitle_path)
-            print(f"Moved subtitle file to: {final_subtitle_path}")
-        except Exception as move_error:
-            print(f"Error moving subtitle file: {move_error}")
-            try:
-                shutil.copy2(temp_subtitle_path, final_subtitle_path)
-                print(f"Copied subtitle file to: {final_subtitle_path}")
-            except Exception as copy_error:
-                print(f"Error copying subtitle file: {copy_error}")
-    
-    # Remove temporary files from output directory
-    for temp_file in glob.glob(os.path.join(output_dir, "temp_subtitle_*.ass")):
-        try:
-            os.remove(temp_file)
-        except Exception as e:
-            print(f"Warning: Could not remove temp file {temp_file}: {e}")

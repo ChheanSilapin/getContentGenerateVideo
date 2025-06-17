@@ -248,6 +248,3 @@ class ProgressManager:
         """Check if an operation is currently active"""
         return self.is_active
     
-    def get_current_operation(self):
-        """Get the name of the current operation"""
-        return self.current_operation if self.is_active else None 

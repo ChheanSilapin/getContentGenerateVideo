@@ -4,19 +4,10 @@ Helper functions for the Video Generator application
 import os
 import sys
 import platform
-import re
-import emoji
 import shutil
-import traceback
 import subprocess
 import tempfile
-import requests
-from bs4 import BeautifulSoup
-import urllib.parse
 from config import SUPPORTED_IMAGE_EXTENSIONS
-
-# Import text processing functions from centralized module
-from utils.text_processing import get_title_content, process_text_for_tts
 
 # ===== NEW CENTRALIZED UTILITY FUNCTIONS =====
 
@@ -137,6 +128,36 @@ def cleanup_temp_files(*file_paths):
             except Exception as e:
                 print(f"Warning: Could not remove temp file {file_path}: {e}")
 
+def force_moviepy_cleanup():
+    """
+    Force cleanup of MoviePy resources and file handles
+    This helps prevent file locking issues during cleanup
+    """
+    try:
+        import gc
+        import time
+
+        # Force garbage collection multiple times to ensure all references are released
+        for _ in range(3):
+            gc.collect()
+            time.sleep(0.1)
+
+        # Try to clear MoviePy's internal caches if available
+        try:
+            import moviepy.config as mp_config
+            # Clear any cached settings that might hold file references
+            if hasattr(mp_config, '_FFMPEG_BINARY'):
+                mp_config._FFMPEG_BINARY = None
+        except (ImportError, AttributeError):
+            pass
+
+        # Additional delay to ensure all file handles are released
+        time.sleep(0.5)
+
+    except Exception as e:
+        # Silent failure - this is a best-effort cleanup
+        pass
+
 def get_media_duration_safe(media_file):
     """
     Centralized media duration detection with fallbacks
@@ -255,21 +276,52 @@ def get_app_data_dir():
 
     return app_data_dir
 
-def get_output_directory():
+def get_output_directory(user_settings=None):
     """
-    Get the safe output directory for video files
+    Get the safe output directory for video files with proper user settings priority
+
+    Args:
+        user_settings: Optional user settings dict to check for custom output folder
 
     Returns:
         str: Path to output directory
     """
-    # Check if the output directory was set by main.py
+    # Priority 1: Check user settings for custom output folder
+    if user_settings:
+        custom_folder = user_settings.get('output_folder')
+        if custom_folder and custom_folder.strip() and custom_folder != "Default (Auto)":
+            if os.path.exists(custom_folder) and os.path.isdir(custom_folder):
+                print(f"Using user-specified output folder: {custom_folder}")
+                return custom_folder
+            else:
+                print(f"Warning: User-specified output folder doesn't exist: {custom_folder}")
+
+    # Priority 2: Try to load settings from settings manager if not provided
+    if not user_settings:
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            loaded_settings = settings_manager.load_settings()
+            custom_folder = loaded_settings.get('output_folder')
+            if custom_folder and custom_folder.strip() and custom_folder != "Default (Auto)":
+                if os.path.exists(custom_folder) and os.path.isdir(custom_folder):
+                    print(f"Using settings file output folder: {custom_folder}")
+                    return custom_folder
+                else:
+                    print(f"Warning: Settings file output folder doesn't exist: {custom_folder}")
+        except Exception as e:
+            print(f"Could not load user settings: {e}")
+
+    # Priority 3: Check if the output directory was set by main.py (environment variable)
     output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR')
     if output_dir and os.path.exists(output_dir):
+        print(f"Using environment-specified output folder: {output_dir}")
         return output_dir
 
-    # Fallback to app data directory
+    # Priority 4: Fallback to app data directory
     app_data_dir = get_app_data_dir()
     output_dir = os.path.join(app_data_dir, "output")
+    print(f"Using default app data output folder: {output_dir}")
 
     # Ensure it exists
     try:
@@ -280,8 +332,10 @@ def get_output_directory():
         output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
         try:
             os.makedirs(output_dir, exist_ok=True)
+            print(f"Using temporary output folder: {output_dir}")
         except Exception:
             output_dir = tempfile.gettempdir()
+            print(f"Using system temp folder: {output_dir}")
 
     return output_dir
 
@@ -421,78 +475,10 @@ def copy_file(source, destination):
         print(f"Error copying file from {source} to {destination}: {e}")
         return False
 
-def get_platform_info():
-    """
-    Get information about the current platform
-
-    Returns:
-        dict: Platform information
-    """
-    return {
-        "system": platform.system(),
-        "release": platform.release(),
-        "version": platform.version(),
-        "machine": platform.machine(),
-        "processor": platform.processor(),
-        "python_version": platform.python_version()
-    }
-
-def print_exception(e, message="An error occurred"):
-    """
-    Print exception details with a custom message
-
-    Args:
-        e: Exception object
-        message: Custom message to print before the exception
-    """
-    print(f"{message}: {str(e)}")
-    traceback.print_exc()
-
-def test_subtitle_functionality():
-    """
-    Test the subtitle functionality to ensure it's working correctly
-
-    Returns:
-        bool: True if subtitles are working, False otherwise
-    """
-    try:
-        print("Testing subtitle functionality...")
-
-        # Check if FFmpeg is available
-        ffmpeg_available, ffmpeg_path, error_msg = check_ffmpeg_availability()
-        if not ffmpeg_available:
-            print(f"FFmpeg not available: {error_msg}")
-            return False
-
-        print(f"FFmpeg available at: {ffmpeg_path}")
-
-        # Test subtitle file creation
-        with tempfile.NamedTemporaryFile(suffix='.ass', delete=False) as temp_sub:
-            temp_subtitle_path = temp_sub.name
-
-        # Create a simple test subtitle
-        try:
-            with open(temp_subtitle_path, 'w', encoding='utf-8') as f:
-                f.write("[Script Info]\nTitle: Test Subtitle\nScriptType: v4.00+\n\n")
-                f.write("[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-                f.write("Style: Default,Arial,32,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,0,2,10,10,80,1\n\n")
-                f.write("[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-                f.write("Dialogue: 0,0:00:00.00,0:00:03.00,Default,,0,0,0,,Test subtitle working!\n")
-
-            print(f"Created test subtitle file: {temp_subtitle_path}")
-
-            # Clean up
-            os.remove(temp_subtitle_path)
-            print("Subtitle functionality test passed!")
-            return True
-
-        except Exception as e:
-            print(f"Error creating test subtitle: {e}")
-            return False
-
-    except Exception as e:
-        print(f"Error testing subtitle functionality: {e}")
-        return False
+# Removed unused utility functions (72 lines saved):
+# - get_platform_info(): Not used anywhere in the project
+# - print_exception(): Redundant with error_helpers.py functionality
+# - test_subtitle_functionality(): Development function not used in production
 
 def ensure_directory_exists(directory_path):
     """
@@ -512,3 +498,221 @@ def ensure_directory_exists(directory_path):
     except Exception as e:
         print(f"Error creating directory {directory_path}: {e}")
         return False
+
+def build_ffmpeg_command(ffmpeg_path, input_file, output_file, command_type="basic", **kwargs):
+    """
+    Centralized FFmpeg command builder to eliminate duplicate command construction
+
+    Args:
+        ffmpeg_path: Path to FFmpeg executable
+        input_file: Input file path
+        output_file: Output file path
+        command_type: Type of command ("basic", "subtitle", "optimization", "compatibility", "audio_mix", "loop")
+        **kwargs: Additional parameters specific to command type
+
+    Returns:
+        list: FFmpeg command as list of arguments
+    """
+    base_cmd = [ffmpeg_path, '-y', '-i', input_file]
+
+    if command_type == "subtitle":
+        subtitle_file = kwargs.get('subtitle_file', '')
+        subtitle_filename = os.path.basename(subtitle_file)
+        return base_cmd + [
+            '-vf', f'subtitles={subtitle_filename}',
+            '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
+            '-crf', '23', '-preset', 'medium', '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-ac', '2',
+            '-movflags', '+faststart', '-f', 'mp4',
+            output_file
+        ]
+
+    elif command_type == "optimization":
+        preset = kwargs.get('preset', 'medium')
+        vf_arg = kwargs.get('vf_arg', 'scale=1280:720')
+        return base_cmd + [
+            '-vf', vf_arg,
+            '-af', 'loudnorm',
+            '-c:v', 'libx264', '-preset', preset, '-crf', '23',
+            '-c:a', 'aac', '-b:a', '128k',
+            '-movflags', '+faststart',
+            output_file
+        ]
+
+    elif command_type == "compatibility":
+        return base_cmd + [
+            '-c:v', 'libx264', '-profile:v', 'baseline', '-level', '3.0',
+            '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '44100', '-ac', '2',
+            '-movflags', '+faststart', '-avoid_negative_ts', 'make_zero',
+            output_file
+        ]
+
+    elif command_type == "audio_mix":
+        audio_file = kwargs.get('audio_file', '')
+        target_duration = kwargs.get('target_duration', None)
+        cmd = base_cmd + ['-i', audio_file, '-c:v', 'copy', '-c:a', 'aac',
+                         '-map', '0:v:0', '-map', '1:a:0', '-avoid_negative_ts', 'make_zero']
+        if target_duration:
+            cmd.extend(['-t', str(target_duration)])
+        cmd.append(output_file)
+        return cmd
+
+    elif command_type == "loop":
+        loops = kwargs.get('loops', 1)
+        target_duration = kwargs.get('target_duration', None)
+        cmd = base_cmd[:-2] + [  # Remove -i input_file, add stream_loop
+            '-stream_loop', str(loops - 1), '-i', input_file,
+            '-c', 'copy', '-avoid_negative_ts', 'make_zero'
+        ]
+        if target_duration:
+            cmd.extend(['-t', str(target_duration)])
+        cmd.append(output_file)
+        return cmd
+
+    else:  # basic
+        return base_cmd + ['-c', 'copy', output_file]
+
+def create_temp_file_with_cleanup(suffix='', prefix='temp_', directory=None):
+    """
+    Create a temporary file with automatic cleanup tracking
+
+    Args:
+        suffix: File suffix/extension
+        prefix: File prefix
+        directory: Directory to create file in (None for system temp)
+
+    Returns:
+        str: Path to temporary file
+    """
+    import time
+    timestamp = str(int(time.time() * 1000))
+
+    if directory is None:
+        directory = tempfile.gettempdir()
+
+    temp_filename = f"{prefix}{timestamp}{suffix}"
+    temp_path = os.path.join(directory, temp_filename)
+
+    return temp_path
+
+def execute_ffmpeg_command(cmd, operation_name="FFmpeg operation", timeout=None, video_duration=None):
+    """
+    Execute FFmpeg command with standardized error handling and dynamic timeout
+
+    Args:
+        cmd: FFmpeg command list
+        operation_name: Name of operation for logging
+        timeout: Timeout in seconds (None for dynamic calculation)
+        video_duration: Video duration for dynamic timeout calculation
+
+    Returns:
+        tuple: (success: bool, result: subprocess.CompletedProcess, error_message: str)
+    """
+    try:
+        # Calculate dynamic timeout if not provided
+        if timeout is None and video_duration:
+            # Base timeout of 60s + 30s per minute of video + 120s buffer
+            timeout = max(180, int(60 + (video_duration / 60) * 30 + 120))
+        elif timeout is None:
+            timeout = 300  # Default 5 minutes
+
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+
+        if result.returncode == 0:
+            return True, result, None
+        else:
+            error_msg = f"{operation_name} failed: {result.stderr}"
+            return False, result, error_msg
+
+    except subprocess.TimeoutExpired:
+        error_msg = f"{operation_name} timed out after {timeout} seconds"
+        return False, None, error_msg
+    except Exception as e:
+        error_msg = f"{operation_name} error: {str(e)}"
+        return False, None, error_msg
+
+def validate_loop_count(loops_needed, max_loops, operation_name="operation"):
+    """
+    Validate loop count to prevent excessive resource usage
+
+    Args:
+        loops_needed: Number of loops requested
+        max_loops: Maximum allowed loops
+        operation_name: Name of operation for error messages
+
+    Returns:
+        tuple: (is_valid: bool, error_message: str or None)
+    """
+    if loops_needed > max_loops:
+        error_msg = f"Error: Too many loops needed ({loops_needed}) for {operation_name}, maximum is {max_loops}"
+        return False, error_msg
+    return True, None
+
+def validate_ffmpeg_path(ffmpeg_path):
+    """
+    Validate FFmpeg path using cross-platform detection
+
+    Args:
+        ffmpeg_path: Path to FFmpeg executable
+
+    Returns:
+        tuple: (is_valid: bool, resolved_path: str, error_message: str or None)
+    """
+    try:
+        # Use shutil.which for better cross-platform detection
+        if ffmpeg_path == 'ffmpeg':
+            resolved_path = shutil.which('ffmpeg')
+            if resolved_path:
+                return True, resolved_path, None
+            else:
+                return False, ffmpeg_path, "FFmpeg not found in system PATH"
+        elif os.path.exists(ffmpeg_path):
+            return True, ffmpeg_path, None
+        else:
+            # Try to find it using shutil.which as fallback
+            resolved_path = shutil.which(ffmpeg_path)
+            if resolved_path:
+                return True, resolved_path, None
+            else:
+                return False, ffmpeg_path, f"FFmpeg executable not found: {ffmpeg_path}"
+    except Exception as e:
+        return False, ffmpeg_path, f"Error validating FFmpeg path: {str(e)}"
+
+class TempVideoFile:
+    """
+    Context manager for temporary video files with automatic cleanup
+    Ensures files are cleaned up even if exceptions occur
+    """
+    def __init__(self, suffix='.mp4', prefix='temp_video_', directory=None):
+        self.suffix = suffix
+        self.prefix = prefix
+        self.directory = directory
+        self.temp_path = None
+
+    def __enter__(self):
+        self.temp_path = create_temp_file_with_cleanup(
+            suffix=self.suffix,
+            prefix=self.prefix,
+            directory=self.directory
+        )
+        return self.temp_path
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.temp_path:
+            cleanup_temp_files(self.temp_path)
+
+def log_message(message, level="INFO", logger_func=None):
+    """
+    Centralized logging function that works with project's logging system
+
+    Args:
+        message: Message to log
+        level: Log level (INFO, WARNING, ERROR)
+        logger_func: Optional logger function (e.g., main_gui.log)
+    """
+    formatted_message = f"{level}: {message}" if level != "INFO" else message
+
+    if logger_func and callable(logger_func):
+        logger_func(formatted_message)
+    else:
+        print(formatted_message)

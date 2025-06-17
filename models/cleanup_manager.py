@@ -28,25 +28,28 @@ class CleanupManager:
             int: Number of files cleaned up
         """
         try:
-            print("Starting consolidated post-completion cleanup...")
-            
-            # Enhanced delay to allow MoviePy and TTS processes to fully release file handles
-            gc.collect()
-            time.sleep(1.0)  # Longer delay for video processing
-            
+            if not keep_debug_files:
+                print("Starting consolidated post-completion cleanup...")
+
+            # Enhanced cleanup to allow MoviePy and TTS processes to fully release file handles
+            from utils.helpers import force_moviepy_cleanup
+            force_moviepy_cleanup()
+            time.sleep(2.0)  # Additional delay for video processing to ensure file handles are released
+
             # Handle images directory
             self._cleanup_images_directory(output_dir)
-            
+
             # Get list of files to clean up
             intermediate_files = self._get_intermediate_files(output_dir, keep_debug_files)
-            
+
             # Clean up files with enhanced retry for video files
             cleaned_count = self._cleanup_files(intermediate_files)
-            
+
             # Clean up temporary files with patterns
             cleaned_count += self._cleanup_temp_patterns(output_dir)
-            
-            print(f"✅ Consolidated cleanup: removed {cleaned_count} files, keeping only final_output.mp4")
+
+            if not keep_debug_files and cleaned_count > 0:
+                print(f"✅ Consolidated cleanup: removed {cleaned_count} files, keeping only final_output.mp4")
             return cleaned_count
             
         except Exception as e:
@@ -71,8 +74,9 @@ class CleanupManager:
         intermediate_files = [
             os.path.join(output_dir, "slideshow.mp4"),
             os.path.join(output_dir, "video_with_audio.mp4"),
+            os.path.join(output_dir, "original_video_backup.mp4"),  # Always remove backup
         ]
-        
+
         # Add debug files if not keeping them
         if not keep_debug_files:
             intermediate_files.extend([
@@ -83,7 +87,7 @@ class CleanupManager:
                 os.path.join(output_dir, "temp-audio.m4a"),
                 os.path.join(output_dir, "temp_subtitle_*.ass"),
             ])
-        
+
         return intermediate_files
     
     def _cleanup_files(self, file_list):
@@ -149,12 +153,15 @@ class CleanupManager:
                     time.sleep(1.0)
                 
                 os.remove(file_path)
-                print(f"Consolidated cleanup: {os.path.basename(file_path)}")
+                if not file_path.endswith('original_video_backup.mp4'):  # Reduce logging for backup files
+                    print(f"Consolidated cleanup: {os.path.basename(file_path)}")
                 return 1
             except PermissionError:
                 if attempt < max_retries - 1:
-                    print(f"Video file locked, retrying in 1.0s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(1.0)
+                    print(f"Video file locked, retrying in 2.0s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
+                    from utils.helpers import force_moviepy_cleanup
+                    force_moviepy_cleanup()  # Force comprehensive cleanup
+                    time.sleep(2.0)  # Longer delay for file handle release
                 else:
                     print(f"Warning: Could not remove video file {os.path.basename(file_path)} after {max_retries} attempts: MoviePy still has file lock")
                     return 0

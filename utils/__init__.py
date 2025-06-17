@@ -10,12 +10,15 @@ import os
 try:
     from .helpers import (
         get_app_data_dir, ensure_directory_exists, get_ffmpeg_path, get_ffprobe_path,
-        check_ffmpeg_availability, get_title_content, process_text_for_tts,
+        check_ffmpeg_availability,
         configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
-        validate_output_file, safe_file_operation, cleanup_temp_files, get_media_duration_safe
+        validate_output_file, safe_file_operation, cleanup_temp_files, get_media_duration_safe,
+        build_ffmpeg_command, create_temp_file_with_cleanup, execute_ffmpeg_command,
+        validate_loop_count, validate_ffmpeg_path, TempVideoFile, log_message
     )
+    from .text_processing import get_title_content, process_text_for_tts
     from .path_manager import setup_project_paths, get_base_path, add_utils_to_path
-    from .fallback_manager import get_helpers_with_fallback, with_fallback
+    from .fallback_manager import get_helpers_with_fallback
     from .dialog_helpers import (
         select_image_files, select_video_files, select_folder,
         save_video_file, save_file_generic
@@ -23,6 +26,14 @@ try:
     from .error_helpers import (
         show_error_with_log, show_warning_with_log, show_info_with_log,
         handle_operation_error, safe_operation, confirm_action
+    )
+    from .gui_helpers import (
+        HoverEffect, apply_hover_to_widgets, standardize_progress_update,
+        create_progress_callback, ThreadManager
+    )
+    from .media_helpers import (
+        analyze_media_folder, find_best_text_file, load_text_file_content,
+        get_media_folder_status, scan_folder_for_media_pairs
     )
 except ImportError as e:
     print(f"Warning: Could not import some utils modules: {e}")
@@ -68,7 +79,7 @@ def initialize_service():
                 'get_ffmpeg_path': lambda: 'ffmpeg',
                 'get_ffprobe_path': lambda: 'ffprobe',
                 'check_ffmpeg_availability': lambda: (False, 'ffmpeg', 'Initialization failed'),
-                'ensure_directory_exists': lambda path: False,
+                'ensure_directory_exists': lambda _: False,
                 'get_app_data_dir': lambda: os.getcwd()
             }
 
@@ -77,13 +88,21 @@ __all__ = [
     'get_app_data_dir', 'ensure_directory_exists', 'get_ffmpeg_path', 'get_ffprobe_path',
     'check_ffmpeg_availability', 'get_title_content', 'process_text_for_tts',
     'setup_project_paths', 'get_base_path', 'add_utils_to_path',
-    'get_helpers_with_fallback', 'with_fallback', 'initialize_service',
+    'get_helpers_with_fallback', 'initialize_service',
     'configure_ffmpeg_for_moviepy', 'setup_temp_directory_for_bundled_exe',
     'validate_output_file', 'safe_file_operation', 'cleanup_temp_files', 'get_media_duration_safe',
+    'build_ffmpeg_command', 'create_temp_file_with_cleanup', 'execute_ffmpeg_command',
+    'validate_loop_count', 'validate_ffmpeg_path', 'TempVideoFile', 'log_message',
     # Dialog helpers
     'select_image_files', 'select_video_files', 'select_folder',
     'save_video_file', 'save_file_generic',
     # Error helpers
     'show_error_with_log', 'show_warning_with_log', 'show_info_with_log',
-    'handle_operation_error', 'safe_operation', 'confirm_action'
+    'handle_operation_error', 'safe_operation', 'confirm_action',
+    # GUI helpers
+    'HoverEffect', 'apply_hover_to_widgets', 'standardize_progress_update',
+    'create_progress_callback', 'ThreadManager',
+    # Media helpers
+    'analyze_media_folder', 'find_best_text_file', 'load_text_file_content',
+    'get_media_folder_status', 'scan_folder_for_media_pairs'
 ]

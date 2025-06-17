@@ -154,16 +154,17 @@ class VideoGeneratorModel:
             handle_operation_error(None, "Video finalization", e, show_dialog=False)
             return None
     
-    def process_video_with_prompt(self, video_file, text_input, stop_event=None, output_folder=None):
+    def process_video_with_prompt(self, video_file, text_input, stop_event=None, output_folder=None, skip_auto_cleanup=False):
         """
         Process a video file with a text prompt - delegates to VideoProcessor
-        
+
         Args:
             video_file: Path to the input video file
             text_input: Text prompt for voice-over
             stop_event: Threading event to stop the process
             output_folder: Custom output folder
-            
+            skip_auto_cleanup: Skip automatic cleanup (for group processing)
+
         Returns:
             str: Path to the generated video file
         """
@@ -172,7 +173,7 @@ class VideoGeneratorModel:
         
         # Delegate to video processor
         return self.video_processor.process_video_with_prompt(
-            video_file, text_input, stop_event, output_folder
+            video_file, text_input, stop_event, output_folder, skip_auto_cleanup
         )
     
     def add_batch_job(self, text_input, image_source, selected_images=None, website_url=None, local_folder=None):
@@ -243,13 +244,36 @@ class VideoGeneratorModel:
         return True
 
     def _create_output_directory(self):
-        """Create output directory for video generation"""
+        """Create output directory for video generation with improved settings handling"""
+        import time
+        # Use more precise timestamp with milliseconds to avoid conflicts
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
-        output_dir = os.path.join(base_output_dir, f"video_{timestamp}")
-        os.makedirs(output_dir, exist_ok=True)
-        print(f"Created output directory: {output_dir}")
-        return output_dir
+        milliseconds = int(time.time() * 1000) % 1000
+        unique_timestamp = f"{timestamp}_{milliseconds:03d}"
+
+        if self.output_folder and os.path.isdir(self.output_folder):
+            output_dir = os.path.join(self.output_folder, f"video_{unique_timestamp}")
+            print(f"Using specified output folder: {self.output_folder}")
+        else:
+            from utils.helpers import get_output_directory
+            # Load current user settings to respect output folder preference
+            try:
+                from utils.settings_manager import SettingsManager
+                settings_manager = SettingsManager()
+                user_settings = settings_manager.load_settings()
+            except Exception as e:
+                print(f"Could not load user settings: {e}")
+                user_settings = None
+
+            base_output_dir = get_output_directory(user_settings)
+            output_dir = os.path.join(base_output_dir, f"video_{unique_timestamp}")
+
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            print(f"Created output directory: {output_dir}")
+            return output_dir
+        except OSError as e:
+            raise Exception(f"Failed to create output directory {output_dir}: {e}")
 
     def _get_images(self, output_dir, stop_event):
         """Get images based on the selected source"""
@@ -271,15 +295,22 @@ class VideoGeneratorModel:
     def _handle_selected_images(self, output_dir):
         """Handle selected images"""
         images_dir = os.path.join(output_dir, "images")
-        os.makedirs(images_dir, exist_ok=True)
+        try:
+            os.makedirs(images_dir, exist_ok=True)
+        except OSError as e:
+            raise Exception(f"Failed to create images directory: {e}")
 
         # Copy selected images to output directory
         import shutil
         for i, image_path in enumerate(self.selected_images):
             if os.path.exists(image_path):
-                ext = os.path.splitext(image_path)[1]
-                dest_path = os.path.join(images_dir, f"image_{i:03d}{ext}")
-                shutil.copy2(image_path, dest_path)
+                try:
+                    ext = os.path.splitext(image_path)[1]
+                    dest_path = os.path.join(images_dir, f"image_{i:03d}{ext}")
+                    shutil.copy2(image_path, dest_path)
+                except (OSError, shutil.Error) as e:
+                    print(f"Warning: Failed to copy image {image_path}: {e}")
+                    continue
 
         self.update_progress(20, f"Copied {len(self.selected_images)} selected images")
         return images_dir
@@ -289,7 +320,10 @@ class VideoGeneratorModel:
         from services.image_service import download_images_from_website
 
         images_dir = os.path.join(output_dir, "images")
-        os.makedirs(images_dir, exist_ok=True)
+        try:
+            os.makedirs(images_dir, exist_ok=True)
+        except OSError as e:
+            raise Exception(f"Failed to create images directory: {e}")
 
         success = download_images_from_website(
             self.website_url,
@@ -306,6 +340,7 @@ class VideoGeneratorModel:
 
     def _handle_folder_images(self, output_dir):
         """Handle local folder images"""
+        # output_dir parameter kept for interface consistency
         if not os.path.exists(self.local_folder):
             self.update_progress(0, "Error: Local folder does not exist")
             return None
@@ -315,17 +350,26 @@ class VideoGeneratorModel:
         return self.local_folder
 
     def _generate_audio(self, output_dir, stop_event):
-        """Generate audio from text input"""
+        """Generate audio from text input using gTTS with settings"""
         if stop_event and stop_event.is_set():
             return None
 
-        self.update_progress(30, "Generating audio...")
+        self.update_progress(30, "Generating audio with gTTS...")
 
         from services.audio_service import generate_audio
         audio_file = os.path.join(output_dir, "voice.mp3")
 
-        if generate_audio(self.text_input, audio_file):
-            self.update_progress(50, "Audio generated successfully")
+        # Get TTS settings from enhancement options or use defaults
+        tts_settings = getattr(self, 'tts_settings', {})
+        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Default'))
+        speed = tts_settings.get('speed', 1.0)
+        emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
+        language = tts_settings.get('language', 'en')
+
+        print(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
+
+        if generate_audio(self.text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion, language=language):
+            self.update_progress(50, "Audio generated successfully with gTTS")
             return audio_file
         else:
             self.update_progress(0, "Failed to generate audio")
@@ -338,17 +382,91 @@ class VideoGeneratorModel:
 
         self.update_progress(60, "Creating video slideshow...")
 
-        from services.video_slideshow import create_slideshow_video
+        from services.video_slideshow import create_slideshow
         video_file = os.path.join(output_dir, "slideshow.mp4")
 
-        success = create_slideshow_video(
+        # Prepare parameters for create_slideshow function
+        title = "Generated Video"  # Default title
+        content = self.text_input  # Use the text input as content
+        use_gpu = (self.processing_option == "gpu")
+        enhancement_options = self.enhancement_options or {}
+
+        # Get aspect ratio from user settings first, then fall back to config
+        aspect_ratio_str = getattr(config, 'DEFAULT_ASPECT_RATIO', '9:16')
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            user_settings = settings_manager.load_settings()
+            user_aspect_ratio = user_settings.get('aspect_ratio', '16:9 (Landscape)')
+
+            # Convert user aspect ratio preset to simple ratio string
+            if '16:9' in user_aspect_ratio:
+                aspect_ratio_str = '16:9'
+            elif '9:16' in user_aspect_ratio:
+                aspect_ratio_str = '9:16'
+            elif '1:1' in user_aspect_ratio:
+                aspect_ratio_str = '1:1'
+            elif '4:3' in user_aspect_ratio:
+                aspect_ratio_str = '4:3'
+            elif '21:9' in user_aspect_ratio:
+                aspect_ratio_str = '21:9'
+
+            print(f"Using user-selected aspect ratio: {user_aspect_ratio} -> {aspect_ratio_str}")
+        except Exception:
+            print(f"Could not load user aspect ratio, using default: {aspect_ratio_str}")
+
+        # Convert aspect ratio string to dimensions tuple
+        if isinstance(aspect_ratio_str, str) and ':' in aspect_ratio_str:
+            # Convert "9:16" to actual dimensions
+            ratio_parts = aspect_ratio_str.split(':')
+            if len(ratio_parts) == 2:
+                width_ratio, height_ratio = int(ratio_parts[0]), int(ratio_parts[1])
+                # Use standard resolutions based on aspect ratio
+                if width_ratio == 9 and height_ratio == 16:
+                    aspect_ratio = (1080, 1920)  # 9:16 portrait
+                elif width_ratio == 16 and height_ratio == 9:
+                    aspect_ratio = (1920, 1080)  # 16:9 landscape
+                elif width_ratio == 1 and height_ratio == 1:
+                    aspect_ratio = (1080, 1080)  # 1:1 square
+                elif width_ratio == 4 and height_ratio == 3:
+                    aspect_ratio = (1440, 1080)  # 4:3 classic
+                elif width_ratio == 21 and height_ratio == 9:
+                    aspect_ratio = (2560, 1080)  # 21:9 ultrawide
+                else:
+                    # Calculate based on 1080p base
+                    base_size = 1080
+                    if width_ratio > height_ratio:
+                        aspect_ratio = (base_size, int(base_size * height_ratio / width_ratio))
+                    else:
+                        aspect_ratio = (int(base_size * width_ratio / height_ratio), base_size)
+            else:
+                aspect_ratio = (1080, 1920)  # Default to 9:16
+        else:
+            aspect_ratio = (1080, 1920)  # Default to 9:16
+
+        print(f"Using aspect ratio: {aspect_ratio} (from {aspect_ratio_str})")
+
+        # Get fit method from settings
+        fit_method = "cover"  # Default
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            user_settings = settings_manager.load_settings()
+            fit_method = user_settings.get('image_fit_method', 'cover')
+        except Exception:
+            pass  # Use default
+
+        success = create_slideshow(
             images_dir,
+            title,
+            content,
             audio_file,
             video_file,
-            processing_option=self.processing_option,
-            enhancement_options=self.enhancement_options,
-            progress_callback=self.update_progress,
-            stop_event=stop_event
+            use_gpu=use_gpu,
+            enhancement_options=enhancement_options,
+            stop_event=stop_event,
+            aspect_ratio=aspect_ratio,
+            fit_method=fit_method
         )
 
         if success:

@@ -8,7 +8,7 @@ import shutil
 import traceback
 import tempfile
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageFilter, ImageEnhance
 from moviepy.editor import (
     ImageClip, ColorClip, AudioFileClip, VideoFileClip, 
     CompositeAudioClip, concatenate_videoclips, CompositeVideoClip
@@ -22,7 +22,7 @@ from utils.helpers import (
 from .video_utils import create_fallback_video, use_best_available_output
 from config import DEFAULT_ASPECT_RATIO
 
-def process_image_for_slideshow(img, target_width, target_height, fit_method="smart", zoom_effect=True):
+def process_image_for_slideshow(img, target_width, target_height, fit_method="cover", zoom_effect=True):
     """
     Process an image for slideshow with different fitting methods
 
@@ -30,7 +30,11 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
         img: PIL Image or ImageClip object
         target_width: Target width for the image
         target_height: Target height for the image
-        fit_method: How to fit the image ("smart", "crop", "pad", "stretch")
+        fit_method: How to fit the image ("cover", "contain", "stretch", "smart")
+                   - "cover": Crop to fill frame (like CSS object-fit: cover)
+                   - "contain": Fit with padding (like CSS object-fit: contain)
+                   - "stretch": Stretch to fit exactly (may distort)
+                   - "smart": Legacy smart fitting (same as cover)
         zoom_effect: Whether to apply zoom effect
 
     Returns:
@@ -48,14 +52,14 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
         target_ratio = target_width / target_height
         orig_ratio = orig_width / orig_height
 
-        if fit_method == "smart":
-            # Smart fitting: crop to fill the frame while maintaining aspect ratio
+        if fit_method == "cover" or fit_method == "smart":
+            # Cover: crop to fill the frame while maintaining aspect ratio (like CSS object-fit: cover)
             if orig_ratio > target_ratio:
                 # Image is wider than target - crop width
                 new_height = target_height
                 new_width = int(new_height * orig_ratio)
                 resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
-                
+
                 # Center crop
                 left = (new_width - target_width) // 2
                 cropped_img = resized_img.crop((left, 0, left + target_width, target_height))
@@ -64,42 +68,56 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
                 new_width = target_width
                 new_height = int(new_width / orig_ratio)
                 resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
-                
+
                 # Center crop
                 top = (new_height - target_height) // 2
                 cropped_img = resized_img.crop((0, top, target_width, top + target_height))
-            
+
             final_img = cropped_img
 
-        elif fit_method == "pad":
-            # Pad with black bars to maintain aspect ratio
+        elif fit_method == "contain":
+            # Contain: fit with blurred background to maintain aspect ratio
             if orig_ratio > target_ratio:
-                # Image is wider - add top/bottom padding
+                # Image is wider - add top/bottom padding with blurred background
                 new_width = target_width
                 new_height = int(new_width / orig_ratio)
                 resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
-                
-                # Create black background
-                final_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+
+                # Create blurred background from the original image
+                bg_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+                bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=20))
+
+                # Darken the background slightly
+                enhancer = ImageEnhance.Brightness(bg_img)
+                bg_img = enhancer.enhance(0.3)
+
                 y_offset = (target_height - new_height) // 2
-                final_img.paste(resized_img, (0, y_offset))
+                bg_img.paste(resized_img, (0, y_offset))
+                final_img = bg_img
             else:
-                # Image is taller - add left/right padding
+                # Image is taller - add left/right padding with blurred background
                 new_height = target_height
                 new_width = int(new_height * orig_ratio)
                 resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
-                
-                # Create black background
-                final_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+
+                # Create blurred background from the original image
+                bg_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+                bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=20))
+
+                # Darken the background slightly
+                enhancer = ImageEnhance.Brightness(bg_img)
+                bg_img = enhancer.enhance(0.3)
+
                 x_offset = (target_width - new_width) // 2
-                final_img.paste(resized_img, (x_offset, 0))
+                bg_img.paste(resized_img, (x_offset, 0))
+                final_img = bg_img
 
         elif fit_method == "stretch":
-            # Stretch to fit exactly (may distort aspect ratio)
+            # Stretch: stretch to fit exactly (may distort aspect ratio)
             final_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
 
-        else:  # Default to crop
-            # Simple center crop
+        else:  # Default to cover
+            # Default: use cover method
             final_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
 
         # Convert to numpy array for MoviePy
@@ -108,10 +126,7 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
         # Create ImageClip
         clip = ImageClip(img_array)
         
-        # Apply zoom effect if requested
-        if zoom_effect:
-            # Subtle zoom effect: start at 100% and zoom to 110%
-            clip = clip.resize(lambda t: 1 + 0.1 * t / clip.duration if hasattr(clip, 'duration') and clip.duration > 0 else 1)
+        # Note: Zoom effect will be applied later when duration is set
         
         return clip
 
@@ -121,10 +136,10 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="sm
         fallback_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
         return ImageClip(np.array(fallback_img))
 
-def create_slideshow(images_folder, title, content, audio_file, output_file, 
-                  use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True, 
-                  enhance=False, enhancement_options=None, stop_event=None, 
-                  aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30):
+def create_slideshow(images_folder, title, content, audio_file, output_file,
+                  use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True,
+                  enhance=False, enhancement_options=None, stop_event=None,
+                  aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover"):
     """
     Create a slideshow video from images with optional enhancements
     
@@ -148,8 +163,8 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         bool: True if successful, False otherwise
     """
     try:
-        print(f"Creating slideshow from {images_folder}")
-        
+        # Reduced logging: print(f"Creating slideshow from {images_folder}")
+
         # Configure FFmpeg and temp directory
         configure_ffmpeg_for_moviepy()
         setup_temp_directory_for_bundled_exe(output_file)
@@ -183,45 +198,97 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         except Exception as e:
             print(f"Error loading audio: {e}")
             return False
+
+        # Use intelligent content synchronization with user settings
+        from utils.content_sync import ContentSyncManager
+
+        # Load user settings for content synchronization
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            user_settings = settings_manager.load_settings()
+        except Exception:
+            user_settings = None
+
+        content_sync_manager = ContentSyncManager(user_settings)
+        timing_mode = user_settings.get('timing_mode', 'balanced') if user_settings else 'balanced'
+
+        timing_result = content_sync_manager.calculate_optimized_timing(
+            content, len(image_files), audio_duration, timing_mode=timing_mode
+        )
+
+        print("\n" + "="*50)
+        print("CONTENT SYNCHRONIZATION ANALYSIS")
+        print("="*50)
+        print(content_sync_manager.get_timing_summary(timing_result))
+        print("="*50 + "\n")
+
+        # Get optimized timing parameters
+        duration_per_image = timing_result['duration_per_image']
+        image_sequence = timing_result['image_sequence']
+        effects_recommended = timing_result.get('effects_recommended', [])
+
+        print(f"Optimized duration per image: {duration_per_image:.2f} seconds")
+        print(f"Using {len(image_sequence)} image slots from {len(image_files)} available images")
         
-        # Calculate duration per image
-        duration_per_image = audio_duration / len(image_files)
-        print(f"Duration per image: {duration_per_image:.2f} seconds")
-        
-        # Process images into clips
+        # Process images into clips using optimized sequence
         clips = []
         target_width, target_height = aspect_ratio
-        
-        for i, img_path in enumerate(image_files):
+
+        # Determine effects based on recommendations
+        use_slow_zoom = 'slow_zoom' in effects_recommended
+        use_pan_effect = 'pan_effect' in effects_recommended
+        use_subtle_zoom = 'subtle_zoom' in effects_recommended
+
+        for slot_index, image_index in enumerate(image_sequence):
             if stop_event and stop_event.is_set():
                 print("Process stopped by user during image processing.")
                 return False
-            
+
+            # Handle case where image_index might exceed available images
+            actual_image_index = image_index % len(image_files)
+            img_path = image_files[actual_image_index]
+
             try:
-                print(f"Processing image {i+1}/{len(image_files)}: {os.path.basename(img_path)}")
-                
+                # Reduced logging: print(f"Processing slot {slot_index+1}/{len(image_sequence)}: {os.path.basename(img_path)} (image #{actual_image_index+1})")
+
                 # Load and process image
                 pil_img = Image.open(img_path)
                 processed_clip = process_image_for_slideshow(
-                    pil_img, target_width, target_height, 
-                    fit_method="smart", zoom_effect=zoom_effect and use_effects
+                    pil_img, target_width, target_height,
+                    fit_method=fit_method, zoom_effect=(zoom_effect and use_effects) or use_subtle_zoom
                 )
-                
-                # Set duration
+
+                # Set duration and FPS
                 processed_clip = processed_clip.set_duration(duration_per_image)
-                
-                # Apply fade effect if requested
+                processed_clip = processed_clip.set_fps(24)  # Set standard FPS
+
+                # Apply enhanced effects based on content analysis
+                if use_effects and duration_per_image > 0:
+                    if use_slow_zoom or (zoom_effect and duration_per_image > 3.0):
+                        # Slower, more subtle zoom for longer durations
+                        zoom_factor = 0.05 if use_slow_zoom else 0.1
+                        processed_clip = processed_clip.resize(lambda t: 1 + zoom_factor * t / duration_per_image)
+                    elif use_subtle_zoom or zoom_effect:
+                        # Standard zoom effect
+                        processed_clip = processed_clip.resize(lambda t: 1 + 0.1 * t / duration_per_image)
+
+                # Apply fade effect with adaptive duration
                 if fade_effect and use_effects and duration_per_image > 1.0:
-                    fade_duration = min(0.5, duration_per_image / 4)  # Max 0.5s or 1/4 of image duration
+                    # Adaptive fade duration based on image duration
+                    if duration_per_image > 5.0:
+                        fade_duration = min(1.0, duration_per_image / 6)  # Longer fades for longer images
+                    else:
+                        fade_duration = min(0.5, duration_per_image / 4)  # Standard fade
                     processed_clip = processed_clip.fadein(fade_duration).fadeout(fade_duration)
-                
+
                 clips.append(processed_clip)
                 
             except Exception as e:
                 print(f"Error processing image {img_path}: {e}")
                 # Create a black placeholder clip
                 black_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
-                placeholder_clip = ImageClip(np.array(black_img)).set_duration(duration_per_image)
+                placeholder_clip = ImageClip(np.array(black_img)).set_duration(duration_per_image).set_fps(24)
                 clips.append(placeholder_clip)
         
         if not clips:
@@ -236,8 +303,17 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         # Concatenate all clips
         print("Concatenating image clips...")
         try:
+            # Ensure all clips have the same FPS before concatenating
+            for clip in clips:
+                if not hasattr(clip, 'fps') or clip.fps is None:
+                    clip.fps = 24
+
             final_video = concatenate_videoclips(clips, method="compose")
             final_video = final_video.set_audio(audio_clip)
+
+            # Explicitly set FPS on the final video
+            final_video.fps = 24
+
         except Exception as e:
             print(f"Error concatenating clips: {e}")
             return False
@@ -249,10 +325,11 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             return False
         
         # Write the final video
-        print(f"Writing slideshow video to {output_file}")
+        # Reduced logging: print(f"Writing slideshow video to {output_file}")
         try:
             # Use optimized settings for slideshow videos
             write_params = {
+                'fps': 24,
                 'codec': 'libx264',
                 'audio_codec': 'aac',
                 'preset': 'medium',
@@ -285,6 +362,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                 print("Trying fallback video write...")
                 final_video.write_videofile(
                     output_file,
+                    fps=24,
                     codec='libx264',
                     audio_codec='aac',
                     verbose=False,

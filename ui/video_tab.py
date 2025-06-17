@@ -83,8 +83,8 @@ class VideoTab:
 
         title_label = ttk.Label(
             title_frame,
-            text="🎬 Multi-Video Generation",
-            font=("Cascadia Code", 20, "bold")
+            text=" Video Generation",
+            font=("Cascadia Code", 12, "bold")
         )
         title_label.pack(anchor="w")
 
@@ -141,29 +141,20 @@ class VideoTab:
         self.stop_button.pack(side="right")
 
     def setup_settings_section(self, parent):
-        """Set up compact settings section with settings button"""
+        """Set up compact settings section"""
         # Settings control row
         settings_row = ttk.Frame(parent)
         settings_row.pack(fill="x", pady=(0, 8))
-        
-        # Settings info label (left side)
+
+        # Settings info label
         self.settings_info_label = ttk.Label(
             settings_row,
             text="Audio: Default Voice, 80% Speed, 70% Volume | Output: Default Folder",
-            font=("Cascadia Code", 9),
+            font=("Cascadia Code", 8),
             foreground="#7f8c8d"
         )
         self.settings_info_label.pack(side="left", anchor="w")
-        
-        # Settings button (right side)
-        settings_button = self.main_gui.ui_factory.create_icon_button(
-            settings_row,
-            text="⚙️",
-            command=self._show_settings_popup,
-            width=5
-        )
-        settings_button.pack(side="right")
-        
+
         # Update info label with current settings
         self._update_settings_info_label()
 
@@ -175,7 +166,7 @@ class VideoTab:
             self.settings_popup.popup_window.focus_set()
             return
         
-        # Show settings popup with both audio and output folder settings
+        # Show settings popup with audio, TTS, and output folder settings (speech recognition is automatic)
         self.settings_popup = show_settings_popup(
             parent=self.main_gui.root,
             title="Video Generation Settings",
@@ -183,6 +174,8 @@ class VideoTab:
             callback=self._on_settings_applied,
             include_audio=True,
             include_output_folder=True,
+            include_tts=True,
+            include_speech_recognition=False,  # Now automatic
             current_settings=self.current_settings  # Pass current settings explicitly
         )
         
@@ -210,17 +203,25 @@ class VideoTab:
 
     def _update_settings_info_label(self):
         """Update the settings info label with current settings"""
-        # Audio info
+        # Audio info (legacy)
         voice = self.current_settings.get('voice_actor', 'Default')
         speed = int(self.current_settings.get('speed', 0.8) * 100)
         volume = "Muted" if self.current_settings.get('mute', False) else f"{int(self.current_settings.get('volume', 0.7) * 100)}%"
-        
+
+        # TTS info (new)
+        tts_voice = self.current_settings.get('tts_voice_actor', 'Default')
+        tts_speed = f"{self.current_settings.get('tts_speed', 1.0):.1f}x"
+        tts_emotion = self.current_settings.get('tts_emotion', 'neutral').title()
+
+        # Speech recognition info
+        sr_enabled = "On" if self.current_settings.get('sr_enabled', False) else "Off"
+
         # Output info
         output_folder = self.current_settings.get('output_folder', 'Default (Auto)')
         output_name = "Default" if output_folder == "Default (Auto)" else "Custom"
-        
-        # Update label
-        info_text = f"Audio: {voice}, {speed}% Speed, {volume} | Output: {output_name} Folder"
+
+        # Update label with comprehensive info
+        info_text = f"Audio: {voice}, {speed}% Speed, {volume} | TTS: {tts_voice}, {tts_speed}, {tts_emotion} | SR: {sr_enabled} | Output: {output_name}"
         self.settings_info_label.config(text=info_text)
 
     def setup_scrollable_area(self, parent):
@@ -232,23 +233,30 @@ class VideoTab:
         entries_title = ttk.Label(
             entries_header,
             text="📹 Video Entries",
-            font=("Cascadia Code", 14, "bold")
+            font=("Cascadia Code", 11, "bold")
         )
         entries_title.pack(side="left")
+
+        # Settings button (rightmost)
+        settings_button = self.main_gui.ui_factory.create_icon_button(
+            entries_header, "⚙️", self._show_settings_popup,
+            width=5
+        )
+        settings_button.pack(side="right", padx=(0, 4))
+
+        # Add video button moved to header
+        add_video_button = self.main_gui.ui_factory.create_icon_button(
+            entries_header, "Add Video", self.add_video_entry,
+            icon="➕", width=15
+        )
+        add_video_button.pack(side="right", padx=(0, 4))
 
         # Load from folder button (renamed and improved)
         load_folder_button = self.main_gui.ui_factory.create_icon_button(
             entries_header, "Load from Folder", self.load_videos_from_folder,
             icon="📁", width=20
         )
-        load_folder_button.pack(side="right", padx=(8, 8))
-
-        # Add video button moved to header
-        add_video_button = self.main_gui.ui_factory.create_icon_button(
-            entries_header, "Add Video", self.add_video_entry,
-            icon="➕", width=18
-        )
-        add_video_button.pack(side="right")
+        load_folder_button.pack(side="right", padx=(0, 4))
 
         # Create canvas and scrollbar with better styling
         canvas_frame = ttk.Frame(parent)
@@ -559,29 +567,19 @@ class VideoTab:
 
     def _scan_folder_for_pairs(self, folder_path):
         """Scan folder for video+text file pairs"""
-        video_extensions = {'.mp4', '.avi', '.mov', '.mkv', '.wmv', '.flv', '.webm'}
-        text_extensions = {'.txt'}
-        
+        from utils.media_helpers import scan_folder_for_media_pairs
+
+        # Use centralized media pair scanning
+        media_pairs = scan_folder_for_media_pairs(folder_path, media_type="video")
+
+        # Convert to expected format
         pairs = []
-        
-        # Scan recursively for all files
-        all_files = []
-        for root, dirs, files in os.walk(folder_path):
-            for file in files:
-                all_files.append(os.path.join(root, file))
-        
-        # Group files by directory
-        dir_files = {}
-        for file_path in all_files:
-            dir_name = os.path.dirname(file_path)
-            if dir_name not in dir_files:
-                dir_files[dir_name] = {'videos': [], 'texts': []}
-            
-            ext = os.path.splitext(file_path)[1].lower()
-            if ext in video_extensions:
-                dir_files[dir_name]['videos'].append(file_path)
-            elif ext in text_extensions:
-                dir_files[dir_name]['texts'].append(file_path)
+        for pair in media_pairs:
+            pairs.append({
+                'video_file': pair['media_file'],
+                'text_file': pair['text_file'],
+                'directory': pair['directory']
+            })
         
         # Find pairs in each directory
         for dir_path, files in dir_files.items():
@@ -694,18 +692,18 @@ class VideoTab:
         if not response:
             return
 
-        # Use the selected output folder from the current settings
+        # Use the selected output folder from the current settings with improved logic
         output_folder_value = self.current_settings.get('output_folder', 'Default (Auto)')
-        
+
         if output_folder_value and output_folder_value.strip() and output_folder_value != "Default (Auto)" and os.path.exists(output_folder_value):
             self.main_gui.log(f"Using selected output folder: {output_folder_value}")
             self.main_gui.model.output_folder = output_folder_value
         else:
-            # Use default output folder
+            # Use improved output folder logic that respects user settings
             from utils.helpers import get_output_directory
-            default_folder = get_output_directory()
+            default_folder = get_output_directory(self.current_settings)
             self.main_gui.model.output_folder = default_folder
-            self.main_gui.log(f"Using default output folder: {default_folder}")
+            self.main_gui.log(f"Using output folder: {default_folder}")
 
         # Clear any existing batch jobs
         self.main_gui.model.batch_jobs.clear()
@@ -882,29 +880,10 @@ class VideoTab:
             # Use progress manager if available
             self.progress_manager.update_progress(value, message)
             return
-            
-        # Legacy fallback if progress manager is not available
-        self.video_progress_bar["value"] = value
-        
-        # Get display mode from config
-        display_mode = getattr(config, 'PROGRESS_DISPLAY_MODE', 'descriptive')
-        percentage = int(round(value))
-        
-        if display_mode == "percentage":
-            # Always show just percentage
-            self.video_progress_label.config(text=f"{percentage}%")
-        elif display_mode == "both":
-            # Show both percentage and message
-            if message:
-                self.video_progress_label.config(text=f"{percentage}% - {message}")
-            else:
-                self.video_progress_label.config(text=f"{percentage}%")
-        else:  # descriptive (default)
-            # Show descriptive messages when available, percentage otherwise
-            if message:
-                self.video_progress_label.config(text=message)
-            else:
-                self.video_progress_label.config(text=f"{percentage}%")
+
+        # Use standardized progress update function
+        from utils.gui_helpers import standardize_progress_update
+        standardize_progress_update(self.video_progress_bar, self.video_progress_label, value, message)
 
     def reset_video_ui(self):
         """Reset the video tab UI to initial state"""

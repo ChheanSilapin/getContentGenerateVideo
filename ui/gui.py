@@ -404,7 +404,7 @@ class VideoGeneratorGUI:
     def update_image_progress(self, value, message=None):
         """Update the image progress bar and log message"""
         if self.image_tab_component:
-            self.image_tab_component.update_image_progress(value, message)
+            self.image_tab_component.update_progress(value, message or f"{value}%")
         else:
             if message:
                 self.log(message)
@@ -477,46 +477,19 @@ class VideoGeneratorGUI:
             self.open_file(final_video)
 
     def display_preview_images(self, image_paths):
-        """Display preview images with checkboxes"""
+        """Display preview images - now handled by new folder-based image tab"""
         if self.image_tab_component:
-            self.image_tab_component.display_preview_images(image_paths)
+            # The new image tab doesn't use preview images - it uses folder-based entries
+            self.log(f"Found {len(image_paths)} images. Use the new folder-based image tab for processing.")
         else:
             self.log("Image tab component not available")
     def continue_with_selected_images(self):
-        """Continue with selected images by delegating to ImageTab component"""
+        """Continue with selected images - now handled by new folder-based image tab"""
         if not self.image_tab_component:
             return
 
-        # Get selected images from ImageTab component
-        if not hasattr(self.image_tab_component, 'image_vars') or not self.image_tab_component.image_vars:
-            messagebox.showwarning("No Images", "No images available to select")
-            return
-
-        selected = []
-        for var, path in self.image_tab_component.image_vars:
-            if var.get() == 1:
-                selected.append(path)
-        if not selected:
-            messagebox.showwarning("No Images", "Please select at least one image")
-            return
-
-        # Update selected images and switch to input tab
-        self.selected_images = selected
-        self.log(f"Selected {len(selected)} images")
-        self.notebook.select(0)
-
-        # Delegate to InputTab component for video generation
-        if self.input_tab_component:
-            # Get text and URL from InputTab component
-            text = self.input_tab_component.get_text_input()
-            url = self.input_tab_component.get_url_input()
-
-            if not text:
-                messagebox.showwarning("Input Error", "Please enter text for voice generation")
-                return
-
-            # Use InputTab's video generation setup
-            self.input_tab_component._setup_video_generation(text, url)
+        # The new image tab handles video generation directly
+        self.log("Use the 'Generate All Videos' button in the Image tab for folder-based processing")
 
     def update_enhancement_options(self):
         """Update the model with current enhancement options"""
@@ -577,9 +550,10 @@ class VideoGeneratorGUI:
             show_error_with_log(self, "Error", f"Could not open file", e)
 
     def clean_button_click(self):
-        """Clear all images by delegating to ImageTab component"""
+        """Clear all images - now handled by new folder-based image tab"""
         if self.image_tab_component:
-            self.image_tab_component.clear_images()
+            self.image_tab_component.clear_all_entries()
+            self.image_tab_component.add_image_entry()  # Add back one empty entry
         else:
             self.selected_images = []
             self.log("Cleaned all selected images")

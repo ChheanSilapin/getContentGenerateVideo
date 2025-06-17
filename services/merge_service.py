@@ -3,6 +3,9 @@ import sys
 import gc  # For garbage collection
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 
+# Import centralized utility functions
+from utils.helpers import create_temp_file_with_cleanup, cleanup_temp_files
+
 class VideoService:
     @staticmethod
     def get_video_info(video_path):
@@ -108,13 +111,9 @@ class VideoService:
             # Cleanup temporary batch files (95% - 100% progress)
             if progress_callback:
                 progress_callback(95, "🧹 Cleaning up temporary files...")
-            
-            for batch_file in batch_files:
-                try:
-                    if os.path.exists(batch_file):
-                        os.remove(batch_file)
-                except Exception as e:
-                    print(f"Warning: Could not remove temp file {batch_file}: {e}")
+
+            # Use centralized cleanup function
+            cleanup_temp_files(*batch_files)
             
             if progress_callback:
                 progress_callback(100, f"🎉 Successfully merged {total_videos} videos with optimized processing!")
@@ -122,13 +121,8 @@ class VideoService:
             return True
             
         except Exception as e:
-            # Cleanup any temporary files in case of error
-            try:
-                for batch_file in batch_files:
-                    if os.path.exists(batch_file):
-                        os.remove(batch_file)
-            except:
-                pass
+            # Cleanup any temporary files in case of error using centralized function
+            cleanup_temp_files(*batch_files)
             
             if progress_callback:
                 progress_callback(0, f"❌ Error in optimized merge: {str(e)}")
@@ -167,12 +161,12 @@ class VideoService:
             if progress_callback:
                 progress_callback(50, "Exporting video...")
             
-            # Handle temp file path for bundled executables
+            # Handle temp file path for bundled executables using centralized function
             if getattr(sys, 'frozen', False):
                 temp_dir = os.path.dirname(output_path)
-                temp_audio_path = os.path.join(temp_dir, f'temp_batch_audio_{os.getpid()}.m4a')
+                temp_audio_path = create_temp_file_with_cleanup(suffix='.m4a', prefix='temp_batch_audio_', directory=temp_dir)
             else:
-                temp_audio_path = f'temp_batch_audio_{os.getpid()}.m4a'
+                temp_audio_path = create_temp_file_with_cleanup(suffix='.m4a', prefix='temp_batch_audio_')
             
             # Write with enhanced settings
             final_clip.write_videofile(
@@ -202,12 +196,8 @@ class VideoService:
             except:
                 pass
             
-            # Clean up temp audio file
-            try:
-                if temp_audio_path and os.path.exists(temp_audio_path):
-                    os.remove(temp_audio_path)
-            except:
-                pass
+            # Clean up temp audio file using centralized function
+            cleanup_temp_files(temp_audio_path)
             
             # Force garbage collection
             gc.collect()
@@ -250,14 +240,14 @@ class VideoService:
             if progress_callback:
                 progress_callback(60, " Exporting merged video...")
             
-            # Enhanced output with proper temp file handling for bundled executables
+            # Enhanced output with proper temp file handling for bundled executables using centralized function
             if getattr(sys, 'frozen', False):
                 # Running as PyInstaller executable - use output directory for temp files
                 temp_dir = os.path.dirname(output_path)
-                temp_audio_path = os.path.join(temp_dir, 'temp_merge_audio.m4a')
+                temp_audio_path = create_temp_file_with_cleanup(suffix='.m4a', prefix='temp_merge_audio_', directory=temp_dir)
             else:
                 # Running as script - use relative path
-                temp_audio_path = 'temp_merge_audio.m4a'
+                temp_audio_path = create_temp_file_with_cleanup(suffix='.m4a', prefix='temp_merge_audio_')
             
             # Write with enhanced settings for better compatibility
             final_clip.write_videofile(
@@ -286,12 +276,8 @@ class VideoService:
                 except:
                     pass
             
-            # Clean up temp audio file
-            try:
-                if temp_audio_path and os.path.exists(temp_audio_path):
-                    os.remove(temp_audio_path)
-            except:
-                pass
+            # Clean up temp audio file using centralized function
+            cleanup_temp_files(temp_audio_path)
 
     @staticmethod
     def validate_video_compatibility(video_paths):
@@ -307,7 +293,7 @@ class VideoService:
             
             compatibility_warnings = []
             
-            for i, path in enumerate(video_paths[1:], 1):
+            for path in video_paths[1:]:
                 info = VideoService.get_video_info(path)
                 
                 # Check for major incompatibilities

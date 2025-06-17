@@ -121,7 +121,7 @@ def generate_subtitles(text, video_file, audio_file, output_file, style="modern_
         try:
             with open(text_file, "w", encoding="utf-8") as f:
                 f.write(cleaned_text)  # Save cleaned text, not original
-            print(f"Created text file for subtitles with cleaned text: {text_file}")
+            # Reduced logging: print(f"Created text file for subtitles with cleaned text: {text_file}")
                 
         except Exception as e:
             print(f"Error creating text file: {e}")
@@ -164,21 +164,51 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
     if output_dir:
         ensure_directory_exists(output_dir)
 
-    # USE CENTRALIZED CONFIG for style configuration
+    # Get style configuration
+    style_config = _get_style_configuration(style)
+    print(f"Using style configuration from centralized config: {style_config.get('name', style)}")
+
+    # Create subtitle file structure
+    if not _create_subtitle_file_structure(output_file, style_config):
+        return None
+
+    try:
+        # Load and validate media files
+        video, audio, audio_file = _load_and_validate_media_files(video_path, audio_file)
+
+        # Load and process text content
+        text = _load_and_process_text_content(audio_file)
+
+        # Generate subtitle content
+        subtitle_events = _generate_subtitle_content(text, audio_file, audio.duration)
+
+        # Write subtitle events to file
+        _write_subtitle_events_to_file(output_file, subtitle_events)
+
+        print(f"Successfully created modern styled subtitles: {style_config['name']}")
+        return output_file
+
+    except Exception as e:
+        print(f"ERROR in subtitle generation: {str(e)}")
+        print("Full traceback:")
+        traceback.print_exc()
+        return _create_fallback_subtitle_file(output_file, str(e))
+
+def _get_style_configuration(style):
+    """Get style configuration from centralized config"""
     available_styles = SUBTITLE_CONFIG.get("available_styles", {})
     default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
-    
+
     # Get style configuration from centralized config
     if style in available_styles:
-        style_config = available_styles[style]
+        return available_styles[style]
     elif default_style in available_styles:
         print(f"Style '{style}' not found, using default style '{default_style}'")
-        style_config = available_styles[default_style]
-        style = default_style
+        return available_styles[default_style]
     else:
         # Ultimate fallback
         print(f"No valid styles found in config, using hardcoded fallback")
-        style_config = {
+        return {
             "name": "Fallback Style",
             "font": SUBTITLE_CONFIG.get("default_font", "Times New Roman"),
             "size": SUBTITLE_CONFIG.get("font_size", 48),
@@ -190,12 +220,11 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             "alignment": 2,
             "margin_v": 80
         }
-    
-    print(f"Using style configuration from centralized config: {style_config.get('name', style)}")
 
-    subtitle_path = output_file
+def _create_subtitle_file_structure(output_file, style_config):
+    """Create the basic ASS subtitle file structure"""
     try:
-        with open(subtitle_path, "w", encoding="utf-8") as f:
+        with open(output_file, "w", encoding="utf-8") as f:
             # Enhanced script info for better quality
             f.write("[Script Info]\n")
             f.write("Title: Modern Styled Subtitle\n")
@@ -204,171 +233,145 @@ def process_local_video(video_path, output_type="ass", maxChar=40, output_file="
             f.write("PlayResY: 1280\n")
             f.write("Timer: 100.0000\n")
             f.write("WrapStyle: 0\n\n")
-            
+
             f.write("[V4+ Styles]\n")
             f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
 
             # Create the main style based on centralized configuration
-            font = style_config.get("font", SUBTITLE_CONFIG.get("default_font", "Times New Roman"))
-            size = style_config.get("size", SUBTITLE_CONFIG.get("font_size", 42))
-            primary = style_config.get("primary_color", "&H00FFFFFF")
-            secondary = style_config.get("secondary_color", "&H000000FF")
-            outline = style_config.get("outline_color", "&H00000000")
-            back = style_config.get("back_color", "&H00000000")
-            bold = 1 if style_config.get("bold", SUBTITLE_CONFIG.get("font_bold", True)) else 0
-            outline_width = style_config.get("outline_width", 2)
-            shadow = style_config.get("shadow", 0)
-            alignment = style_config.get("alignment", 2)
-            margin_v = style_config.get("margin_v", 80)
+            _write_subtitle_styles(f, style_config)
 
-            # Main style
-            f.write(f"Style: Default,{font},{size},{primary},{secondary},{outline},{back},{bold},0,0,0,100,100,0,0,1,{outline_width},{shadow},{alignment},10,10,{margin_v},1\n")
-            
-            # Highlight style (for current word) - brighter version
-            highlight_primary = primary.replace("&H00", "&H00").replace("FF", "FF")  # Keep same but could modify
-            f.write(f"Style: Highlight,{font},{size + 4},{highlight_primary},{secondary},{outline},{back},{bold},0,0,0,110,110,0,0,1,{outline_width + 1},{shadow + 1},{alignment},10,10,{margin_v},1\n")
-            
-            # Fade in style for animations
-            f.write(f"Style: FadeIn,{font},{size},{primary},{secondary},{outline},{back},{bold},0,0,0,80,80,0,0,1,{outline_width},{shadow},{alignment},10,10,{margin_v},1\n")
-            
-            # Create additional effect styles
-            _create_effect_styles(f, style_config)
-            
             f.write("\n[Events]\n")
             f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
+        return True
     except Exception as e:
         print(f"Error creating subtitle file structure: {e}")
-        return None
+        return False
 
-    try:
-        # Load video and audio files
-        if not os.path.exists(video_path):
-            print(f"ERROR: Video file not found: {video_path}")
-            raise FileNotFoundError(f"Video file not found: {video_path}")
-        video = VideoFileClip(video_path)
-        
-        if audio_file is None:
-            video_dir = os.path.dirname(video_path)
-            audio_file = os.path.join(video_dir, "voice.mp3")
-        if not os.path.exists(audio_file):
-            print(f"ERROR: Audio file not found: {audio_file}")
-            raise FileNotFoundError(f"Audio file not found: {audio_file}")
-        audio = AudioFileClip(audio_file)
-        
-        # Load text content
-        text_file = f"{audio_file}.txt"
-        if not os.path.exists(text_file):
-            print(f"ERROR: Text file not found: {text_file}")
-            try:
-                parent_dir = os.path.basename(os.path.dirname(audio_file))
-                if "video_" in parent_dir:
-                    default_text = "This video was generated automatically. Please enjoy the content."
-                else:
-                    default_text = "Default subtitle text created automatically."
+def _write_subtitle_styles(f, style_config):
+    """Write subtitle styles to file"""
+    font = style_config.get("font", SUBTITLE_CONFIG.get("default_font", "Times New Roman"))
+    size = style_config.get("size", SUBTITLE_CONFIG.get("font_size", 42))
+    primary = style_config.get("primary_color", "&H00FFFFFF")
+    secondary = style_config.get("secondary_color", "&H000000FF")
+    outline = style_config.get("outline_color", "&H00000000")
+    back = style_config.get("back_color", "&H00000000")
+    bold = 1 if style_config.get("bold", SUBTITLE_CONFIG.get("font_bold", True)) else 0
+    outline_width = style_config.get("outline_width", 2)
+    shadow = style_config.get("shadow", 0)
+    alignment = style_config.get("alignment", 2)
+    margin_v = style_config.get("margin_v", 80)
 
-                with open(text_file, "w", encoding="utf-8") as f:
-                    f.write(default_text)
-                print(f"Created default text file: {text_file}")
-            except Exception as text_write_error:
-                print(f"Failed to create default text file: {text_write_error}")
-                raise FileNotFoundError(f"Text file not found and could not create default: {text_file}")
-        
-        with open(text_file, "r", encoding="utf-8") as text_file_handle:
-            text = text_file_handle.read().strip()
-        if not text:
-            print("WARNING: Text file is empty, using default text")
-            text = "Default subtitle text because original file was empty."
-        
-        text = process_text_for_subtitles(text)
+    # Main style
+    f.write(f"Style: Default,{font},{size},{primary},{secondary},{outline},{back},{bold},0,0,0,100,100,0,0,1,{outline_width},{shadow},{alignment},10,10,{margin_v},1\n")
 
-        # Additional text cleaning for subtitles
-        print(f"Original text: '{text}'")
-        
-        # Remove any remaining problematic patterns
-        text = re.sub(r'^\W+', '', text)  # Remove leading non-word characters
-        text = re.sub(r'\W+$', '', text)  # Remove trailing non-word characters
-        
-        # Ensure we have clean text
-        if not text or len(text.strip()) == 0:
-            text = "Welcome to this video"
-            print("Using fallback text due to empty or invalid input")
-        
-        print(f"Cleaned text for subtitles: '{text}'")
+    # Highlight style (for current word) - brighter version
+    highlight_primary = primary.replace("&H00", "&H00").replace("FF", "FF")  # Keep same but could modify
+    f.write(f"Style: Highlight,{font},{size + 4},{highlight_primary},{secondary},{outline},{back},{bold},0,0,0,110,110,0,0,1,{outline_width + 1},{shadow + 1},{alignment},10,10,{margin_v},1\n")
 
-        # Split text into words - PRESERVE IMPORTANT CONTENT
-        words = [word.strip() for word in text.split() if word.strip() and len(word.strip()) > 0]
-        
-        # ENHANCED: Preserve numbers, currency, contractions, and important content
-        filtered_words = []
-        for word in words:
-            clean_word = word.strip()
-            
-            # Keep currency amounts like $17,190
-            if re.match(r'\$[\d,]+(?:\.\d{2})?', clean_word):
-                filtered_words.append(clean_word)
-                continue
-            
-            # Keep years like 2025, 2026
-            if re.match(r'\b(19|20)\d{2}\b', clean_word):
-                filtered_words.append(clean_word)
-                continue
-            
-            # Keep contractions like country's, Trump's, etc.
-            if re.match(r"\w+[''](?:s|ll|ve|re|t|d|m)\b", clean_word, re.IGNORECASE):
-                filtered_words.append(clean_word)
-                continue
-            
-            # Keep words with numbers that are meaningful (like model names)
-            if re.search(r'[a-zA-Z]', clean_word) and len(clean_word) > 1:
-                # Only remove standalone numbers, not mixed content
-                if not re.match(r'^\d+$', clean_word):  # Don't remove if it's ONLY numbers
-                    # Clean but preserve structure
-                    clean_word = re.sub(r'^[^\w$]+|[^\w$]+$', '', clean_word)
-                    if clean_word:
-                        filtered_words.append(clean_word)
+    # Fade in style for animations
+    f.write(f"Style: FadeIn,{font},{size},{primary},{secondary},{outline},{back},{bold},0,0,0,80,80,0,0,1,{outline_width},{shadow},{alignment},10,10,{margin_v},1\n")
 
-        words = filtered_words
-        
-        if not words:
-            words = ["Welcome", "to", "this", "video"]
-            print("Using fallback words due to no valid words found")
-        
-        print(f"Processing {len(words)} words for subtitles (preserved currency, years, contractions)")
+    # Create additional effect styles
+    _create_effect_styles(f, style_config)
 
-        # Create optimized word groups
-        word_groups = create_optimized_word_groups(text)
-        print(f"Created {len(word_groups)} optimized subtitle groups")
+def _load_and_validate_media_files(video_path, audio_file):
+    """Load and validate video and audio files"""
+    # Load video file
+    if not os.path.exists(video_path):
+        print(f"ERROR: Video file not found: {video_path}")
+        raise FileNotFoundError(f"Video file not found: {video_path}")
+    video = VideoFileClip(video_path)
 
-        # Calculate timing for word groups instead of individual words
-        group_timings = _calculate_optimized_timing(audio_file, word_groups, audio.duration)
+    # Determine audio file path
+    if audio_file is None:
+        video_dir = os.path.dirname(video_path)
+        audio_file = os.path.join(video_dir, "voice.mp3")
 
-        # Generate subtitle events with word groups
-        # For this function, we need a default style config since we don't have style_config here
-        default_style_config = SUBTITLE_CONFIG.get("available_styles", {}).get(SUBTITLE_CONFIG.get("default_style", "modern_glow"), {})
-        subtitle_events = _generate_group_subtitle_events(word_groups, group_timings, default_style_config)
-        
-        # Write events to file
-        with open(subtitle_path, "a", encoding="utf-8") as f:
-            for event in subtitle_events:
-                line = f"Dialogue: 0,{_seconds_to_ass_time(event['start'])},{_seconds_to_ass_time(event['end'])},Default,,0,0,0,,{event['text']}\n"
-                f.write(line)
+    # Load audio file
+    if not os.path.exists(audio_file):
+        print(f"ERROR: Audio file not found: {audio_file}")
+        raise FileNotFoundError(f"Audio file not found: {audio_file}")
+    audio = AudioFileClip(audio_file)
 
-        print(f"Successfully created modern styled subtitles: {style_config['name']}")
-        return subtitle_path
-        
-    except Exception as e:
-        print(f"ERROR in subtitle generation: {str(e)}")
-        print("Full traceback:")
-        traceback.print_exc()
+    return video, audio, audio_file
+
+def _load_and_process_text_content(audio_file):
+    """Load and process text content from file"""
+    text_file = f"{audio_file}.txt"
+    if not os.path.exists(text_file):
+        print(f"ERROR: Text file not found: {text_file}")
         try:
-            events = _create_fallback_subtitle(f"Error: {str(e)}", 10.0)
-            with open(subtitle_path, "w", encoding="utf-8") as f:
-                f.write(ASS_HEADER)
-                for event in events:
-                    f.write(f"Dialogue: 0,{_seconds_to_ass_time(event['start'])},{_seconds_to_ass_time(event['end'])},Default,,0,0,0,,{event['text']}\n")
-            return subtitle_path
-        except:
-            return None
+            parent_dir = os.path.basename(os.path.dirname(audio_file))
+            if "video_" in parent_dir:
+                default_text = "This video was generated automatically. Please enjoy the content."
+            else:
+                default_text = "Default subtitle text created automatically."
+
+            with open(text_file, "w", encoding="utf-8") as f:
+                f.write(default_text)
+            print(f"Created default text file: {text_file}")
+        except Exception as text_write_error:
+            print(f"Failed to create default text file: {text_write_error}")
+            raise FileNotFoundError(f"Text file not found and could not create default: {text_file}")
+
+    with open(text_file, "r", encoding="utf-8") as text_file_handle:
+        text = text_file_handle.read().strip()
+    if not text:
+        print("WARNING: Text file is empty, using default text")
+        text = "Default subtitle text because original file was empty."
+
+    return _clean_and_process_text(text)
+
+def _clean_and_process_text(text):
+    """Clean and process text for subtitles"""
+    text = process_text_for_subtitles(text)
+
+    # Additional text cleaning for subtitles
+    print(f"Original text: '{text}'")
+
+    # Remove any remaining problematic patterns
+    text = re.sub(r'^\W+', '', text)  # Remove leading non-word characters
+    text = re.sub(r'\W+$', '', text)  # Remove trailing non-word characters
+
+    # Ensure we have clean text
+    if not text or len(text.strip()) == 0:
+        text = "Welcome to this video"
+        print("Using fallback text due to empty or invalid input")
+
+    print(f"Cleaned text for subtitles: '{text}'")
+    return text
+
+def _generate_subtitle_content(text, audio_file, audio_duration):
+    """Generate subtitle content from text"""
+    # Create optimized word groups
+    word_groups = create_optimized_word_groups(text)
+    print(f"Created {len(word_groups)} optimized subtitle groups")
+
+    # Calculate timing for word groups instead of individual words
+    group_timings = _calculate_optimized_timing(audio_file, word_groups, audio_duration)
+
+    # Generate subtitle events with word groups
+    default_style_config = SUBTITLE_CONFIG.get("available_styles", {}).get(SUBTITLE_CONFIG.get("default_style", "modern_glow"), {})
+    return _generate_group_subtitle_events(word_groups, group_timings, default_style_config)
+
+def _write_subtitle_events_to_file(output_file, subtitle_events):
+    """Write subtitle events to file"""
+    with open(output_file, "a", encoding="utf-8") as f:
+        for event in subtitle_events:
+            line = f"Dialogue: 0,{_seconds_to_ass_time(event['start'])},{_seconds_to_ass_time(event['end'])},Default,,0,0,0,,{event['text']}\n"
+            f.write(line)
+
+def _create_fallback_subtitle_file(output_file, error_message):
+    """Create a fallback subtitle file when generation fails"""
+    try:
+        events = _create_fallback_subtitle(f"Error: {error_message}", 10.0)
+        with open(output_file, "w", encoding="utf-8") as f:
+            f.write(ASS_HEADER)
+            for event in events:
+                f.write(f"Dialogue: 0,{_seconds_to_ass_time(event['start'])},{_seconds_to_ass_time(event['end'])},Default,,0,0,0,,{event['text']}\n")
+        return output_file
+    except:
+        return None
 
 def _create_effect_styles(f, style_config):
     """Create additional effect styles for animations"""
@@ -550,44 +553,7 @@ def _generate_group_subtitle_events(word_groups, group_timings, style_config):
     print(f"Completed generating {len(word_groups)} subtitle events with preserved content")
     return subtitle_events
 
-def _format_time(seconds):
-    """Format time in H:MM:SS.ms format"""
-    hours = int(seconds // 3600)
-    minutes = int((seconds % 3600) // 60)
-    secs = seconds % 60
-    return f"{hours}:{minutes:02d}:{secs:05.2f}"
-
-def _get_word_effect(word_index, total_words):
-    """Get animation effect for word based on its position"""
-    effects = [
-        "",  # No effect
-        "\\fad(200,200)",  # Fade in/out
-        "\\t(\\fscx120\\fscy120)",  # Scale up
-        "\\move(360,640,360,600)",  # Slight upward movement
-        "\\t(0,300,\\3c&H00FF00&)",  # Color transition
-    ]
-    
-    # Use different effects for different parts of the text
-    if word_index < total_words * 0.2:  # First 20%
-        return "\\fad(300,100)"  # Fade in
-    elif word_index > total_words * 0.8:  # Last 20%
-        return "\\fad(100,300)"  # Fade out
-    else:
-        return effects[word_index % len(effects)]
-
-def _choose_word_style(word, index):
-    """Choose style based on word characteristics"""
-    # Highlight important words
-    important_words = ["amazing", "incredible", "wow", "fantastic", "awesome", "great", "best", "perfect"]
-    
-    if any(imp_word in word.lower() for imp_word in important_words):
-        return "Glow"
-    elif index % 10 == 0:  # Every 10th word gets pop effect
-        return "Pop"
-    elif len(word) > 8:  # Long words get highlight
-        return "Highlight"
-    else:
-        return "Default"
+# Removed unused helper functions: _format_time, _get_word_effect, _choose_word_style
 
 def _create_fallback_subtitle(content, duration):
     """
@@ -661,7 +627,7 @@ def create_optimized_word_groups(text):
             'has_punctuation': has_punctuation
         })
     
-    print(f"✅ Created {len(word_groups)} optimized groups using centralized config")
+    # Reduced logging: print(f"✅ Created {len(word_groups)} optimized groups using centralized config")
     return word_groups
 
 def _analyze_speech_timing(audio_file, word_groups, total_duration):
@@ -720,7 +686,7 @@ def _analyze_speech_timing(audio_file, word_groups, total_duration):
         total_groups = len(word_groups)
         
         # Calculate total speech time for better distribution
-        total_speech_time = sum(end - start for start, end in speech_segments)
+        _ = sum(end - start for start, end in speech_segments)  # Reserved for future use
         
         if len(speech_segments) >= total_groups:
             # More speech segments than groups - select best segments

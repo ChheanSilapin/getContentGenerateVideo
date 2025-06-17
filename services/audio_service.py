@@ -1,33 +1,55 @@
 """
-Audio service for generating speech from text with emotional expression
+Audio service for generating speech from text with gTTS and Vosk speech recognition
 """
 from utils.common_imports import os, sys, subprocess, traceback
 import platform
 import re
 import emoji
+import tempfile
+import io
 
-# Try to import pyttsx3 for TTS
+# Try to import gTTS for text-to-speech
 try:
-    import pyttsx3
-    PYTTSX3_AVAILABLE = True
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
 except ImportError:
-    PYTTSX3_AVAILABLE = False
-    print("pyttsx3 not available. Will use system TTS as fallback.")
+    GTTS_AVAILABLE = False
+    print("gTTS not available. Will use system TTS as fallback.")
+
+# Try to import Vosk for speech recognition
+try:
+    import vosk
+    import json
+    import pyaudio
+    VOSK_AVAILABLE = True
+except ImportError:
+    VOSK_AVAILABLE = False
+    print("Vosk or PyAudio not available. Speech recognition will be disabled.")
+
+# Try to import pydub for audio processing
+try:
+    from pydub import AudioSegment
+    from pydub.playback import play
+    PYDUB_AVAILABLE = True
+except ImportError:
+    PYDUB_AVAILABLE = False
+    print("pydub not available. Some audio processing features may be limited.")
 
 # Import from utils
 from utils.helpers import ensure_directory_exists
 from utils.text_processing import process_text_for_tts
 
-def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral"):
+def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en'):
     """
-    Generate audio from text with emotional expression
+    Generate audio from text using gTTS with emotional expression
 
     Args:
         text: Text to convert to speech
         output_file: Path to output audio file
-        voice_actor: Optional voice actor to use (not implemented in all backends)
+        voice_actor: Optional voice actor to use (for gTTS, this affects language/accent)
         speed: Speed of speech (0.5 to 2.0, with 1.0 being normal speed)
         emotion: Emotion to apply ("neutral", "excited", "dramatic", "calm", "energetic")
+        language: Language code for gTTS (default: 'en')
 
     Returns:
         bool: True if successful, False otherwise
@@ -53,108 +75,119 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
     print(f"Processed text: {processed_text[:100]}...")
 
     # Try different TTS methods in order of preference
-    if PYTTSX3_AVAILABLE:
-        if generate_audio_pyttsx3_emotional(processed_text, output_file, speed, emotion):
+    if GTTS_AVAILABLE:
+        if generate_audio_gtts(processed_text, output_file, speed, emotion, language, voice_actor):
             return True
 
     # Fallback to system TTS
     return generate_audio_system_emotional(processed_text, output_file, emotion)
 
-def generate_audio_pyttsx3_emotional(text, output_file, speed=0.8, emotion="neutral"):
+def generate_audio_gtts(text, output_file, speed=0.8, emotion="neutral", language='en', voice_actor=None):
     """
-    Generate audio using pyttsx3 with emotional settings
+    Generate audio using gTTS with emotional settings and speed adjustment
 
     Args:
         text: Text to convert to speech
         output_file: Path to output audio file
         speed: Speed of speech (0.5 to 2.0, with 1.0 being normal speed)
         emotion: Emotion to apply
+        language: Language code for gTTS
+        voice_actor: Voice actor preference (affects language/accent selection)
 
     Returns:
         bool: True if successful, False otherwise
     """
-    engine = None
     try:
-        engine = pyttsx3.init()
-        
-        # Get available voices
-        voices = engine.getProperty('voices')
-        
-        # Select best voice based on emotion and availability
-        selected_voice = None
-        if voices:
-            # Prefer female voices for emotional expression (generally more expressive)
-            female_voices = [v for v in voices if 'female' in v.name.lower() or 'zira' in v.name.lower() or 'hazel' in v.name.lower()]
-            male_voices = [v for v in voices if 'male' in v.name.lower() or 'david' in v.name.lower() or 'mark' in v.name.lower()]
-            
-            if emotion in ["excited", "energetic"] and female_voices:
-                selected_voice = female_voices[0]
-            elif emotion == "dramatic" and male_voices:
-                selected_voice = male_voices[0]
-            elif female_voices:  # Default to female for better emotional range
-                selected_voice = female_voices[0]
-            elif voices:
-                selected_voice = voices[0]
-        
-        if selected_voice:
-            engine.setProperty('voice', selected_voice.id)
-            print(f"Using voice: {selected_voice.name}")
-        
-        # Adjust speech parameters based on emotion
-        base_rate = engine.getProperty('rate')
-        
-        if emotion == "excited":
-            engine.setProperty('rate', int(base_rate * speed * 1.2))  # Faster for excitement
-            engine.setProperty('volume', 0.9)  # Louder
-        elif emotion == "dramatic":
-            engine.setProperty('rate', int(base_rate * speed * 0.8))  # Slower for drama
-            engine.setProperty('volume', 0.8)  # Moderate volume
-        elif emotion == "calm":
-            engine.setProperty('rate', int(base_rate * speed * 0.7))  # Slower for calm
-            engine.setProperty('volume', 0.7)  # Softer
-        elif emotion == "energetic":
-            engine.setProperty('rate', int(base_rate * speed * 1.1))  # Slightly faster
-            engine.setProperty('volume', 0.85)  # Good volume
-        else:  # neutral
-            engine.setProperty('rate', int(base_rate * speed))
-            engine.setProperty('volume', 0.8)
+        # Map voice_actor to language variants if available
+        lang_code = get_language_for_voice_actor(voice_actor, language)
 
-        print(f"Saving audio to: {output_file}")
-        engine.save_to_file(text, output_file)
-        engine.runAndWait()
+        # Adjust text based on emotion for better gTTS output
+        emotional_text = enhance_text_for_emotion(text, emotion)
 
-        # IMPORTANT: Properly clean up the engine to release file handles
+        print(f"Generating audio with gTTS using language: {lang_code}")
+        print(f"Emotion: {emotion}, Speed: {speed}")
+
+        # Create gTTS object
+        tts = gTTS(text=emotional_text, lang=lang_code, slow=False)
+
+        # Save to temporary file first (gTTS saves as MP3)
+        temp_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
+        temp_mp3.close()
+
         try:
-            engine.stop()  # Stop any ongoing speech
-        except:
-            pass
-        
-        # Give a small delay to ensure file handle is released
-        import time
-        time.sleep(0.1)
+            # Generate the audio file
+            tts.save(temp_mp3.name)
+            print(f"gTTS audio saved to temporary file: {temp_mp3.name}")
 
-        # Verify the file was actually created and has content
-        if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-            print(f"Audio generated successfully with {emotion} emotion: {output_file}")
-            return True
-        else:
-            print(f"Error: Audio file not created or empty: {output_file}")
-            return False
-            
+            # Convert and adjust speed if needed
+            if PYDUB_AVAILABLE and speed != 1.0:
+                # Load the MP3 file
+                audio = AudioSegment.from_mp3(temp_mp3.name)
+
+                # Adjust speed (playback rate)
+                if speed != 1.0:
+                    # Speed up or slow down the audio
+                    new_sample_rate = int(audio.frame_rate * speed)
+                    audio_with_speed = audio._spawn(audio.raw_data, overrides={"frame_rate": new_sample_rate})
+                    audio = audio_with_speed.set_frame_rate(audio.frame_rate)
+
+                # Apply emotional adjustments
+                audio = apply_emotional_effects(audio, emotion)
+
+                # Export to the desired format
+                if output_file.lower().endswith('.mp3'):
+                    audio.export(output_file, format="mp3")
+                elif output_file.lower().endswith('.wav'):
+                    audio.export(output_file, format="wav")
+                else:
+                    # Default to WAV for compatibility
+                    audio.export(output_file, format="wav")
+
+            else:
+                # No speed adjustment needed, just copy/convert the file
+                if PYDUB_AVAILABLE:
+                    audio = AudioSegment.from_mp3(temp_mp3.name)
+                    audio = apply_emotional_effects(audio, emotion)
+
+                    if output_file.lower().endswith('.mp3'):
+                        audio.export(output_file, format="mp3")
+                    else:
+                        audio.export(output_file, format="wav")
+                else:
+                    # Simple file copy if pydub not available
+                    import shutil
+                    if output_file.lower().endswith('.mp3'):
+                        shutil.copy2(temp_mp3.name, output_file)
+                    else:
+                        # Can't convert without pydub, keep as MP3
+                        shutil.copy2(temp_mp3.name, output_file.rsplit('.', 1)[0] + '.mp3')
+
+            # Clean up temporary file
+            try:
+                os.unlink(temp_mp3.name)
+            except:
+                pass
+
+            # Verify the file was created
+            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
+                print(f"Audio generated successfully with gTTS ({emotion} emotion): {output_file}")
+                return True
+            else:
+                print(f"Error: Audio file not created or empty: {output_file}")
+                return False
+
+        except Exception as e:
+            # Clean up temporary file on error
+            try:
+                os.unlink(temp_mp3.name)
+            except:
+                pass
+            raise e
+
     except Exception as e:
-        print(f"Error generating audio with pyttsx3: {e}")
+        print(f"Error generating audio with gTTS: {e}")
         traceback.print_exc()
         return False
-    finally:
-        # Ensure engine is always cleaned up, even on exceptions
-        if engine:
-            try:
-                engine.stop()
-                # Small delay to ensure proper cleanup
-                import time
-                time.sleep(0.1)
-            except:
-                pass  # Ignore cleanup errors
 
 def generate_audio_system_emotional(text, output_file, emotion="neutral"):
     """
@@ -281,3 +314,253 @@ def get_volume_for_emotion(emotion):
         "calm": 70
     }
     return volumes.get(emotion, 80)
+
+def get_language_for_voice_actor(voice_actor, default_language='en'):
+    """Map voice actor preferences to gTTS language codes"""
+    if not voice_actor or voice_actor == "Default":
+        return default_language
+
+    # Map common voice actor preferences to language variants
+    voice_mapping = {
+        "British": "en-uk",
+        "American": "en-us",
+        "Australian": "en-au",
+        "Canadian": "en-ca",
+        "Indian": "en-in",
+        "French": "fr",
+        "German": "de",
+        "Spanish": "es",
+        "Italian": "it",
+        "Portuguese": "pt",
+        "Russian": "ru",
+        "Japanese": "ja",
+        "Korean": "ko",
+        "Chinese": "zh"
+    }
+
+    return voice_mapping.get(voice_actor, default_language)
+
+def enhance_text_for_emotion(text, emotion):
+    """Enhance text for better emotional expression with gTTS"""
+    if emotion == "excited":
+        # Add emphasis and exclamation
+        text = text.replace(".", "!")
+        text = text.replace("?", "?!")
+        # Add pauses for emphasis
+        text = text.replace(",", ", ")
+
+    elif emotion == "dramatic":
+        # Add dramatic pauses
+        text = text.replace(".", "... ")
+        text = text.replace("!", "... ")
+        text = text.replace(",", "... ")
+
+    elif emotion == "calm":
+        # Add gentle pauses
+        text = text.replace(".", ". ")
+        text = text.replace(",", ", ")
+        text = text.replace("!", ".")  # Convert exclamations to periods
+
+    elif emotion == "energetic":
+        # Add energy with varied punctuation
+        text = text.replace(".", "!")
+        text = text.replace(",", ", ")
+
+    return text
+
+def apply_emotional_effects(audio, emotion):
+    """Apply audio effects to enhance emotional expression"""
+    if not PYDUB_AVAILABLE:
+        return audio
+
+    try:
+        if emotion == "excited":
+            # Increase volume and add slight pitch variation
+            audio = audio + 3  # Increase volume by 3dB
+
+        elif emotion == "dramatic":
+            # Lower volume slightly and add reverb effect (simulated)
+            audio = audio - 2  # Decrease volume by 2dB
+
+        elif emotion == "calm":
+            # Lower volume for calming effect
+            audio = audio - 4  # Decrease volume by 4dB
+
+        elif emotion == "energetic":
+            # Slight volume boost
+            audio = audio + 2  # Increase volume by 2dB
+
+        return audio
+
+    except Exception as e:
+        print(f"Warning: Could not apply emotional effects: {e}")
+        return audio
+
+# Speech Recognition Functions using Vosk
+def initialize_speech_recognition(model_path=None, language="en-us"):
+    """
+    Initialize Vosk speech recognition
+
+    Args:
+        model_path: Path to Vosk model directory (optional)
+        language: Language code for recognition
+
+    Returns:
+        tuple: (model, recognizer) or (None, None) if failed
+    """
+    if not VOSK_AVAILABLE:
+        print("Vosk not available for speech recognition")
+        return None, None
+
+    try:
+        # Set log level to reduce Vosk output
+        vosk.SetLogLevel(-1)
+
+        if model_path and os.path.exists(model_path):
+            model = vosk.Model(model_path)
+        else:
+            # Try to find a default model
+            default_models = [
+                f"vosk-model-{language}",
+                f"vosk-model-small-{language}",
+                "vosk-model-en-us-0.22",
+                "vosk-model-small-en-us-0.15"
+            ]
+
+            model = None
+            for model_name in default_models:
+                try:
+                    model = vosk.Model(model_name)
+                    print(f"Using Vosk model: {model_name}")
+                    break
+                except:
+                    continue
+
+            if not model:
+                print("No Vosk model found. Please download a model from https://alphacephei.com/vosk/models")
+                return None, None
+
+        recognizer = vosk.KaldiRecognizer(model, 16000)
+        print("Speech recognition initialized successfully")
+        return model, recognizer
+
+    except Exception as e:
+        print(f"Error initializing speech recognition: {e}")
+        return None, None
+
+def recognize_speech_from_microphone(duration=5, model=None, recognizer=None):
+    """
+    Recognize speech from microphone using Vosk
+
+    Args:
+        duration: Recording duration in seconds
+        model: Vosk model (optional, will initialize if not provided)
+        recognizer: Vosk recognizer (optional, will initialize if not provided)
+
+    Returns:
+        str: Recognized text or empty string if failed
+    """
+    if not VOSK_AVAILABLE:
+        print("Vosk not available for speech recognition")
+        return ""
+
+    # Initialize if not provided
+    if not model or not recognizer:
+        model, recognizer = initialize_speech_recognition()
+        if not model or not recognizer:
+            return ""
+
+    try:
+        # Initialize PyAudio
+        p = pyaudio.PyAudio()
+
+        # Open microphone stream
+        stream = p.open(
+            format=pyaudio.paInt16,
+            channels=1,
+            rate=16000,
+            input=True,
+            frames_per_buffer=8000
+        )
+
+        print(f"Recording for {duration} seconds...")
+
+        # Record and recognize
+        for _ in range(0, int(16000 / 8000 * duration)):
+            data = stream.read(8000)
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                if result.get('text'):
+                    print(f"Recognized: {result['text']}")
+
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        recognized_text = final_result.get('text', '')
+
+        # Clean up
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+
+        print(f"Final recognized text: {recognized_text}")
+        return recognized_text
+
+    except Exception as e:
+        print(f"Error during speech recognition: {e}")
+        return ""
+
+def recognize_speech_from_file(audio_file, model=None, recognizer=None):
+    """
+    Recognize speech from audio file using Vosk
+
+    Args:
+        audio_file: Path to audio file
+        model: Vosk model (optional, will initialize if not provided)
+        recognizer: Vosk recognizer (optional, will initialize if not provided)
+
+    Returns:
+        str: Recognized text or empty string if failed
+    """
+    if not VOSK_AVAILABLE or not PYDUB_AVAILABLE:
+        print("Vosk or pydub not available for speech recognition")
+        return ""
+
+    # Initialize if not provided
+    if not model or not recognizer:
+        model, recognizer = initialize_speech_recognition()
+        if not model or not recognizer:
+            return ""
+
+    try:
+        # Load audio file and convert to required format
+        audio = AudioSegment.from_file(audio_file)
+
+        # Convert to mono, 16kHz, 16-bit
+        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+
+        # Get raw audio data
+        raw_data = audio.raw_data
+
+        # Process audio in chunks
+        chunk_size = 8000
+        recognized_text = ""
+
+        for i in range(0, len(raw_data), chunk_size):
+            chunk = raw_data[i:i+chunk_size]
+            if recognizer.AcceptWaveform(chunk):
+                result = json.loads(recognizer.Result())
+                if result.get('text'):
+                    recognized_text += result['text'] + " "
+
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        if final_result.get('text'):
+            recognized_text += final_result['text']
+
+        recognized_text = recognized_text.strip()
+        print(f"Recognized text from file: {recognized_text}")
+        return recognized_text
+
+    except Exception as e:
+        print(f"Error recognizing speech from file: {e}")
+        return ""

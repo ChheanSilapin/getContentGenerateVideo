@@ -1,8 +1,9 @@
 {
-  "output_folder": "C:/Users/USER/Videos/test",
-  "voice_actor": "Male 1",
-  "speed": 0.8,
-  "emotion": "excited",
-  "mute": false,
-  "volume": 0.7
+  "output_folder": "Default (Auto)",
+  "tts_language": "en",
+  "tts_voice_actor": "Default",
+  "tts_speed": 1.0,
+  "tts_emotion": "dramatic",
+  "image_fit_method": "contain",
+  "aspect_ratio": "9:16 (Portrait)"
 }

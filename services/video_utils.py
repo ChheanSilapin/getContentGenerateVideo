@@ -3,19 +3,13 @@ Video utility functions
 Extracted from video_service.py for better organization
 """
 import os
-import sys
 import shutil
 import subprocess
-import traceback
-import tempfile
-import time
-import numpy as np
-from PIL import Image
 
 # Import centralized utility functions
 from utils.helpers import (
-    get_ffmpeg_path, get_ffprobe_path, 
-    validate_output_file, cleanup_temp_files
+    get_ffmpeg_path, get_ffprobe_path,
+    cleanup_temp_files, build_ffmpeg_command
 )
 
 def calculate_loops_needed(target_duration, single_item_duration, min_loops=1):
@@ -57,10 +51,14 @@ def get_media_duration(media_file):
         ]
         
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        
+
         if result.returncode == 0:
-            duration = float(result.stdout.strip())
-            return duration
+            try:
+                duration = float(result.stdout.strip())
+                return duration
+            except (ValueError, TypeError) as e:
+                print(f"Error parsing duration from FFprobe output: {e}")
+                return 0
         else:
             print(f"FFprobe failed to get duration: {result.stderr}")
             return 0
@@ -140,7 +138,7 @@ def convert_video_to_compatible_format(input_video, output_video=None):
     try:
         if output_video is None:
             # Create output path with "_converted" suffix
-            base, ext = os.path.splitext(input_video)
+            base, _ = os.path.splitext(input_video)
             output_video = f"{base}_converted.mp4"
         
         print(f"Converting video to compatible format...")
@@ -151,22 +149,8 @@ def convert_video_to_compatible_format(input_video, output_video=None):
         if not ffmpeg_path or not (ffmpeg_path == 'ffmpeg' or os.path.exists(ffmpeg_path)):
             return False, None, "FFmpeg not available for conversion"
         
-        # FFmpeg command for maximum compatibility conversion
-        cmd = [
-            ffmpeg_path,
-            '-i', input_video,
-            '-c:v', 'libx264',           # H.264 video codec
-            '-profile:v', 'baseline',    # Baseline profile for maximum compatibility
-            '-level', '3.0',             # Level 3.0 for broad device support
-            '-pix_fmt', 'yuv420p',       # YUV420P pixel format (most compatible)
-            '-c:a', 'aac',               # AAC audio codec
-            '-ar', '44100',              # 44.1kHz audio sample rate
-            '-ac', '2',                  # Stereo audio
-            '-movflags', '+faststart',   # Enable fast start for web compatibility
-            '-avoid_negative_ts', 'make_zero',  # Fix timestamp issues
-            '-y',                        # Overwrite output file
-            output_video
-        ]
+        # Use centralized FFmpeg command builder for compatibility conversion
+        cmd = build_ffmpeg_command(ffmpeg_path, input_video, output_video, "compatibility")
         
         print(f"Running FFmpeg conversion command...")
         result = subprocess.run(

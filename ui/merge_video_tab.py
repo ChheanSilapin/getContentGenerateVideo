@@ -2,7 +2,7 @@
 Merge Video Tab - Streamlined using factory components
 Now using ButtonFactory and LayoutFactory for maximum code reuse
 """
-from utils.common_imports import os, tk, ttk, messagebox, filedialog, threading
+from utils.common_imports import os, tk, ttk, messagebox, threading
 
 # Import our new components and factories
 from ui.components import VideoGrid, VideoLoader, ProgressManager, ButtonFactory, LayoutFactory
@@ -188,7 +188,8 @@ class MergeVideoTab:
         selected = self.get_selected_videos()
         
         if not selected:
-            messagebox.showwarning("No Selection", "Please select videos to remove.")
+            from utils.error_helpers import show_warning_with_log
+            show_warning_with_log(self.main_gui, "No Selection", "Please select videos to remove.")
             return
         
         # Remove from main list
@@ -234,7 +235,8 @@ class MergeVideoTab:
         selected = self.get_selected_videos()
         
         if len(selected) < 2:
-            messagebox.showerror("Insufficient Videos", "Please select at least 2 videos to merge.")
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(self.main_gui, "Insufficient Videos", "Please select at least 2 videos to merge.")
             return
         
         # Get output path
@@ -267,10 +269,9 @@ class MergeVideoTab:
             # Use VideoService for actual merging
             service = VideoService()
             
-            # Configure progress callback
-            def service_progress(progress, message="Processing..."):
-                if progress_callback:
-                    progress_callback(progress, message)
+            # Use standardized progress callback
+            from utils.gui_helpers import create_progress_callback
+            service_progress = create_progress_callback(None, None) if not progress_callback else progress_callback
             
             # Perform merge
             result = service.merge_videos(
@@ -292,8 +293,8 @@ class MergeVideoTab:
         self.buttons['stop'].config(state="disabled")
         
         if result:
-            messagebox.showinfo("Success", f"Videos merged successfully!\n\nOutput: {result}")
-            self.main_gui.log("Video merge completed successfully")
+            from utils.error_helpers import show_info_with_log
+            show_info_with_log(self.main_gui, "Success", f"Videos merged successfully!\n\nOutput: {result}")
         else:
             self.merge_failed("Merge completed but output file not found")
 
@@ -302,7 +303,7 @@ class MergeVideoTab:
         self.buttons['process'].config(state="normal")
         self.buttons['stop'].config(state="disabled")
         
-        messagebox.showerror("Merge Failed", f"Failed to merge videos:\n\n{error_message}")
+        show_error_with_log(self.main_gui, "Merge Failed", f"Failed to merge videos:\n\n{error_message}")
         self.main_gui.log(f"Video merge failed: {error_message}")
 
     def stop_merge(self):

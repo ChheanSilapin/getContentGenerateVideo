@@ -18,7 +18,7 @@ except ImportError:
     print("OpenCV not available - using basic video optimization")
     CV2_AVAILABLE = False
     cv2 = None
-from moviepy.editor import VideoFileClip, AudioFileClip, CompositeVideoClip, ImageClip, AudioClip
+from moviepy.editor import VideoFileClip, CompositeVideoClip, ImageClip, AudioClip
 from moviepy.audio.fx.all import volumex, audio_normalize
 
 # Use centralized path management
@@ -37,22 +37,21 @@ except ImportError:
 # Import FFmpeg utilities from centralized location
 try:
     from utils.helpers import (
-        get_ffmpeg_path, check_ffmpeg_availability,
+        check_ffmpeg_availability,
         configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
-        validate_output_file, safe_file_operation
+        build_ffmpeg_command
     )
 except ImportError:
     # Use fallback manager if available
     try:
         from utils.fallback_manager import get_helpers_with_fallback
         helpers = get_helpers_with_fallback()
-        get_ffmpeg_path = helpers.get_ffmpeg_path
         check_ffmpeg_availability = helpers.check_ffmpeg_availability
-        # Fallback implementations for new functions
-        def configure_ffmpeg_for_moviepy(): return False
-        def setup_temp_directory_for_bundled_exe(path): return tempfile.gettempdir()
-        def validate_output_file(path, size=1024, ftype="file"): return True, "OK"
-        def safe_file_operation(func, *args, **kwargs): return True, func(*args, **kwargs), None
+        # Import centralized functions - no need for fallback implementations
+        from utils.helpers import (
+            configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
+            build_ffmpeg_command
+        )
     except ImportError:
         # Critical error - should not happen in production
         print("CRITICAL: Cannot import FFmpeg utilities from utils.helpers or fallback_manager")
@@ -492,19 +491,9 @@ def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=Non
                 print(f"Error copying original video: {e}")
                 return None
 
-        # FFmpeg command with filters - simplified for better compatibility
-        cmd = [
-            ffmpeg_path, '-y', '-i', input_video,  # Added -y to overwrite output
-            # Video filters
-            '-vf', vf_arg,
-            # Audio filters - simplified
-            '-af', 'loudnorm',  # Simplified audio filter
-            # Output settings - using faster preset
-            '-c:v', 'libx264', '-preset', preset, '-crf', '23',  # Changed CRF from 18 to 23 (less quality but faster)
-            '-c:a', 'aac', '-b:a', '128k',  # Reduced audio bitrate
-            '-movflags', '+faststart',
-            output_video
-        ]
+        # Use centralized FFmpeg command builder for optimization
+        cmd = build_ffmpeg_command(ffmpeg_path, input_video, output_video, "optimization",
+                                  preset=preset, vf_arg=vf_arg)
 
         print(f"Running FFmpeg command: {' '.join(cmd)}")
 
