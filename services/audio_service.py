@@ -1,12 +1,13 @@
 """
 Audio service for generating speech from text with gTTS and Vosk speech recognition
+Includes smart caching to prevent duplicate TTS generation and improve performance
 """
-from utils.common_imports import os, sys, subprocess, traceback
+from utils.common_imports import os, subprocess, traceback
 import platform
-import re
-import emoji
 import tempfile
-import io
+import hashlib
+import time
+import shutil
 
 # Try to import gTTS for text-to-speech
 try:
@@ -29,7 +30,6 @@ except ImportError:
 # Try to import pydub for audio processing
 try:
     from pydub import AudioSegment
-    from pydub.playback import play
     PYDUB_AVAILABLE = True
 except ImportError:
     PYDUB_AVAILABLE = False
@@ -39,9 +39,130 @@ except ImportError:
 from utils.helpers import ensure_directory_exists
 from utils.text_processing import process_text_for_tts
 
-def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en'):
+# =============================================================================
+# TTS CACHING SYSTEM
+# =============================================================================
+
+class TTSCache:
+    """Smart caching system for TTS audio files"""
+
+    def __init__(self):
+        self._cache = {}
+        self._cache_timestamps = {}
+        self._cache_dir = None
+        self._load_config()
+        self._setup_cache_directory()
+
+    def _load_config(self):
+        """Load TTS cache configuration"""
+        try:
+            import config
+            self.cache_enabled = getattr(config, 'ENABLE_TTS_CACHE', True)
+            self.cache_max_size = getattr(config, 'TTS_CACHE_MAX_SIZE', 50)
+            self.cache_ttl_hours = getattr(config, 'TTS_CACHE_TTL_HOURS', 48)
+        except ImportError:
+            self.cache_enabled = True
+            self.cache_max_size = 50
+            self.cache_ttl_hours = 48
+
+    def _setup_cache_directory(self):
+        """Setup cache directory for audio files"""
+        if not self.cache_enabled:
+            return
+
+        try:
+            cache_base = os.path.join(tempfile.gettempdir(), "video_generator_cache")
+            self._cache_dir = os.path.join(cache_base, "tts_audio")
+            os.makedirs(self._cache_dir, exist_ok=True)
+        except Exception as e:
+            print(f"Warning: Could not create TTS cache directory: {e}")
+            self.cache_enabled = False
+
+    def _get_cache_key(self, text, voice_actor, speed, emotion, language):
+        """Generate cache key for TTS parameters"""
+        cache_data = f"{text}|{voice_actor}|{speed}|{emotion}|{language}"
+        return hashlib.md5(cache_data.encode('utf-8')).hexdigest()
+
+    def get_cached_audio(self, text, voice_actor, speed, emotion, language, output_file):
+        """Get cached audio file if available"""
+        if not self.cache_enabled:
+            return False
+
+        cache_key = self._get_cache_key(text, voice_actor, speed, emotion, language)
+
+        if cache_key in self._cache and self._is_cache_valid(cache_key):
+            cached_file = self._cache[cache_key]
+
+            if os.path.exists(cached_file):
+                try:
+                    shutil.copy2(cached_file, output_file)
+                    print(f"🚀 Using cached TTS audio (key: {cache_key[:8]}...)")
+                    return True
+                except Exception as e:
+                    print(f"Warning: Could not copy cached audio: {e}")
+
+        return False
+
+    def cache_audio(self, text, voice_actor, speed, emotion, language, audio_file):
+        """Cache generated audio file"""
+        if not self.cache_enabled or not os.path.exists(audio_file):
+            return
+
+        cache_key = self._get_cache_key(text, voice_actor, speed, emotion, language)
+        cached_file = os.path.join(self._cache_dir, f"{cache_key}.mp3")
+
+        try:
+            shutil.copy2(audio_file, cached_file)
+            self._cache[cache_key] = cached_file
+            self._cache_timestamps[cache_key] = time.time()
+            print(f"💾 Cached TTS audio (cache size: {len(self._cache)})")
+
+            # Cleanup old cache entries periodically
+            if len(self._cache) % 10 == 0:
+                self._cleanup_cache()
+
+        except Exception as e:
+            print(f"Warning: Could not cache TTS audio: {e}")
+
+    def _is_cache_valid(self, cache_key):
+        """Check if cached audio is still valid"""
+        if cache_key not in self._cache_timestamps:
+            return False
+
+        cache_time = self._cache_timestamps[cache_key]
+        current_time = time.time()
+        age_hours = (current_time - cache_time) / 3600
+
+        return age_hours < self.cache_ttl_hours
+
+    def _cleanup_cache(self):
+        """Remove old or excess cache entries"""
+        current_time = time.time()
+
+        # Remove expired entries
+        expired_keys = []
+        for key, timestamp in self._cache_timestamps.items():
+            age_hours = (current_time - timestamp) / 3600
+            if age_hours >= self.cache_ttl_hours:
+                expired_keys.append(key)
+
+        for key in expired_keys:
+            cached_file = self._cache.get(key)
+            if cached_file and os.path.exists(cached_file):
+                try:
+                    os.unlink(cached_file)
+                except:
+                    pass
+            self._cache.pop(key, None)
+            self._cache_timestamps.pop(key, None)
+
+# Global TTS cache instance
+_tts_cache = TTSCache()
+
+def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en',
+                  content_analysis=None, title=""):
     """
-    Generate audio from text using gTTS with emotional expression
+    Generate audio from text using gTTS with emotional expression and content-aware settings
 
     Args:
         text: Text to convert to speech
@@ -50,6 +171,8 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
         speed: Speed of speech (0.5 to 2.0, with 1.0 being normal speed)
         emotion: Emotion to apply ("neutral", "excited", "dramatic", "calm", "energetic")
         language: Language code for gTTS (default: 'en')
+        content_analysis: Optional ContentAnalysis object for enhanced settings
+        title: Optional title for content analysis
 
     Returns:
         bool: True if successful, False otherwise
@@ -68,19 +191,51 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
         ensure_directory_exists(output_dir)
 
     print(f"Generating audio for text: {text[:50]}...")
+
+    # Use content analysis for enhanced settings if available
+    if content_analysis:
+        voice_settings = content_analysis.recommended_voice_settings
+        speed = voice_settings.get('speed', speed)
+        emotion = voice_settings.get('emotion', emotion)
+        language = voice_settings.get('language', language)
+        voice_actor = voice_settings.get('voice_actor', voice_actor)
+        print(f"Using content-aware settings: type={content_analysis.content_type.value}, "
+              f"tone={content_analysis.emotional_tone.value}, speed={speed}, emotion={emotion}")
+    elif title:
+        # Perform quick content analysis if title is provided
+        from services.content_analysis import ContentAnalyzer
+        analyzer = ContentAnalyzer()
+        analysis = analyzer.analyze_content(text, title)
+        voice_settings = analysis.recommended_voice_settings
+        speed = voice_settings.get('speed', speed)
+        emotion = voice_settings.get('emotion', emotion)
+        print(f"Auto-detected content: type={analysis.content_type.value}, "
+              f"tone={analysis.emotional_tone.value}")
+
     print("Processing text for TTS...")
 
     # Process text for TTS with emotional enhancement
     processed_text = process_text_for_tts(text, emotion)
     print(f"Processed text: {processed_text[:100]}...")
 
-    # Try different TTS methods in order of preference
-    if GTTS_AVAILABLE:
-        if generate_audio_gtts(processed_text, output_file, speed, emotion, language, voice_actor):
-            return True
+    # Check cache first for performance optimization
+    if _tts_cache.get_cached_audio(processed_text, voice_actor, speed, emotion, language, output_file):
+        return True
 
-    # Fallback to system TTS
-    return generate_audio_system_emotional(processed_text, output_file, emotion)
+    # Try different TTS methods in order of preference
+    success = False
+    if GTTS_AVAILABLE:
+        success = generate_audio_gtts(processed_text, output_file, speed, emotion, language, voice_actor)
+
+    if not success:
+        # Fallback to system TTS
+        success = generate_audio_system_emotional(processed_text, output_file, emotion)
+
+    # Cache the generated audio if successful
+    if success:
+        _tts_cache.cache_audio(processed_text, voice_actor, speed, emotion, language, output_file)
+
+    return success
 
 def generate_audio_gtts(text, output_file, speed=0.8, emotion="neutral", language='en', voice_actor=None):
     """
@@ -441,7 +596,7 @@ def initialize_speech_recognition(model_path=None, language="en-us"):
                 return None, None
 
         recognizer = vosk.KaldiRecognizer(model, 16000)
-        print("Speech recognition initialized successfully")
+        # Reduced logging: print("Speech recognition initialized successfully")
         return model, recognizer
 
     except Exception as e:

@@ -156,8 +156,10 @@ class VideoProcessor:
         from services.subtitle_service import generate_subtitles
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
         
-        # Get subtitle style from enhancement options
-        subtitle_style = self.enhancement_options.get("subtitle_style", "modern_glow")
+        # Get subtitle style from enhancement options or config default
+        from config import SUBTITLE_CONFIG
+        default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
+        subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
         
         if not generate_subtitles(text_input, video_file, audio_file, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate subtitles.")

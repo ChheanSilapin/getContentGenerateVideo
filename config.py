@@ -115,25 +115,22 @@ SUBTITLE_CONFIG = {
     "font_size": 48,
     "font_bold": False,
     
-    # Word Grouping (words per subtitle)
-    "words_per_group_short": 5,    # For text < 100 words
-    "words_per_group_medium": 4,   # For text 100-200 words  
-    "words_per_group_long": 3,     # For text > 200 words
-    
-    # Timing Settings
-    "reading_speed_wpm": 120,      # Words per minute for timing calculations
-    "min_display_time": 1.2,       # Minimum seconds to display each subtitle
-    "early_start_offset": 0.6,     # Start subtitles X seconds before speech
-    "overlap_time": 0.3,           # Overlap between consecutive subtitles
+    # Word Grouping (words per subtitle) - IMPROVED for better readability
+    "words_per_group_short": 8,    # For text < 100 words (increased from 5)
+    "words_per_group_medium": 7,   # For text 100-200 words (increased from 4)
+    "words_per_group_long": 6,     # For text > 200 words (increased from 3)
+
+    # Timing Settings - SLOWER for much more comfortable reading
+    "reading_speed_wpm": 80,       # Words per minute (slower for comfortable reading)
+    "min_display_time": 4.0,       # Minimum seconds to display each subtitle (much longer)
+    "early_start_offset": 0.2,     # Start subtitles X seconds before speech
+    "overlap_time": 0.0,           # No overlap between subtitles (prevents overlapping text)
+    "gap_time": 0.1,               # Minimum gap between subtitles to prevent overlap
     
     #Text Formart Settings
     "uppercase": True,
-    "preserve_specail_formartting": True,
-
-
-    
-    # Speech Analysis
-    "use_speech_analysis": True,
+    # Speech Analysis - DISABLED to use manual timing
+    "use_speech_analysis": False,   # Disabled to force manual timing control
     "speech_analysis_max_duration": 60.0,  # Max audio length for speech analysis
     "silence_threshold_db": 16,    # dB below average for silence detection
     "min_silence_length_ms": 150,  # Minimum silence length in milliseconds
@@ -197,47 +194,86 @@ SUBTITLE_CONFIG = {
     },
     
     # Default style to use
-    "default_style": "modern_glow"
+    "default_style": "gradient_gold"
+}
+# File cleanup settings
+AUTO_CLEANUP_AFTER_COMPLETION = True  # Set to True to automatically clean up intermediate files after video generation
+
+# =============================================================================
+# PERFORMANCE OPTIMIZATION SETTINGS
+# =============================================================================
+
+# Content Analysis Caching - Prevents duplicate analysis for same content
+ENABLE_CONTENT_ANALYSIS_CACHE = True
+CONTENT_CACHE_MAX_SIZE = 100  # Maximum number of cached analyses
+CONTENT_CACHE_TTL_HOURS = 24  # Cache time-to-live in hours
+
+# TTS Audio Caching - Reuse audio for identical text/settings
+ENABLE_TTS_CACHE = True
+TTS_CACHE_MAX_SIZE = 50  # Maximum number of cached audio files
+TTS_CACHE_TTL_HOURS = 48  # Cache time-to-live in hours
+
+# FFmpeg Optimization Settings - Optimized for speed while maintaining quality
+FFMPEG_OPTIMIZATION = {
+    "preset": "fast",           # Balance of speed/quality (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
+    "crf": 22,                  # Quality setting (18-28, lower = better quality)
+    "threads": 0,               # Use all available CPU cores (0 = auto)
+    "tune": "film",             # Optimize for content type (film, animation, grain, stillimage, fastdecode, zerolatency)
+    "profile": "high",          # H.264 profile (baseline, main, high)
+    "level": "4.0",             # H.264 level
+    "pixel_format": "yuv420p",  # Pixel format for compatibility
+    "audio_codec": "aac",       # Audio codec
+    "audio_bitrate": "128k",    # Audio bitrate
+    "movflags": "+faststart",   # Enable fast start for web playback
+
+    # Additional speed optimizations
+    "x264_params": {
+        "me": "hex",            # Motion estimation (hex is faster than umh)
+        "subme": "6",           # Subpixel motion estimation (6 is good speed/quality balance)
+        "ref": "3",             # Reference frames (3 is good for speed)
+        "mixed_refs": "1",      # Mixed references
+        "trellis": "1",         # Trellis quantization (1 for speed)
+        "weightb": "1",         # Weighted biprediction
+        "8x8dct": "1",          # 8x8 DCT transform
+        "fast_pskip": "1",      # Fast P-frame skip detection
+        "aq_mode": "1",         # Adaptive quantization mode
+        "aq_strength": "1.0"    # Adaptive quantization strength
+    }
 }
 
-# File Cleanup Settings - CONSOLIDATED SYSTEM
-# All cleanup now handled by models/video_generator.py cleanup_after_video_complete()
-AUTO_CLEANUP_INTERMEDIATE_FILES = True   # Enable auto-cleanup by default to save space
-KEEP_DEBUG_FILES_BY_DEFAULT = False      # Clean all files by default, keep only final_output.mp4
-CLEANUP_TEMP_FILES_DURING_GENERATION = True  # Clean temp files during generation
-AUTO_CLEANUP_AFTER_COMPLETION = True    # TEMPORARILY DISABLED: Enable auto-cleanup after video completion (single or batch)
+# Parallel Processing Settings
+ENABLE_PARALLEL_PROCESSING = True  # Enable parallel video generation (experimental)
+MAX_PARALLEL_VIDEOS = 4            # Maximum videos to process simultaneously
+PARALLEL_PROCESSING_MEMORY_LIMIT = 8  # GB of RAM limit for parallel processing
 
-# Cleanup Policy: Keep ONLY final_output.mp4, remove all intermediate files:
-# - voice.mp3, voice.mp3.txt (voice generation files)
-# - subtitles.ass (subtitle files) 
-# - slideshow.mp4 (intermediate video)
-# - temp_subtitle_*.ass (temporary subtitle files)
-# - temp_audio_*.m4a (temporary audio files)
-# - *TEMP_MPY_wvf_snd.mp3 (MoviePy temporary files)
-# - images/ directory (unless from URL download)
+# Smart Duplicate Detection
+ENABLE_DUPLICATE_DETECTION = True
+DUPLICATE_CHECK_METHODS = ["content_hash", "filename_similarity"]  # Methods to detect duplicates
+DUPLICATE_SIMILARITY_THRESHOLD = 0.95  # Similarity threshold (0.0-1.0)
 
-# =============================================================================
-# TAB VISIBILITY CONFIGURATION - Control which tabs are shown in the UI
-# =============================================================================
-
-# Individual Tab Visibility Controls
+# Processing Optimizations
+PROCESSING_OPTIMIZATIONS = {
+    "skip_redundant_analysis": True,     # Skip analysis if content hasn't changed
+    "reuse_similar_effects": True,       # Reuse effects for similar content types
+    "batch_audio_generation": True,      # Generate all audio files before video processing
+    "optimize_image_loading": True,      # Optimize image loading and caching
+    "smart_temp_cleanup": True,          # Clean temporary files during processing
+    "memory_efficient_mode": True       # Use memory-efficient processing for large batches
+}
 TAB_VISIBILITY = {
-    'input': False,     # Removed - functionality integrated into other tabs
-    'images': True,     # Core functionality - always recommended
-    'video': True,      # Advanced video processing features
-    'merge': False,     # Advanced video merging - hide by default
-    'options': False,   # Removed - settings now in popup
-    'batch': False,     # Batch processing - hide by default
-    'log': True,        # Always visible for debugging and progress tracking
+    'input': False,
+    'images': True,
+    'video': True,
+    'merge': False,
+    'options': False,
+    'batch': False,
+    'speech_recognition': False,  # Speech recognition tab disabled
+    'log': True,
 }
 
-# UI Mode Presets - Simplified to only used configurations
-UI_MODE = "custom"  # Options: "standard", "custom"
-
-# UI Mode Definitions - Removed unused "simple" and "advanced" presets
+UI_MODE = "custom" 
 UI_MODE_PRESETS = {
     "standard": {
-        # Default interface with core features
         'input': True,
         'images': True,
         'video': True,
@@ -247,7 +283,6 @@ UI_MODE_PRESETS = {
         'log': True,
     },
     "custom": {
-        # Current custom configuration
         'input': False,
         'images': True,
         'video': True,
@@ -272,8 +307,4 @@ def get_tab_visibility():
         print(f"⚠️ Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
         return UI_MODE_PRESETS["standard"].copy()
 
-# Progress Display Settings
 PROGRESS_DISPLAY_MODE = "percentage"  # Options: "percentage", "descriptive", "both"
-# - "percentage": Always show just percentage (e.g., "45%")
-# - "descriptive": Show descriptive messages when available (e.g., "Processing video 2 of 5")  
-# - "both": Show both percentage and message (e.g., "45% - Processing video 2 of 5")

@@ -375,8 +375,10 @@ class OptionTab:
             tk.Radiobutton(subtitle_row2, text=text, variable=self.subtitle_style, 
                           value=value, bg="white", font=("Cascadia Code", 10)).pack(side="left", padx=(0, 4))  # Minimal spacing
 
+
+
         # Advanced Options section
-        advanced_frame = tk.LabelFrame(main_frame, text="Advanced Options", 
+        advanced_frame = tk.LabelFrame(main_frame, text="Advanced Options",
                                       font=("Cascadia Code", 10, "bold"), bg="white", fg="#333",
                                       relief="solid", bd=1)
         advanced_frame.pack(fill='x', pady=(0, 2))  # Minimal spacing

@@ -225,7 +225,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
     # Final verification
     if os.path.exists(output_file):
         file_size = os.path.getsize(output_file)
-        print(f"Output file created successfully. Size: {file_size} bytes")
+        # Reduced logging: print(f"Output file created successfully. Size: {file_size} bytes")
         return output_file
     else:
         print(f"ERROR: Output file was not created: {output_file}")

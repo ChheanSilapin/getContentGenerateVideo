@@ -39,6 +39,11 @@ class VideoGeneratorModel:
         self.local_folder = ""
         self.processing_option = "cpu"
         self.enhancement_options = {}
+
+        # Speech recognition validation settings (enabled by default)
+        self.enable_speech_validation = True
+        self.speech_validation_threshold = 0.7  # Minimum similarity score to pass validation
+        self.speech_validation_settings = {}
         
         # Progress tracking
         self.progress_callback = progress_callback
@@ -354,7 +359,16 @@ class VideoGeneratorModel:
         if stop_event and stop_event.is_set():
             return None
 
-        self.update_progress(30, "Generating audio with gTTS...")
+        self.update_progress(30, "Analyzing content and generating audio...")
+
+        # Perform content analysis for emotion-aware generation
+        from services.content_analysis import ContentAnalyzer
+        analyzer = ContentAnalyzer()
+        content_analysis = analyzer.analyze_content(self.text_input, title="", context="")
+
+        print(f"Content Analysis: Type={content_analysis.content_type.value}, "
+              f"Emotion={content_analysis.emotional_tone.value}, "
+              f"Confidence={content_analysis.confidence:.2f}")
 
         from services.audio_service import generate_audio
         audio_file = os.path.join(output_dir, "voice.mp3")
@@ -368,8 +382,22 @@ class VideoGeneratorModel:
 
         print(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
 
-        if generate_audio(self.text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion, language=language):
-            self.update_progress(50, "Audio generated successfully with gTTS")
+        # Store content analysis for later use
+        self.content_analysis = content_analysis
+
+        if generate_audio(self.text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion,
+                         language=language, content_analysis=content_analysis):
+            self.update_progress(50, "Audio generated successfully with emotion-aware settings")
+
+            # Optional speech recognition validation
+            if self.enable_speech_validation:
+                validation_result = self._validate_speech_recognition(audio_file, stop_event)
+                if validation_result is not None and not validation_result:
+                    # Validation failed, but continue with warning
+                    self.update_progress(55, "⚠️ Speech recognition validation failed, but continuing...")
+                elif validation_result:
+                    self.update_progress(55, "✅ Speech recognition validation passed")
+
             return audio_file
         else:
             self.update_progress(0, "Failed to generate audio")
@@ -387,7 +415,8 @@ class VideoGeneratorModel:
 
         # Prepare parameters for create_slideshow function
         title = "Generated Video"  # Default title
-        content = self.text_input  # Use the text input as content
+        # Use validated text if available, otherwise use original text
+        content = getattr(self, 'validated_text', self.text_input)
         use_gpu = (self.processing_option == "gpu")
         enhancement_options = self.enhancement_options or {}
 
@@ -456,6 +485,11 @@ class VideoGeneratorModel:
         except Exception:
             pass  # Use default
 
+        # Add content analysis to enhancement options if available
+        if hasattr(self, 'content_analysis'):
+            enhancement_options['content_analysis'] = self.content_analysis
+            # Reduced logging: print(f"Using emotion-aware video generation for {self.content_analysis.content_type.value} content")
+
         success = create_slideshow(
             images_dir,
             title,
@@ -486,15 +520,162 @@ class VideoGeneratorModel:
         from services.subtitle_service import generate_subtitles
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
-        # Get subtitle style from enhancement options
-        subtitle_style = self.enhancement_options.get("subtitle_style", "modern_glow")
+        # Get subtitle style from enhancement options or config default
+        from config import SUBTITLE_CONFIG
+        default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
+        subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        if generate_subtitles(self.text_input, video_file, audio_file, subtitle_file, subtitle_style):
-            self.update_progress(90, "Subtitles generated successfully")
+        # Use content analysis for enhanced subtitle generation if available
+        content_analysis = getattr(self, 'content_analysis', None)
+        sync_precision = "high"  # Default to high precision for emotion-aware sync
+
+        # Use validated text if available, otherwise use original text
+        text_for_subtitles = getattr(self, 'validated_text', self.text_input)
+
+        if generate_subtitles(text_for_subtitles, video_file, audio_file, subtitle_file, subtitle_style,
+                             content_analysis=content_analysis, sync_precision=sync_precision):
+            self.update_progress(90, "Subtitles generated successfully with emotion-aware sync")
+            if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
+                print(f"📝 Subtitles generated using validated text")
             return subtitle_file
         else:
             self.update_progress(0, "Failed to generate subtitles")
             return None
+
+    def _validate_speech_recognition(self, audio_file, stop_event=None):
+        """
+        Validate speech recognition accuracy for the generated audio
+
+        Args:
+            audio_file: Path to the generated audio file
+            stop_event: Threading event to stop the process
+
+        Returns:
+            bool: True if validation passes, False if fails, None if error
+        """
+        try:
+            if stop_event and stop_event.is_set():
+                return None
+
+            self.update_progress(52, "Validating speech recognition accuracy...")
+
+            # Import speech recognition service
+            from services.speech_recognition_core import SpeechRecognitionService
+
+            # Initialize speech recognition service
+            speech_service = SpeechRecognitionService()
+
+            if not speech_service.is_available():
+                print("⚠️ Speech recognition service not available, skipping validation")
+                return None
+
+            # Prepare voice settings for validation
+            voice_settings = {
+                'speed': getattr(self, 'tts_settings', {}).get('speed', 1.0),
+                'emotion': getattr(self, 'tts_settings', {}).get('emotion', 'neutral'),
+                'language': getattr(self, 'tts_settings', {}).get('language', 'en'),
+                'voice_actor': getattr(self, 'tts_settings', {}).get('voice_actor', None)
+            }
+
+            # Update voice settings with any speech validation specific settings
+            voice_settings.update(self.speech_validation_settings)
+
+            # Use content-type aware speech recognition with post-processing
+            content_analysis = getattr(self, 'content_analysis', None)
+            content_type = content_analysis.content_type if content_analysis else None
+
+            # Use the existing audio file instead of generating a new one
+            # This avoids redundant TTS generation
+            result = speech_service.recognize_speech_from_audio_with_postprocessing(
+                audio_file=audio_file,
+                original_text=self.text_input,
+                content_type=content_type
+            )
+
+            if not result.success or not result.recognized_text:
+                print("⚠️ Speech recognition failed or returned empty text")
+                return False
+
+            recognized_text = result.recognized_text
+
+            # Check if validation passes threshold (with content-type aware thresholds)
+            similarity_score = result.similarity_score
+            threshold = self._get_content_aware_threshold(content_type)
+            passes_validation = similarity_score >= threshold
+
+            # Log validation results (condensed)
+            print(f"Speech Recognition Validation: {similarity_score:.1%} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
+
+            # Store validation results for potential use by UI
+            self.last_speech_validation_result = {
+                'original_text': self.text_input,
+                'recognized_text': recognized_text,
+                'similarity_score': similarity_score,
+                'word_accuracy': result.word_accuracy,
+                'character_accuracy': result.character_accuracy,
+                'passes_validation': passes_validation,
+                'threshold': threshold,
+                'differences': result.differences
+            }
+
+            # Automatically apply recognized text to final output if validation passes
+            if passes_validation and similarity_score >= 0.8:  # High confidence threshold
+                print(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
+                # Update the text input with the recognized text for consistency
+                self.validated_text = recognized_text
+                # Log the change for transparency (condensed)
+                if recognized_text != self.text_input:
+                    print(f"📝 Text refined for better accuracy")
+            else:
+                # Keep original text if validation fails or confidence is low
+                self.validated_text = self.text_input
+                if not passes_validation:
+                    print(f"⚠️ Using original text due to validation failure")
+                else:
+                    print(f"⚠️ Using original text due to low confidence ({similarity_score:.1%})")
+
+            return passes_validation
+
+        except Exception as e:
+            print(f"❌ Error during speech recognition validation: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+    def _get_content_aware_threshold(self, content_type):
+        """Get content-type specific validation threshold"""
+        from services.content_analysis import ContentType
+
+        # Content-type specific thresholds
+        thresholds = {
+            ContentType.HISTORICAL: 0.75,      # Higher threshold for historical content (more proper nouns)
+            ContentType.STORY_REVIEW: 0.70,    # Standard threshold for stories
+            ContentType.QUOTE_REFLECTION: 0.65, # Lower threshold for philosophical content
+            ContentType.UNKNOWN: 0.70          # Default threshold
+        }
+
+        # Use content-specific threshold or fall back to configured threshold
+        return thresholds.get(content_type, self.speech_validation_threshold)
+
+    def set_speech_validation_settings(self, enable=False, threshold=0.7, voice_settings=None):
+        """
+        Configure speech recognition validation settings
+
+        Args:
+            enable: Whether to enable speech validation
+            threshold: Minimum similarity score to pass validation (0.0 to 1.0)
+            voice_settings: Optional voice settings for validation
+        """
+        self.enable_speech_validation = enable
+        self.speech_validation_threshold = max(0.0, min(1.0, threshold))
+        if voice_settings:
+            self.speech_validation_settings = voice_settings.copy()
+
+        print(f"Speech validation configured: enabled={enable}, threshold={threshold:.1%}")
+
+    def get_last_speech_validation_result(self):
+        """Get the results of the last speech validation"""
+        return getattr(self, 'last_speech_validation_result', None)
 
 
 def show_version():

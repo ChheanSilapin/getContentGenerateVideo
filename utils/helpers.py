@@ -305,7 +305,7 @@ def get_output_directory(user_settings=None):
             custom_folder = loaded_settings.get('output_folder')
             if custom_folder and custom_folder.strip() and custom_folder != "Default (Auto)":
                 if os.path.exists(custom_folder) and os.path.isdir(custom_folder):
-                    print(f"Using settings file output folder: {custom_folder}")
+                    # Reduced logging: print(f"Using settings file output folder: {custom_folder}")
                     return custom_folder
                 else:
                     print(f"Warning: Settings file output folder doesn't exist: {custom_folder}")

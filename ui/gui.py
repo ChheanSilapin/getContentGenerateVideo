@@ -281,6 +281,7 @@ class VideoGeneratorGUI:
         self.log_tab = ttk.Frame(self.notebook)
         self.batch_tab = ttk.Frame(self.notebook)
 
+
         # Get tab visibility configuration
         self.tabs_to_show = get_tab_visibility()
         
@@ -297,6 +298,7 @@ class VideoGeneratorGUI:
             self.notebook.add(self.option_tab, text="Options")
         if self.tabs_to_show['batch']:
             self.notebook.add(self.batch_tab, text="Batch")
+
         if self.tabs_to_show['log']:
             self.notebook.add(self.log_tab, text="Log")
 
@@ -315,6 +317,7 @@ class VideoGeneratorGUI:
             self.setup_option_tab()
         if self.tabs_to_show['batch']:
             self.setup_batch_tab()
+
 
     def _configure_styles(self):
         """Configure ttk styles for consistent appearance"""
@@ -384,8 +387,9 @@ class VideoGeneratorGUI:
 
         self.log("Welcome to Video Generator")
         self.log("Enter text and select images to create your video")
-        
-        
+
+
+
 
     def log(self, message):
         """Add a message to the log with timestamp"""

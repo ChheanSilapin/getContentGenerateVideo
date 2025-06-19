@@ -503,8 +503,16 @@ class ImageTab:
                     groups[subfolder_name] = []
                 groups[subfolder_name].append(item)
 
-        # Create group entries
-        for group_name, items in groups.items():
+        # Create group entries with natural sorting
+        def natural_sort_key(text):
+            """Convert text to a list of strings and numbers for natural sorting"""
+            import re
+            return [int(c) if c.isdigit() else c.lower() for c in re.split(r'(\d+)', text)]
+
+        # Sort group names naturally (1, 2, 3, 10 instead of 1, 10, 2, 3)
+        sorted_groups = sorted(groups.items(), key=lambda x: natural_sort_key(x[0]))
+
+        for group_name, items in sorted_groups:
             self.add_group_entry(group_name, items)
 
         # Ensure we have at least one group
@@ -516,23 +524,34 @@ class ImageTab:
         group_id = self.next_group_id
         self.next_group_id += 1
 
-        # Create new group entry
-        group_entry = GroupEntry(
-            self.entries_frame,
-            self.main_gui,
-            self.remove_group_entry,
-            group_id,
-            group_name
-        )
+        # Create group info structure that GroupEntry expects
+        group_info = {
+            'folder_name': group_name,
+            'output_name': f"{group_name}.mp4",
+            'pairs': []
+        }
 
-        # Add items to the group
+        # Add items to the group info
         for item in items:
             folder_path = item.get('folder_path')
             prompt = item.get('prompt', '')
             images = item.get('images', [])
 
             if folder_path and images:
-                group_entry.add_pair(folder_path, prompt, images)
+                group_info['pairs'].append({
+                    'video_file': folder_path,
+                    'prompt': prompt,
+                    'images': images
+                })
+
+        # Create new group entry with proper group_info structure
+        group_entry = GroupEntry(
+            self.entries_frame,
+            self.main_gui,
+            self.remove_group_entry,
+            group_id,
+            group_info
+        )
 
         # Store the group entry
         self.group_entries[group_id] = group_entry
@@ -608,6 +627,14 @@ class ImageTab:
 
         self.main_gui.log(f"Starting generation for {len(valid_entries)} image folder(s)")
 
+        # Show optimization status
+        try:
+            from services.optimization_service import get_optimization_manager
+            opt_manager = get_optimization_manager()
+            opt_manager.print_optimization_status()
+        except ImportError:
+            pass
+
         # Update UI state
         self.image_progress_bar["value"] = 0
         self.image_progress_label.config(text="0%")
@@ -639,8 +666,14 @@ class ImageTab:
                 progress = int((i / total_entries) * 100)
                 self.main_gui.root.after(0, lambda p=progress: self.update_progress(p, f"Processing entry {i+1}/{total_entries}"))
 
-                # Generate video for this entry and track result
-                success = self.generate_single_video(entry_data)
+                # Check if this is a group entry or individual entry
+                if self.current_mode == "grouped" and 'pairs' in entry_data:
+                    # Handle group generation
+                    success = self.generate_group_video(entry_data)
+                else:
+                    # Handle individual entry generation
+                    success = self.generate_single_video(entry_data)
+
                 if success:
                     successful_count += 1
                 else:
@@ -666,10 +699,76 @@ class ImageTab:
 
         except Exception as e:
             self.main_gui.root.after(0, lambda: self.main_gui.log(f"Error during video generation: {e}"))
+            from utils.error_helpers import show_error_with_log
             self.main_gui.root.after(0, lambda: show_error_with_log(self.main_gui, "Generation Error", "An error occurred", e))
         finally:
             # Reset UI state
             self.main_gui.root.after(0, self.reset_ui)
+
+    def generate_group_video(self, group_data):
+        """Generate videos for a group entry (multiple image folders combined) with smart optimizations"""
+        try:
+            group_name = group_data.get('folder_name', 'Unknown Group')
+            pairs = group_data.get('pairs', [])
+
+            if not pairs:
+                self.main_gui.log(f"Skipping invalid group: {group_name} - no pairs")
+                return False
+
+            self.main_gui.log(f"Generating videos for group: {group_name} ({len(pairs)} folders)")
+
+            # Import optimization service
+            from services.optimization_service import get_optimization_manager
+            opt_manager = get_optimization_manager()
+
+            # Process each pair in the group
+            successful_pairs = 0
+            for i, pair in enumerate(pairs):
+                if self.main_gui.stop_event.is_set():
+                    break
+
+                # Extract pair data - note that groups use 'video_file' instead of 'folder_path'
+                folder_path = pair.get('video_file')  # This is actually the folder path for image groups
+                prompt = pair.get('prompt', '')
+                images = pair.get('images', [])
+
+                if not folder_path or not prompt or not images:
+                    self.main_gui.log(f"Skipping invalid pair {i+1} in group {group_name}: folder_path={folder_path}")
+                    continue
+
+                # Check for duplicate content to avoid redundant processing
+                duplicate_result = opt_manager.check_duplicate_content(prompt, folder_path)
+                if duplicate_result:
+                    self.main_gui.log(f"🔄 Reusing result for duplicate content: {os.path.basename(folder_path)}")
+                    successful_pairs += 1
+                    continue
+
+                # Create individual entry data structure for this pair
+                pair_entry_data = {
+                    'folder_path': folder_path,
+                    'prompt': prompt,
+                    'images': images
+                }
+
+                # Generate video for this pair
+                self.main_gui.log(f"Processing pair {i+1}/{len(pairs)} in group {group_name}: {os.path.basename(folder_path)}")
+                success = self.generate_single_video(pair_entry_data)
+                if success:
+                    successful_pairs += 1
+                    # Register successful result for future duplicate detection
+                    opt_manager.register_content_result(prompt, folder_path, "generated_successfully")
+
+            # Return success if at least one pair was processed successfully
+            if successful_pairs > 0:
+                self.main_gui.log(f"Group {group_name}: {successful_pairs}/{len(pairs)} videos generated successfully")
+                return True
+            else:
+                self.main_gui.log(f"Group {group_name}: All video generation attempts failed")
+                return False
+
+        except Exception as e:
+            self.main_gui.log(f"Error generating videos for group {group_data.get('folder_name', 'unknown')}: {e}")
+            return False
 
     def generate_single_video(self, entry_data):
         """Generate a single video from entry data"""
