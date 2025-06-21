@@ -77,7 +77,7 @@ class ContentSyncManager:
                 analysis['severity'] = 'moderate'
             else:
                 analysis['severity'] = 'mild'
-                
+
         elif basic_duration_per_image > self.MAX_IMAGE_DURATION:
             analysis['mismatch_type'] = 'too_few_images'
             if basic_duration_per_image > 15.0:
@@ -86,6 +86,11 @@ class ContentSyncManager:
                 analysis['severity'] = 'moderate'
             else:
                 analysis['severity'] = 'mild'
+
+        # Additional check: if calculated duration significantly exceeds optimal, consider as too_few_images
+        elif basic_duration_per_image > self.OPTIMAL_IMAGE_DURATION * 1.5:
+            analysis['mismatch_type'] = 'too_few_images'
+            analysis['severity'] = 'mild'
         
         # Generate recommendations
         analysis['recommendations'] = self._generate_recommendations(analysis)
@@ -151,10 +156,17 @@ class ContentSyncManager:
         elif analysis['mismatch_type'] == 'too_few_images':
             timing_result = self._handle_too_few_images(analysis, audio_duration, image_count, base_multiplier)
         else:
-            # Balanced case - just apply mode multiplier
-            optimal_duration = self.OPTIMAL_IMAGE_DURATION * base_multiplier
-            timing_result['duration_per_image'] = min(optimal_duration, audio_duration / image_count)
-            timing_result['strategy'] = 'balanced'
+            # Balanced case - ensure we fill the entire audio duration
+            calculated_duration = audio_duration / image_count
+
+            # Use calculated duration to fill audio, but respect maximum limits
+            if calculated_duration <= self.MAX_IMAGE_DURATION:
+                timing_result['duration_per_image'] = calculated_duration
+                timing_result['strategy'] = 'balanced_fill_audio'
+            else:
+                # If calculated duration exceeds max, handle as too_few_images
+                timing_result = self._handle_too_few_images(analysis, audio_duration, image_count, base_multiplier)
+                timing_result['strategy'] = 'balanced_with_repetition'
         
         return timing_result
     
@@ -194,17 +206,18 @@ class ContentSyncManager:
         basic_duration = audio_duration / image_count
         
         if basic_duration > max_duration:
-            # Need to repeat images
-            repeats_needed = math.ceil(basic_duration / max_duration)
+            # Need to repeat images to fill the entire audio duration
+            slots_needed = math.ceil(audio_duration / max_duration)
             image_sequence = []
-            
-            for _ in range(repeats_needed):
-                image_sequence.extend(range(image_count))
-            
-            # Trim to fit exact duration
-            total_slots = len(image_sequence)
-            duration_per_slot = audio_duration / total_slots
-            
+
+            # Create sequence that fills the entire audio duration
+            for i in range(slots_needed):
+                image_index = i % image_count
+                image_sequence.append(image_index)
+
+            # Calculate duration per slot to exactly fill audio duration
+            duration_per_slot = audio_duration / len(image_sequence)
+
             strategy = 'image_repetition'
         else:
             # Can use each image once with extended duration
@@ -247,7 +260,17 @@ class ContentSyncManager:
         summary_parts.append(f"Strategy: {strategy.replace('_', ' ').title()}")
         summary_parts.append(f"Duration per image: {timing_result['duration_per_image']:.2f}s")
         summary_parts.append(f"Total images used: {timing_result['total_images_used']}")
-        
+
+        # Calculate and show total video duration vs audio duration
+        image_sequence = timing_result.get('image_sequence', [])
+        total_video_duration = timing_result['duration_per_image'] * len(image_sequence)
+        audio_duration = analysis.get('audio_duration', 0)
+        summary_parts.append(f"Video duration: {total_video_duration:.2f}s (Audio: {audio_duration:.2f}s)")
+
+        # Add warning if video duration doesn't match audio
+        if abs(total_video_duration - audio_duration) > 0.5:
+            summary_parts.append("⚠️  Duration mismatch detected!")
+
         # Mismatch info
         if analysis['mismatch_type'] != 'balanced':
             mismatch_desc = analysis['mismatch_type'].replace('_', ' ').title()

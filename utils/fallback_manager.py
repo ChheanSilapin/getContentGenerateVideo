@@ -43,8 +43,11 @@ def fallback_ensure_directory_exists(directory_path):
                 os.makedirs(directory_path, exist_ok=True)
                 print(f"Created directory: {directory_path}")
             return True
-        except Exception as e:
-            print(f"Error creating directory {directory_path}: {e}")
+        except OSError as os_error:
+            print(f"OS Error creating directory {directory_path}: {os_error}")
+            return False
+        except Exception as fallback_error:
+            print(f"Unexpected error creating directory {directory_path}: {fallback_error}")
             return False
 
 def fallback_get_ffmpeg_path():

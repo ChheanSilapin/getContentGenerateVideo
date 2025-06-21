@@ -1,5 +1,6 @@
 """
-Video optimization service with advanced enhancement techniques
+Video Optimization Service - Unified video enhancement and performance optimization
+Consolidates video quality enhancement and performance optimization features
 """
 import os
 import numpy as np
@@ -8,6 +9,8 @@ import time
 import shutil
 import traceback
 import sys
+import hashlib
+from typing import Dict, List, Optional
 
 # Make cv2 import optional for smaller bundles and better compatibility
 try:
@@ -574,6 +577,175 @@ def apply_ffmpeg_enhancements(input_video, output_video, enhancement_options=Non
         except Exception as copy_error:
             print(f"Error copying original video as fallback: {copy_error}")
             return None
+
+
+# Performance Optimization Manager (consolidated from optimization_service.py)
+class PerformanceOptimizer:
+    """Manages performance optimizations across the video generation pipeline"""
+
+    def __init__(self):
+        self._load_config()
+        self._duplicate_tracker = {}
+
+    def _load_config(self):
+        """Load optimization configuration"""
+        try:
+            import config
+            self.enable_duplicate_detection = getattr(config, 'ENABLE_DUPLICATE_DETECTION', True)
+            self.duplicate_threshold = getattr(config, 'DUPLICATE_SIMILARITY_THRESHOLD', 0.95)
+            self.processing_opts = getattr(config, 'PROCESSING_OPTIMIZATIONS', {})
+            self.ffmpeg_opts = getattr(config, 'FFMPEG_OPTIMIZATION', {})
+        except ImportError:
+            # Fallback settings
+            self.enable_duplicate_detection = True
+            self.duplicate_threshold = 0.95
+            self.processing_opts = {}
+            self.ffmpeg_opts = {}
+
+    def get_content_hash(self, text: str, additional_data: str = "") -> str:
+        """Generate hash for content to detect duplicates"""
+        content = f"{text}|{additional_data}".strip()
+        return hashlib.md5(content.encode('utf-8')).hexdigest()
+
+    def check_duplicate_content(self, text: str, folder_path: str = "") -> Optional[str]:
+        """Check if content is duplicate and return previous result if found"""
+        if not self.enable_duplicate_detection:
+            return None
+
+        content_hash = self.get_content_hash(text, folder_path)
+
+        if content_hash in self._duplicate_tracker:
+            previous_result = self._duplicate_tracker[content_hash]
+            print(f"🔄 Duplicate content detected (hash: {content_hash[:8]}...)")
+            print(f"   Previous result: {previous_result}")
+            return previous_result
+
+        return None
+
+    def register_content_result(self, text: str, folder_path: str, result_path: str):
+        """Register successful generation result for duplicate detection"""
+        if not self.enable_duplicate_detection:
+            return
+
+        content_hash = self.get_content_hash(text, folder_path)
+        self._duplicate_tracker[content_hash] = result_path
+        print(f"📝 Registered content result (hash: {content_hash[:8]}...)")
+
+    def get_optimized_ffmpeg_params(self) -> Dict:
+        """Get optimized FFmpeg parameters for faster encoding"""
+        base_params = {
+            "preset": "fast",
+            "crf": "22",
+            "threads": "0",
+            "tune": "film",
+            "profile:v": "high",
+            "level": "4.0",
+            "pix_fmt": "yuv420p",
+            "c:a": "aac",
+            "b:a": "128k",
+            "movflags": "+faststart"
+        }
+
+        # Override with user-configured options
+        base_params.update(self.ffmpeg_opts)
+        return base_params
+
+    def should_skip_analysis(self, content_hash: str) -> bool:
+        """Check if content analysis should be skipped for performance"""
+        return self.processing_opts.get("skip_redundant_analysis", True) and \
+               content_hash in self._duplicate_tracker
+
+    def should_reuse_effects(self, content_type: str, emotional_tone: str) -> bool:
+        """Check if effects can be reused for similar content"""
+        return self.processing_opts.get("reuse_similar_effects", True)
+
+    def should_batch_audio(self) -> bool:
+        """Check if audio generation should be batched"""
+        return self.processing_opts.get("batch_audio_generation", True)
+
+    def should_optimize_images(self) -> bool:
+        """Check if image loading should be optimized"""
+        return self.processing_opts.get("optimize_image_loading", True)
+
+    def should_cleanup_during_processing(self) -> bool:
+        """Check if temporary files should be cleaned during processing"""
+        return self.processing_opts.get("smart_temp_cleanup", True)
+
+    def is_memory_efficient_mode(self) -> bool:
+        """Check if memory-efficient mode is enabled"""
+        return self.processing_opts.get("memory_efficient_mode", True)
+
+    def get_optimization_summary(self) -> Dict:
+        """Get summary of current optimization settings"""
+        return {
+            "duplicate_detection": self.enable_duplicate_detection,
+            "duplicate_threshold": self.duplicate_threshold,
+            "ffmpeg_preset": self.ffmpeg_opts.get("preset", "fast"),
+            "ffmpeg_crf": self.ffmpeg_opts.get("crf", 22),
+            "processing_optimizations": self.processing_opts,
+            "tracked_content": len(self._duplicate_tracker)
+        }
+
+    def print_optimization_status(self):
+        """Print current optimization status"""
+        from utils.logging_utils import log_performance_status
+
+        summary = self.get_optimization_summary()
+        log_performance_status("\n🚀 Performance Optimization Status:")
+        log_performance_status(f"   Duplicate Detection: {'✅' if summary['duplicate_detection'] else '❌'}")
+        log_performance_status(f"   FFmpeg Preset: {summary['ffmpeg_preset']} (CRF: {summary['ffmpeg_crf']})")
+        log_performance_status(f"   Tracked Content: {summary['tracked_content']} items")
+
+        enabled_opts = [k for k, v in summary['processing_optimizations'].items() if v]
+        if enabled_opts:
+            log_performance_status(f"   Enabled Optimizations: {', '.join(enabled_opts)}")
+
+
+# Global performance optimizer instance
+performance_optimizer = PerformanceOptimizer()
+
+
+def get_performance_optimizer() -> PerformanceOptimizer:
+    """Get the global performance optimizer instance"""
+    return performance_optimizer
+
+
+def apply_ffmpeg_optimizations(cmd_args: List[str]) -> List[str]:
+    """Apply FFmpeg optimizations to command arguments"""
+    optimized_params = performance_optimizer.get_optimized_ffmpeg_params()
+
+    # Insert optimization parameters before output file
+    if len(cmd_args) >= 2:
+        # Find the output file (usually the last argument)
+        output_file = cmd_args[-1]
+        base_cmd = cmd_args[:-1]
+
+        # Add optimization parameters
+        for key, value in optimized_params.items():
+            if key not in [arg.lstrip('-') for arg in base_cmd]:  # Avoid duplicates
+                base_cmd.extend([f"-{key}", value])
+
+        return base_cmd + [output_file]
+
+    return cmd_args
+
+
+def log_performance_improvement(operation: str, original_time: float, optimized_time: float):
+    """Log performance improvement for an operation"""
+    if optimized_time < original_time:
+        improvement = ((original_time - optimized_time) / original_time) * 100
+        print(f"⚡ {operation}: {improvement:.1f}% faster ({original_time:.1f}s → {optimized_time:.1f}s)")
+    else:
+        print(f"📊 {operation}: {optimized_time:.1f}s")
+
+
+# Backward compatibility aliases for optimization_service.py
+def get_optimization_manager() -> PerformanceOptimizer:
+    """Backward compatibility alias for get_performance_optimizer"""
+    return get_performance_optimizer()
+
+
+optimization_manager = performance_optimizer  # Backward compatibility alias
 
 
 

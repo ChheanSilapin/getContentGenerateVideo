@@ -246,6 +246,12 @@ class ContentAnalyzer:
 
         return analysis
 
+    def clear_cache(self):
+        """Clear all cached content analysis"""
+        self._analysis_cache.clear()
+        self._cache_timestamps.clear()
+        print("🗑️ Content analysis cache cleared")
+
     def _analyze_content_type(self, text: str) -> Tuple[ContentType, float]:
         """Analyze and determine content type"""
         scores = {}
@@ -321,45 +327,25 @@ class ContentAnalyzer:
             'pitch_variation': 0.1
         }
 
-        # Adjust based on content type
-        if content_type == ContentType.HISTORICAL:
+        # Simplified voice settings - use only story_review and educational patterns for all content types
+        if content_type in [ContentType.EDUCATIONAL, ContentType.DOCUMENTARY, ContentType.UNKNOWN]:
+            # Use educational voice pattern for learning/informational content
             base_settings.update({
-                'speed': 0.9,
-                'emotion': 'serious',
-                'pitch_variation': 0.05
+                'speed': 1.0,
+                'emotion': 'neutral',
+                'pitch_variation': 0.1
             })
-        elif content_type == ContentType.STORY_REVIEW:
+        else:
+            # Use story_review voice pattern for all other content types
             base_settings.update({
                 'speed': 1.0,
                 'emotion': 'dramatic',
                 'pitch_variation': 0.15
             })
-        elif content_type == ContentType.QUOTE_REFLECTION:
-            base_settings.update({
-                'speed': 0.8,
-                'emotion': 'reflective',
-                'pitch_variation': 0.08
-            })
 
-        # Adjust based on emotional tone
-        if emotional_tone == EmotionalTone.DRAMATIC:
-            base_settings.update({
-                'speed': 0.85,
-                'volume': 0.9,
-                'pitch_variation': 0.2
-            })
-        elif emotional_tone == EmotionalTone.REFLECTIVE:
-            base_settings.update({
-                'speed': 0.75,
-                'volume': 0.7,
-                'pitch_variation': 0.05
-            })
-        elif emotional_tone == EmotionalTone.INSPIRATIONAL:
-            base_settings.update({
-                'speed': 1.1,
-                'volume': 0.85,
-                'pitch_variation': 0.12
-            })
+        # DISABLED: Emotional tone adjustments to maintain consistent voice settings
+        # All emotional tones now use the base content-type settings without modification
+        # This ensures consistent voice experience as requested by user
 
         return base_settings
 
@@ -377,7 +363,7 @@ class ContentAnalyzer:
             'film_grain': False
         }
 
-        # Content-specific adjustments
+        # Content-specific adjustments for all content types
         if content_type == ContentType.HISTORICAL:
             effects.update({
                 'transitions': 'dissolve',
@@ -401,6 +387,45 @@ class ContentAnalyzer:
                 'color_grading': 'warm',
                 'brightness': 0.1,
                 'vignette': True
+            })
+        elif content_type == ContentType.EDUCATIONAL:
+            effects.update({
+                'transitions': 'fade',
+                'zoom_effect': False,
+                'color_grading': 'clean',
+                'contrast_boost': 1.1,
+                'clarity': True
+            })
+        elif content_type == ContentType.ENTERTAINMENT:
+            effects.update({
+                'transitions': 'quick_fade',
+                'zoom_effect': True,
+                'color_grading': 'vibrant',
+                'saturation': 1.2,
+                'energy_boost': True
+            })
+        elif content_type == ContentType.DOCUMENTARY:
+            effects.update({
+                'transitions': 'dissolve',
+                'pan_effect': True,
+                'color_grading': 'natural',
+                'saturation': 0.9,
+                'vignette': True
+            })
+        elif content_type == ContentType.PERSONAL:
+            effects.update({
+                'transitions': 'soft_fade',
+                'zoom_effect': False,
+                'color_grading': 'warm',
+                'brightness': 0.05,
+                'intimate_feel': True
+            })
+        else:  # UNKNOWN or other types
+            effects.update({
+                'transitions': 'fade',
+                'zoom_effect': False,
+                'color_grading': 'neutral',
+                'balanced_look': True
             })
 
         # Emotional adjustments
@@ -435,12 +460,13 @@ class ContentAnalyzer:
             'sync_precision': 'high'
         }
 
-        # Content-specific timing
+        # Content-specific timing for all content types
         if content_type == ContentType.HISTORICAL:
             timing.update({
                 'image_duration': 5.0,
                 'transition_duration': 0.8,
-                'pause_emphasis': 1.2
+                'pause_emphasis': 1.2,
+                'rhythm_variation': 0.1
             })
         elif content_type == ContentType.QUOTE_REFLECTION:
             timing.update({
@@ -453,7 +479,43 @@ class ContentAnalyzer:
             timing.update({
                 'image_duration': 3.5,
                 'transition_duration': 0.4,
+                'pause_emphasis': 1.0,
                 'rhythm_variation': 0.15
+            })
+        elif content_type == ContentType.EDUCATIONAL:
+            timing.update({
+                'image_duration': 4.5,
+                'transition_duration': 0.6,
+                'pause_emphasis': 1.3,
+                'rhythm_variation': 0.08
+            })
+        elif content_type == ContentType.ENTERTAINMENT:
+            timing.update({
+                'image_duration': 2.8,
+                'transition_duration': 0.3,
+                'pause_emphasis': 0.8,
+                'rhythm_variation': 0.2
+            })
+        elif content_type == ContentType.DOCUMENTARY:
+            timing.update({
+                'image_duration': 5.5,
+                'transition_duration': 0.9,
+                'pause_emphasis': 1.4,
+                'rhythm_variation': 0.06
+            })
+        elif content_type == ContentType.PERSONAL:
+            timing.update({
+                'image_duration': 4.0,
+                'transition_duration': 0.5,
+                'pause_emphasis': 1.1,
+                'rhythm_variation': 0.12
+            })
+        else:  # UNKNOWN or other types
+            timing.update({
+                'image_duration': 4.0,
+                'transition_duration': 0.5,
+                'pause_emphasis': 1.0,
+                'rhythm_variation': 0.1
             })
 
         # Emotional timing adjustments

@@ -217,19 +217,21 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             content, len(image_files), audio_duration, timing_mode=timing_mode
         )
 
-        print("\n" + "="*50)
-        print("CONTENT SYNCHRONIZATION ANALYSIS")
-        print("="*50)
-        print(content_sync_manager.get_timing_summary(timing_result))
-        print("="*50 + "\n")
+        from utils.logging_utils import log_content_analysis
+        log_content_analysis("\n" + "="*50)
+        log_content_analysis("CONTENT SYNCHRONIZATION ANALYSIS")
+        log_content_analysis("="*50)
+        log_content_analysis(content_sync_manager.get_timing_summary(timing_result))
+        log_content_analysis("="*50 + "\n")
 
         # Get optimized timing parameters
         duration_per_image = timing_result['duration_per_image']
         image_sequence = timing_result['image_sequence']
         effects_recommended = timing_result.get('effects_recommended', [])
 
-        print(f"Optimized duration per image: {duration_per_image:.2f} seconds")
-        print(f"Using {len(image_sequence)} image slots from {len(image_files)} available images")
+        from utils.logging_utils import log_content_analysis
+        log_content_analysis(f"Optimized duration per image: {duration_per_image:.2f} seconds")
+        log_content_analysis(f"Using {len(image_sequence)} image slots from {len(image_files)} available images")
         
         # Process images into clips using optimized sequence
         clips = []
@@ -284,13 +286,14 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                         # Standard zoom effect
                         processed_clip = processed_clip.resize(lambda t: 1 + 0.1 * t / duration_per_image)
 
-                # Apply fade effect with adaptive duration
-                if fade_effect and use_effects and duration_per_image > 1.0:
-                    # Adaptive fade duration based on image duration
-                    if duration_per_image > 5.0:
-                        fade_duration = min(1.0, duration_per_image / 6)  # Longer fades for longer images
+                # Apply fade effect with conservative duration to prevent black frames
+                if fade_effect and use_effects and duration_per_image > 1.5:
+                    # Conservative fade duration to prevent black gaps
+                    max_fade = min(0.3, duration_per_image * 0.15)  # Max 15% of clip duration
+                    if duration_per_image > 4.0:
+                        fade_duration = min(0.4, max_fade)  # Slightly longer for very long clips
                     else:
-                        fade_duration = min(0.5, duration_per_image / 4)  # Standard fade
+                        fade_duration = min(0.2, max_fade)  # Conservative for normal clips
                     processed_clip = processed_clip.fadein(fade_duration).fadeout(fade_duration)
 
                 clips.append(processed_clip)

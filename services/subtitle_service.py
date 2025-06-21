@@ -10,7 +10,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Import centralized config (no fallback duplication)
 from config import DEFAULT_MAX_CHARS_PER_LINE, SUBTITLE_CONFIG
-from utils.helpers import ensure_directory_exists
+from utils.helpers import ensure_directory_exists, get_media_duration_safe
 from utils.text_processing import process_text_for_subtitles
 
 # Try to import pydub for speech analysis
@@ -69,7 +69,7 @@ class SubtitleGenerator:
     def generate_subtitles(self, text, video_file, audio_file, output_file, style="modern_glow", content_analysis=None):
         """
         Main entry point for subtitle generation
-        
+
         Args:
             text: Text content for subtitles
             video_file: Path to video file
@@ -77,23 +77,26 @@ class SubtitleGenerator:
             output_file: Path to output subtitle file
             style: Subtitle style preset
             content_analysis: Optional ContentAnalysis object
-            
+
         Returns:
             bool: True if successful, False otherwise
         """
         try:
+            # Store content analysis for use in timing calculations
+            self.content_analysis = content_analysis
+
             # Clean text and create output directory
             cleaned_text = process_text_for_subtitles(text)
             ensure_directory_exists(os.path.dirname(output_file))
-            
+
             # Save text file for processing
             text_file = f"{audio_file}.txt"
             with open(text_file, "w", encoding="utf-8") as f:
                 f.write(cleaned_text)
-            
+
             # Get style configuration
             style_config = self._get_style_config(style)
-            
+
             # Generate subtitle file
             return self._create_subtitle_file(cleaned_text, audio_file, output_file, style_config)
             
@@ -153,18 +156,8 @@ class SubtitleGenerator:
             return False
     
     def _get_audio_duration(self, audio_file):
-        """Get audio duration with fallback"""
-        try:
-            with AudioFileClip(audio_file) as audio:
-                return audio.duration
-        except Exception:
-            try:
-                if PYDUB_AVAILABLE:
-                    audio = AudioSegment.from_file(audio_file)
-                    return len(audio) / 1000.0
-            except Exception:
-                pass
-        return 10.0  # Fallback
+        """Get audio duration using centralized function"""
+        return get_media_duration_safe(audio_file)
     
     def _calculate_timing(self, audio_file, word_groups, duration):
         """Calculate timing with optional speech analysis"""
@@ -285,24 +278,61 @@ class SubtitleGenerator:
         if num_groups == 0:
             return []
 
-        # Balanced timing calculation for better voice synchronization
-        # Slow down subtitles to match voice timing better
-        min_display = 1.5  # Increased minimum display time
-        max_display = 4.0  # Increased maximum display time
-        gap_time = 0.1    # Larger gap for better pacing
+        # Content-aware timing calculation for better synchronization
+        min_display = 1.2  # Reduced minimum display time for better flow
+        max_display = 4.5  # Slightly increased maximum display time
+        gap_time = 0.05   # Smaller gap for smoother transitions
 
         # Calculate reading speed based on content
         total_chars = sum(len(group['text']) for group in word_groups)
         chars_per_second = total_chars / duration if duration > 0 else 10
 
-        # Adjust timing based on speech speed - slower subtitles to match voice
-        # Add delay so subtitles appear with the voice, not ahead of it
-        if chars_per_second > 15:  # Fast speech
-            base_display_time = 2.5  # Slower to match voice
-        elif chars_per_second > 10:  # Normal speech
-            base_display_time = 3.0  # Slower to match voice
-        else:  # Slow speech
-            base_display_time = 3.5  # Slower to match voice
+        # Adjust timing based on speech speed and content type
+        content_analysis = getattr(self, 'content_analysis', None)
+        if content_analysis and hasattr(content_analysis, 'content_type'):
+            content_type = content_analysis.content_type.value
+
+            # Comprehensive content-type specific timing
+            if content_type == 'quote_reflection':
+                base_display_time = 2.8  # Balanced timing for reflection
+                min_display = 1.5
+                gap_time = 0.1
+            elif content_type == 'historical':
+                base_display_time = 3.2  # Slower for historical content
+                min_display = 1.8
+                gap_time = 0.15
+            elif content_type == 'story_review':
+                base_display_time = 2.4  # Faster for story content
+                min_display = 1.2
+                gap_time = 0.05
+            elif content_type == 'educational':
+                base_display_time = 3.0  # Moderate pace for learning
+                min_display = 1.6
+                gap_time = 0.1
+            elif content_type == 'entertainment':
+                base_display_time = 2.2  # Fast pace for entertainment
+                min_display = 1.0
+                gap_time = 0.05
+            elif content_type == 'documentary':
+                base_display_time = 3.5  # Slower for documentary content
+                min_display = 2.0
+                gap_time = 0.2
+            elif content_type == 'personal':
+                base_display_time = 2.6  # Personal pace
+                min_display = 1.4
+                gap_time = 0.08
+            else:  # unknown or other types
+                base_display_time = 2.5  # Default timing
+                min_display = 1.3
+                gap_time = 0.08
+        else:
+            # Default timing based on speech speed
+            if chars_per_second > 15:  # Fast speech
+                base_display_time = 2.2  # Faster subtitles for fast speech
+            elif chars_per_second > 10:  # Normal speech
+                base_display_time = 2.5  # Balanced timing
+            else:  # Slow speech
+                base_display_time = 3.0  # Slower for slow speech
 
         # Calculate optimal timing distribution to match speech pace
         total_estimated_time = sum(max(min_display, min(max_display,

@@ -96,7 +96,8 @@ class TTSCache:
             if os.path.exists(cached_file):
                 try:
                     shutil.copy2(cached_file, output_file)
-                    print(f"🚀 Using cached TTS audio (key: {cache_key[:8]}...)")
+                    from utils.logging_utils import log_cache_operations
+                    log_cache_operations(f"🚀 Using cached TTS audio (key: {cache_key[:8]}...)")
                     return True
                 except Exception as e:
                     print(f"Warning: Could not copy cached audio: {e}")
@@ -115,7 +116,8 @@ class TTSCache:
             shutil.copy2(audio_file, cached_file)
             self._cache[cache_key] = cached_file
             self._cache_timestamps[cache_key] = time.time()
-            print(f"💾 Cached TTS audio (cache size: {len(self._cache)})")
+            from utils.logging_utils import log_cache_operations
+            log_cache_operations(f"💾 Cached TTS audio (cache size: {len(self._cache)})")
 
             # Cleanup old cache entries periodically
             if len(self._cache) % 10 == 0:
@@ -156,8 +158,39 @@ class TTSCache:
             self._cache.pop(key, None)
             self._cache_timestamps.pop(key, None)
 
+    def clear_cache(self):
+        """Clear all cached TTS audio"""
+        # Clear memory cache
+        self._cache.clear()
+        self._cache_timestamps.clear()
+
+        # Clear cached files from disk
+        if self._cache_dir and os.path.exists(self._cache_dir):
+            try:
+                for filename in os.listdir(self._cache_dir):
+                    if filename.endswith('.mp3'):
+                        file_path = os.path.join(self._cache_dir, filename)
+                        os.unlink(file_path)
+                print("🗑️ TTS cache cleared")
+            except Exception as e:
+                print(f"Warning: Could not clear TTS cache files: {e}")
+
 # Global TTS cache instance
 _tts_cache = TTSCache()
+
+
+def clear_all_caches():
+    """Clear both content analysis and TTS caches"""
+    # Clear TTS cache
+    _tts_cache.clear_cache()
+
+    # Clear content analysis cache
+    from services.content_analysis import ContentAnalyzer
+    analyzer = ContentAnalyzer()
+    analyzer.clear_cache()
+
+    print("🗑️ All caches cleared - voice settings will be regenerated")
+
 
 def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en',
                   content_analysis=None, title=""):
@@ -192,13 +225,19 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
 
     print(f"Generating audio for text: {text[:50]}...")
 
+    # Store original user settings before content analysis
+    original_voice_actor = voice_actor
+    original_language = language
+
     # Use content analysis for enhanced settings if available
     if content_analysis:
         voice_settings = content_analysis.recommended_voice_settings
         speed = voice_settings.get('speed', speed)
         emotion = voice_settings.get('emotion', emotion)
-        language = voice_settings.get('language', language)
-        voice_actor = voice_settings.get('voice_actor', voice_actor)
+        # Only use content analysis language/voice if user hasn't specified one
+        if not original_voice_actor or original_voice_actor == "Default":
+            language = voice_settings.get('language', language)
+            voice_actor = voice_settings.get('voice_actor', voice_actor)
         print(f"Using content-aware settings: type={content_analysis.content_type.value}, "
               f"tone={content_analysis.emotional_tone.value}, speed={speed}, emotion={emotion}")
     elif title:
@@ -209,6 +248,10 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
         voice_settings = analysis.recommended_voice_settings
         speed = voice_settings.get('speed', speed)
         emotion = voice_settings.get('emotion', emotion)
+        # Only use content analysis language/voice if user hasn't specified one
+        if not original_voice_actor or original_voice_actor == "Default":
+            language = voice_settings.get('language', language)
+            voice_actor = voice_settings.get('voice_actor', voice_actor)
         print(f"Auto-detected content: type={analysis.content_type.value}, "
               f"tone={analysis.emotional_tone.value}")
 
@@ -216,7 +259,8 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
 
     # Process text for TTS with emotional enhancement
     processed_text = process_text_for_tts(text, emotion)
-    print(f"Processed text: {processed_text[:100]}...")
+    from utils.logging_utils import log_content_analysis
+    log_content_analysis(f"Processed text: {processed_text[:100]}...")
 
     # Check cache first for performance optimization
     if _tts_cache.get_cached_audio(processed_text, voice_actor, speed, emotion, language, output_file):
@@ -259,8 +303,11 @@ def generate_audio_gtts(text, output_file, speed=0.8, emotion="neutral", languag
         # Adjust text based on emotion for better gTTS output
         emotional_text = enhance_text_for_emotion(text, emotion)
 
-        print(f"Generating audio with gTTS using language: {lang_code}")
-        print(f"Emotion: {emotion}, Speed: {speed}")
+        from utils.logging_utils import log_essential
+        log_essential(f"Generating audio with gTTS using language: {lang_code}")
+        if voice_actor and voice_actor != "Default":
+            log_essential(f"Voice actor '{voice_actor}' mapped to language: {lang_code}")
+        log_essential(f"Emotion: {emotion}, Speed: {speed}")
 
         # Create gTTS object
         tts = gTTS(text=emotional_text, lang=lang_code, slow=False)
@@ -476,21 +523,24 @@ def get_language_for_voice_actor(voice_actor, default_language='en'):
         return default_language
 
     # Map common voice actor preferences to language variants
+    # Note: gTTS has limited accent variation for English variants
+    # For more distinct voices, use different languages
     voice_mapping = {
-        "British": "en-uk",
-        "American": "en-us",
-        "Australian": "en-au",
-        "Canadian": "en-ca",
-        "Indian": "en-in",
-        "French": "fr",
-        "German": "de",
-        "Spanish": "es",
-        "Italian": "it",
-        "Portuguese": "pt",
-        "Russian": "ru",
-        "Japanese": "ja",
-        "Korean": "ko",
-        "Chinese": "zh"
+        "British": "en-uk",      # Subtle British pronunciation
+        "American": "en-us",     # Subtle American pronunciation
+        "Australian": "en-au",   # Subtle Australian pronunciation
+        "Canadian": "en-ca",     # Subtle Canadian pronunciation
+        "Indian": "en-in",       # Subtle Indian English pronunciation
+        "French": "fr",          # Distinct French voice
+        "German": "de",          # Distinct German voice
+        "Spanish": "es",         # Distinct Spanish voice
+        "Italian": "it",         # Distinct Italian voice
+        "Portuguese": "pt",      # Distinct Portuguese voice
+        "Hindi": "hi",           # Distinct Hindi voice (for Indian users)
+        "Russian": "ru",         # Distinct Russian voice
+        "Japanese": "ja",        # Distinct Japanese voice
+        "Korean": "ko",          # Distinct Korean voice
+        "Chinese": "zh"          # Distinct Chinese voice
     }
 
     return voice_mapping.get(voice_actor, default_language)
@@ -574,7 +624,21 @@ def initialize_speech_recognition(model_path=None, language="en-us"):
         if model_path and os.path.exists(model_path):
             model = vosk.Model(model_path)
         else:
-            # Try to find a default model
+            # Try to find a bundled model first (for PyInstaller)
+            import sys
+            bundled_model_path = None
+
+            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+                bundled_model_path = os.path.join(sys._MEIPASS, 'vosk-model')
+                if os.path.exists(bundled_model_path):
+                    try:
+                        model = vosk.Model(bundled_model_path)
+                        print(f"Using bundled Vosk model: {bundled_model_path}")
+                        return model, vosk.KaldiRecognizer(model, 16000)
+                    except Exception as e:
+                        print(f"Failed to load bundled model: {e}")
+
+            # Fallback: Try to find a default model by name
             default_models = [
                 f"vosk-model-{language}",
                 f"vosk-model-small-{language}",

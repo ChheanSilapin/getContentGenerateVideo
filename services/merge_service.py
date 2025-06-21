@@ -4,16 +4,21 @@ import gc  # For garbage collection
 from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 # Import centralized utility functions
-from utils.helpers import create_temp_file_with_cleanup, cleanup_temp_files
+from utils.helpers import create_temp_file_with_cleanup, cleanup_temp_files, get_media_duration_safe
+from services.video_utils import get_media_duration
 
 class VideoService:
     @staticmethod
     def get_video_info(video_path):
-        """Get video metadata with enhanced error handling"""
+        """Get video metadata with enhanced error handling using centralized duration function"""
         try:
+            # Use centralized duration function for better reliability
+            duration = get_media_duration_safe(video_path)
+
+            # Get other metadata with MoviePy
             with VideoFileClip(video_path) as clip:
                 return {
-                    'duration': clip.duration,
+                    'duration': duration,  # Use centralized duration
                     'size': clip.size,
                     'fps': clip.fps,
                     'audio': clip.audio is not None,
@@ -315,12 +320,13 @@ class VideoService:
 
     @staticmethod
     def get_total_duration(video_paths):
-        """Calculate total duration of all videos"""
+        """Calculate total duration of all videos using centralized duration function"""
         try:
             total_duration = 0
             for path in video_paths:
-                info = VideoService.get_video_info(path)
-                total_duration += info['duration']
+                # Use centralized duration function directly for better performance
+                duration = get_media_duration_safe(path)
+                total_duration += duration
             return total_duration
         except Exception as e:
             raise Exception(f"Error calculating total duration: {str(e)}")

@@ -31,7 +31,9 @@ class SpeechRecognitionPostProcessor:
             "too survive": "to survive",  # Fix specific "to" -> "too" error
             "too fascinate": "to fascinate",
             "too dive": "to dive",
-            "abyss zones": "abyssal zones"  # Fix "abyss" -> "abyssal"
+            "abyss zones": "abyssal zones",  # Fix "abyss" -> "abyssal"
+            "dicks": "takes",  # Fix common speech recognition error
+            "dicks unexpected": "takes unexpected"  # Fix phrase-level error
         }
         
         self.historical_corrections = {
@@ -58,11 +60,26 @@ class SpeechRecognitionPostProcessor:
             "plot": "plot",
             "narrative": "narrative",
             "protagonist": "protagonist",
+            "protagonists": "protagonists",
             "antagonist": "antagonist",
             "climax": "climax",
             "theme": "theme",
+            "themes": "themes",
             "symbolism": "symbolism",
-            "dialogue": "dialogue"
+            "dialogue": "dialogue",
+            "novel": "novel",
+            "chapter": "chapter",
+            "readers": "readers",
+            "engaged": "engaged",
+            "unexpected": "unexpected",
+            "turns": "turns",
+            "takes": "takes",
+            "journey": "journey",
+            "redemption": "redemption",
+            "hope": "hope",
+            "resonates": "resonates",
+            "rearing": "revealing",  # Fix "rearing" -> "revealing"
+            "skillfully": "skillfully"
         }
         
         self.documentary_corrections = {
@@ -165,6 +182,11 @@ class SpeechRecognitionPostProcessor:
             (r'\bdeep\s+sea\b', 'deep-sea'),
             (r'\badd\s+up\s+patience\b', 'adaptations'),  # Fix "add up patience" -> "adaptations"
             (r'\bozone\s+hold\b', 'zones hold'),  # Fix "ozone" -> "zones"
+            # Story/novel specific corrections
+            (r'\bdicks\s+unexpected\b', 'takes unexpected'),  # Fix "dicks unexpected" -> "takes unexpected"
+            (r'\bnovel\s+dicks\b', 'novel takes'),  # Fix "novel dicks" -> "novel takes"
+            (r'\brearing\s+themes\b', 'revealing themes'),  # Fix "rearing themes" -> "revealing themes"
+            (r'\bwhile\s+rearing\b', 'while revealing'),  # Fix "while rearing" -> "while revealing"
         ]
 
         for pattern, replacement in phrase_corrections:

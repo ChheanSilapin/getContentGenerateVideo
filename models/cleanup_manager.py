@@ -8,6 +8,7 @@ import gc
 import glob
 import shutil
 import config
+from utils.error_helpers import retry_operation
 
 
 class CleanupManager:
@@ -135,41 +136,48 @@ class CleanupManager:
     def _remove_video_file_with_retry(self, file_path, max_retries=5):
         """
         Remove a video file with enhanced retry mechanism for MoviePy file locks
-        
+
         Args:
             file_path: Path to video file to remove
             max_retries: Maximum number of retry attempts
-            
+
         Returns:
             int: 1 if removed successfully, 0 if failed
         """
-        for attempt in range(max_retries):
+        def _remove_file():
+            """Internal function to remove file"""
+            # Force garbage collection before removal
+            gc.collect()
+            os.remove(file_path)
+            if not file_path.endswith('original_video_backup.mp4'):  # Reduce logging for backup files
+                print(f"🗑️ Cleaned: {os.path.basename(file_path)}")
+
+        # Use the enhanced retry mechanism with exponential backoff
+        success, result, error = retry_operation(
+            _remove_file,
+            max_retries=max_retries,
+            delay=1.0,
+            backoff_factor=1.5,
+            operation_name=f"Remove {os.path.basename(file_path)}"
+        )
+
+        if not success and isinstance(error, PermissionError):
+            # Special handling for permission errors - try MoviePy cleanup
             try:
-                # Force garbage collection before each attempt
-                gc.collect()
-                
-                # Longer delay for video files (MoviePy needs more time)
-                if attempt > 0:
-                    time.sleep(1.0)
-                
+                print(f"🔧 Attempting MoviePy cleanup for locked file: {os.path.basename(file_path)}")
+                from utils.helpers import force_moviepy_cleanup
+                force_moviepy_cleanup()
+                time.sleep(3.0)  # Give more time for cleanup
+
+                # One final attempt
                 os.remove(file_path)
-                if not file_path.endswith('original_video_backup.mp4'):  # Reduce logging for backup files
-                    print(f"Consolidated cleanup: {os.path.basename(file_path)}")
+                print(f"✅ Successfully removed after MoviePy cleanup: {os.path.basename(file_path)}")
                 return 1
-            except PermissionError:
-                if attempt < max_retries - 1:
-                    print(f"Video file locked, retrying in 2.0s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
-                    from utils.helpers import force_moviepy_cleanup
-                    force_moviepy_cleanup()  # Force comprehensive cleanup
-                    time.sleep(2.0)  # Longer delay for file handle release
-                else:
-                    print(f"Warning: Could not remove video file {os.path.basename(file_path)} after {max_retries} attempts: MoviePy still has file lock")
-                    return 0
-            except Exception as e:
-                print(f"Warning: Could not remove video file {os.path.basename(file_path)}: {e}")
+            except Exception as final_e:
+                print(f"❌ Final cleanup attempt failed for {os.path.basename(file_path)}: {final_e}")
                 return 0
-        
-        return 0
+
+        return 1 if success else 0
     
     def _remove_file_with_retry(self, file_path, max_retries=3):
         """

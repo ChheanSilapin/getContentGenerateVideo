@@ -14,7 +14,54 @@ class VideoProcessor:
         self.progress_callback = progress_callback
         self.current_output_dir = None
         self.enhancement_options = {}
-        
+
+        # TTS settings (load from user settings)
+        self.tts_settings = self._load_tts_settings()
+
+        # Speech recognition validation settings (enabled by default)
+        self.enable_speech_validation = True
+        self.speech_validation_threshold = 0.7
+
+        # Processing state
+        self.text_input = ""
+        self.content_analysis = None
+        self.validated_text = None
+        self.last_speech_validation_result = None
+
+    def _load_tts_settings(self):
+        """Load TTS settings from user_settings.json for video tab"""
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            video_tab_settings = settings_manager.get_tab_settings('video_tab')
+
+            # Load video-specific settings
+            self.enable_speech_validation = video_tab_settings.get('enable_speech_validation', True)
+            self.content_analysis_enabled = video_tab_settings.get('content_analysis_enabled', True)
+            self.auto_cleanup = video_tab_settings.get('auto_cleanup', True)
+
+            # Load audio settings for video processing
+            self.current_audio_settings = {
+                'mute_original': video_tab_settings.get('mute_original_audio', True),
+                'original_volume': video_tab_settings.get('original_audio_volume', 0.7)
+            }
+
+            return {
+                'language': video_tab_settings.get('tts_language', 'en'),
+                'voice_actor': video_tab_settings.get('tts_voice_actor', 'Default'),
+                'speed': video_tab_settings.get('tts_speed', 1.0),
+                'emotion': video_tab_settings.get('tts_emotion', 'neutral')
+            }
+        except Exception as e:
+            print(f"Warning: Could not load TTS settings from user_settings.json: {e}")
+            # Return defaults if loading fails
+            return {
+                'language': 'en',
+                'voice_actor': 'Default',
+                'speed': 1.0,
+                'emotion': 'neutral'
+            }
+
     def update_progress(self, value, message=None):
         """Update progress value and message"""
         if self.progress_callback:
@@ -39,6 +86,9 @@ class VideoProcessor:
             if stop_event and stop_event.is_set():
                 self.update_progress(0, "Process stopped by user")
                 return None
+
+            # Store text input for processing
+            self.text_input = text_input
 
             # Create output directory
             output_dir = self._create_output_directory(video_file, output_folder)
@@ -88,12 +138,25 @@ class VideoProcessor:
         return output_dir
     
     def _generate_audio(self, text_input, output_dir, stop_event):
-        """Generate audio from text input using gTTS with settings"""
+        """Generate audio from text input using gTTS with content analysis and speech recognition"""
         if stop_event and stop_event.is_set():
             return None
 
-        print("\n--- Step 1: Generating Audio with gTTS ---")
-        self.update_progress(20, "Generating audio from text...")
+        from utils.logging_utils import log_step, log_essential
+        log_step(1, 3, "Generating Audio with gTTS")
+        self.update_progress(20, "Analyzing content and generating audio...")
+
+        # Perform content analysis for emotion-aware generation
+        from services.content_analysis import ContentAnalyzer
+        analyzer = ContentAnalyzer()
+        content_analysis = analyzer.analyze_content(text_input, title="", context="")
+
+        print(f"Content Analysis: Type={content_analysis.content_type.value}, "
+              f"Emotion={content_analysis.emotional_tone.value}, "
+              f"Confidence={content_analysis.confidence:.2f}")
+
+        # Store content analysis for later use
+        self.content_analysis = content_analysis
 
         from services.audio_service import generate_audio
         audio_file = os.path.join(output_dir, "voice.mp3")
@@ -105,22 +168,157 @@ class VideoProcessor:
         emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
         language = tts_settings.get('language', 'en')
 
-        print(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
+        # Apply content-aware settings if content analysis is available
+        if content_analysis:
+            voice_settings = content_analysis.recommended_voice_settings
+            # Only override if user hasn't specified custom settings
+            if voice_actor == 'Default':
+                voice_actor = voice_settings.get('voice_actor', voice_actor)
+            if language == 'en':
+                language = voice_settings.get('language', language)
+            speed = voice_settings.get('speed', speed)
+            emotion = voice_settings.get('emotion', emotion)
 
-        if not generate_audio(text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion, language=language):
+            print(f"Using content-aware settings: type={content_analysis.content_type.value}, "
+                  f"tone={content_analysis.emotional_tone.value}, speed={speed}, emotion={emotion}")
+
+        log_essential(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
+
+        if not generate_audio(text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion,
+                             language=language, content_analysis=content_analysis):
             print("ERROR: Failed to generate audio.")
             self.update_progress(0, "Failed to generate audio")
             return None
 
-        self.update_progress(40, "Audio generated successfully with gTTS")
+        self.update_progress(40, "Audio generated successfully with content-aware settings")
+
+        # Optional speech recognition validation (enable by default for video generation)
+        enable_speech_validation = getattr(self, 'enable_speech_validation', True)
+        if enable_speech_validation:
+            validation_result = self._validate_speech_recognition(audio_file, stop_event)
+            if validation_result is not None and not validation_result:
+                # Validation failed, but continue with warning
+                self.update_progress(45, "⚠️ Speech recognition validation failed, but continuing...")
+            elif validation_result:
+                self.update_progress(45, "✅ Speech recognition validation passed")
+
         return audio_file
-    
+
+    def _validate_speech_recognition(self, audio_file, stop_event=None):
+        """
+        Validate speech recognition accuracy for the generated audio
+
+        Args:
+            audio_file: Path to the generated audio file
+            stop_event: Threading event to stop the process
+
+        Returns:
+            bool: True if validation passes, False if fails, None if error
+        """
+        try:
+            if stop_event and stop_event.is_set():
+                return None
+
+            self.update_progress(42, "Validating speech recognition accuracy...")
+
+            # Import speech recognition service
+            from services.speech_recognition_core import SpeechRecognitionService
+
+            # Initialize speech recognition service
+            speech_service = SpeechRecognitionService()
+
+            if not speech_service.is_available():
+                print("⚠️ Speech recognition service not available, skipping validation")
+                return None
+
+            # Get voice settings for validation (use current TTS settings)
+            tts_settings = getattr(self, 'tts_settings', {})
+            voice_settings = {
+                'voice_actor': tts_settings.get('voice_actor', 'Default'),
+                'speed': tts_settings.get('speed', 1.0),
+                'emotion': tts_settings.get('emotion', 'neutral'),
+                'language': tts_settings.get('language', 'en')
+            }
+
+            # Use content-type aware speech recognition with post-processing
+            content_analysis = getattr(self, 'content_analysis', None)
+            content_type = content_analysis.content_type if content_analysis else None
+
+            # Use the existing audio file instead of generating a new one
+            result = speech_service.recognize_speech_from_audio_with_postprocessing(
+                audio_file=audio_file,
+                original_text=self.text_input,
+                content_type=content_type
+            )
+
+            if not result.success or not result.recognized_text:
+                print("⚠️ Speech recognition failed or returned empty text")
+                return False
+
+            recognized_text = result.recognized_text
+
+            # Check if validation passes threshold (with content-type aware thresholds)
+            similarity_score = result.similarity_score
+            threshold = self._get_content_aware_threshold(content_type)
+            passes_validation = similarity_score >= threshold
+
+            # Log validation results (condensed)
+            print(f"Speech Recognition Validation: {similarity_score:.1%} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
+
+            # Store validation results
+            self.last_speech_validation_result = {
+                'original_text': self.text_input,
+                'recognized_text': recognized_text,
+                'similarity_score': similarity_score,
+                'passes_validation': passes_validation,
+                'threshold': threshold
+            }
+
+            # Automatically apply recognized text if validation passes
+            if passes_validation and similarity_score >= 0.8:  # High confidence threshold
+                print(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
+                self.validated_text = recognized_text
+            else:
+                # Keep original text if validation fails or confidence is low
+                self.validated_text = self.text_input
+                if not passes_validation:
+                    print(f"⚠️ Using original text due to validation failure")
+                else:
+                    print(f"⚠️ Using original text due to low confidence ({similarity_score:.1%})")
+
+            return passes_validation
+
+        except Exception as e:
+            print(f"❌ Error during speech recognition validation: {e}")
+            return None
+
+    def _get_content_aware_threshold(self, content_type):
+        """Get content-type specific validation threshold"""
+        try:
+            from services.content_analysis import ContentType
+
+            # Content-specific thresholds (lower for complex content)
+            thresholds = {
+                ContentType.EDUCATIONAL: 0.65,
+                ContentType.HISTORICAL: 0.60,
+                ContentType.TECHNICAL: 0.55,
+                ContentType.QUOTE_REFLECTION: 0.70,
+                ContentType.STORY: 0.75,
+                ContentType.GENERAL: 0.70
+            }
+
+            # Use content-specific threshold or fall back to default
+            return thresholds.get(content_type, 0.70)
+        except:
+            return 0.70
+
     def _add_voiceover(self, video_file, audio_file, output_dir, stop_event):
         """Add voice-over to video"""
         if stop_event and stop_event.is_set():
             return None
             
-        print("\n--- Step 2: Adding voice-over to video ---")
+        from utils.logging_utils import log_step
+        log_step(2, 3, "Adding voice-over to video")
         self.update_progress(50, "Adding voice-over to video...")
         
         video_with_audio = os.path.join(output_dir, "video_with_audio.mp4")
@@ -177,7 +375,7 @@ class VideoProcessor:
         # Reduced logging: print("\n--- Step 4: Finalizing Video ---")
         self.update_progress(95, "Finalizing video...")
         
-        from Final_Video import merge_video_subtitle
+        from services.video_finalization import merge_video_subtitle
         final_output = os.path.join(output_dir, "final_output.mp4")
         
         result = merge_video_subtitle(video_file, subtitle_file, final_output)

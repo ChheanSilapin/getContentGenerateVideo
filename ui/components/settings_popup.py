@@ -4,14 +4,13 @@ Leverages existing AudioSettings and UI Factory components to avoid duplication
 Includes gTTS and Vosk speech recognition settings
 """
 from utils.common_imports import tk, messagebox, ttk, filedialog
-from .audio_settings import AudioSettings
 from utils.settings_manager import SettingsManager
 import os
 
 class SettingsPopup:
     """Reusable settings popup dialog that uses existing components"""
 
-    def __init__(self, parent, title="Settings", main_gui=None, include_audio=True, include_output_folder=True, include_tts=True, include_speech_recognition=True, include_image_processing=False):
+    def __init__(self, parent, title="Settings", main_gui=None, include_audio=True, include_output_folder=True, include_tts=True, include_speech_recognition=True, include_image_processing=False, include_audio_controls=True):
         self.parent = parent
         self.title = title
         self.main_gui = main_gui
@@ -23,6 +22,7 @@ class SettingsPopup:
         self.include_tts = include_tts
         self.include_speech_recognition = include_speech_recognition
         self.include_image_processing = include_image_processing
+        self.include_audio_controls = include_audio_controls
 
         # Settings variables
         self.output_folder = tk.StringVar()
@@ -32,6 +32,10 @@ class SettingsPopup:
         self.tts_voice_actor = tk.StringVar()
         self.tts_speed = tk.DoubleVar()
         self.tts_emotion = tk.StringVar()
+
+        # Audio control variables (moved from legacy audio settings)
+        self.mute_audio = tk.BooleanVar()
+        self.audio_volume = tk.DoubleVar(value=0.7)
 
         # Image processing settings variables
         self.image_fit_method = tk.StringVar()
@@ -82,13 +86,23 @@ class SettingsPopup:
     def _initialize_tts_settings(self):
         """Initialize TTS settings with default values"""
         try:
-            settings = self.settings_manager.load_settings()
-            self.tts_language.set(settings.get('tts_language', 'en'))
-            self.tts_voice_actor.set(settings.get('tts_voice_actor', 'Default'))
-            self.tts_speed.set(settings.get('tts_speed', 1.0))
-            self.tts_emotion.set(settings.get('tts_emotion', 'neutral'))
-            self.image_fit_method.set(settings.get('image_fit_method', 'cover'))
-            self.aspect_ratio.set(settings.get('aspect_ratio', '16:9 (Landscape)'))
+            # Determine which tab we're configuring for
+            tab_name = getattr(self, 'current_tab', 'image_tab')  # Default to image_tab
+
+            # Get tab-specific settings
+            tab_settings = self.settings_manager.get_tab_settings(tab_name)
+
+            # Set shared TTS settings
+            self.tts_language.set(tab_settings.get('tts_language', 'en'))
+            self.tts_voice_actor.set(tab_settings.get('tts_voice_actor', 'Default'))
+            self.tts_speed.set(tab_settings.get('tts_speed', 1.0))
+            self.tts_emotion.set(tab_settings.get('tts_emotion', 'neutral'))
+
+            # Set tab-specific settings
+            if tab_name == 'image_tab':
+                self.image_fit_method.set(tab_settings.get('image_fit_method', 'cover'))
+                self.aspect_ratio.set(tab_settings.get('aspect_ratio', '16:9 (Landscape)'))
+
         except Exception as e:
             # Set defaults
             self.tts_language.set('en')
@@ -126,13 +140,15 @@ class SettingsPopup:
         self.popup_window.title(self.title)
         
         # Dynamic sizing based on included components
-        height = 200  # Base height
+        height = 250  # Increased base height to ensure buttons are visible
         if self.include_output_folder:
             height += 120
-        if self.include_audio:
-            height += 200
+        # Legacy audio section removed - audio controls moved to TTS section
         if self.include_tts:
-            height += 180  # Standard TTS section height
+            if self.include_audio_controls:
+                height += 200  # TTS section with audio controls
+            else:
+                height += 160  # TTS section without audio controls (image tab)
         if self.include_image_processing:
             height += 150  # Image processing section height (fit method + aspect ratio)
         if self.include_speech_recognition:
@@ -198,8 +214,7 @@ class SettingsPopup:
         if self.include_output_folder:
             self._create_output_folder_section(main_frame)
 
-        if self.include_audio:
-            self._create_audio_section(main_frame)
+        # Legacy audio section removed - audio controls moved to TTS section
 
         if self.include_tts:
             self._create_tts_section(main_frame)
@@ -251,15 +266,7 @@ class SettingsPopup:
             )
             browse_button.pack(side="right")
     
-    def _create_audio_section(self, parent):
-        """Create audio settings section using existing AudioSettings component"""
-        # Create container for the audio settings
-        audio_container = ttk.Frame(parent)
-        audio_container.pack(fill="x", pady=(0, 15))
-
-        # Use existing AudioSettings component to avoid duplication
-        self.audio_settings = AudioSettings(audio_container, "🔊 Audio Settings")
-        self.audio_settings.pack(fill="x")
+    # Legacy audio section removed - audio controls moved to TTS section
 
     def _create_tts_section(self, parent):
         """Create TTS (Text-to-Speech) settings section"""
@@ -290,7 +297,7 @@ class SettingsPopup:
         voice_combo = ttk.Combobox(
             voice_row,
             textvariable=self.tts_voice_actor,
-            values=["Default", "British", "American", "Australian", "Canadian", "Indian"],
+            values=["Default", "British", "American", "Australian", "Canadian", "Indian", "French", "German", "Spanish", "Italian", "Portuguese", "Hindi"],
             state="readonly",
             width=15
         )
@@ -334,6 +341,48 @@ class SettingsPopup:
             width=15
         )
         emotion_combo.pack(side="left", padx=(10, 0))
+
+        # Audio controls section (only for video tab) - compact layout
+        if self.include_audio_controls:
+            audio_controls_frame = ttk.Frame(tts_frame)
+            audio_controls_frame.pack(fill="x", pady=(10, 0))
+
+            # Separator line
+            separator = ttk.Separator(audio_controls_frame, orient="horizontal")
+            separator.pack(fill="x", pady=(0, 5))
+
+            # Compact audio controls in single row
+            audio_row = ttk.Frame(audio_controls_frame)
+            audio_row.pack(fill="x", pady=(0, 5))
+
+            # Mute audio checkbox (left side)
+            mute_checkbox = ttk.Checkbutton(
+                audio_row,
+                text="Mute Audio",
+                variable=self.mute_audio,
+                command=self._on_mute_change
+            )
+            mute_checkbox.pack(side="left")
+
+            # Volume control (right side) - more compact
+            ttk.Label(audio_row, text="Volume:", font=("Cascadia Code", 10)).pack(side="left", padx=(20, 5))
+
+            self.volume_scale = ttk.Scale(
+                audio_row,
+                from_=0.0,
+                to=1.0,
+                variable=self.audio_volume,
+                orient="horizontal",
+                length=150,
+                command=self._on_volume_change
+            )
+            self.volume_scale.pack(side="left", padx=(0, 5))
+
+            self.volume_label = ttk.Label(audio_row, text="70%", font=("Cascadia Code", 9))
+            self.volume_label.pack(side="left")
+
+            # Initialize volume state
+            self._update_volume_state()
 
     def _create_image_processing_section(self, parent):
         """Create Image Processing settings section"""
@@ -498,20 +547,45 @@ class SettingsPopup:
             self.sr_model_path.set(folder_path)
             if self.main_gui:
                 self.main_gui.log(f"Speech recognition model path set to: {folder_path}")
+
+    def _on_mute_change(self):
+        """Handle mute setting change"""
+        self._update_volume_state()
+
+    def _on_volume_change(self, value):
+        """Handle volume change"""
+        if not self.mute_audio.get():
+            volume_value = float(value)
+            self.volume_label.config(text=f"{int(volume_value * 100)}%")
+
+    def _update_volume_state(self):
+        """Update volume controls based on mute state"""
+        is_muted = self.mute_audio.get()
+
+        if is_muted:
+            self.volume_scale.config(state="disabled")
+            self.volume_label.config(text="Muted", foreground="gray")
+        else:
+            self.volume_scale.config(state="normal")
+            volume_value = self.audio_volume.get()
+            self.volume_label.config(text=f"{int(volume_value * 100)}%", foreground="black")
     
     def _apply_settings(self):
         """Apply the settings and close popup"""
         settings = self.get_settings()
-        
-        # Save settings using settings manager
-        self.settings_manager.save_settings(settings)
-        
+
+        # Determine which tab we're configuring for
+        tab_name = getattr(self, 'current_tab', 'image_tab')  # Default to image_tab
+
+        # Save tab-specific settings
+        self.settings_manager.save_tab_settings(tab_name, settings)
+
         if self.on_settings_changed:
             self.on_settings_changed(settings)
-        
+
         if self.main_gui:
-            self.main_gui.log("Settings applied successfully")
-        
+            self.main_gui.log(f"Settings applied successfully for {tab_name.replace('_', ' ').title()}")
+
         self.close()
     
     def _reset_settings(self):
@@ -522,21 +596,22 @@ class SettingsPopup:
         if self.include_output_folder:
             self.output_folder.set(default_settings.get('output_folder', 'Default (Auto)'))
 
-        if self.include_audio and self.audio_settings:
-            # Reset audio settings to defaults
-            self.audio_settings.set_settings({
-                'voice_actor': default_settings.get('voice_actor', 'Default'),
-                'speed': default_settings.get('speed', 0.8),
-                'emotion': default_settings.get('emotion', 'neutral'),
-                'mute': default_settings.get('mute', False),
-                'volume': default_settings.get('volume', 0.7)
-            })
+        # Legacy audio section removed - audio controls moved to TTS section
 
         if self.include_tts:
             self.tts_language.set(default_settings.get('tts_language', 'en'))
             self.tts_voice_actor.set(default_settings.get('tts_voice_actor', 'Default'))
             self.tts_speed.set(default_settings.get('tts_speed', 1.0))
             self.tts_emotion.set(default_settings.get('tts_emotion', 'neutral'))
+            # Reset audio controls only if included (video tab)
+            if self.include_audio_controls:
+                # Check both new and legacy setting names for defaults
+                mute_default = default_settings.get('mute_original_audio', default_settings.get('mute', False))
+                volume_default = default_settings.get('original_audio_volume', default_settings.get('volume', 0.7))
+                self.mute_audio.set(mute_default)
+                self.audio_volume.set(volume_default)
+                if hasattr(self, 'volume_scale'):
+                    self._update_volume_state()
 
         if self.include_speech_recognition:
             self.sr_enabled.set(default_settings.get('sr_enabled', False))
@@ -556,15 +631,17 @@ class SettingsPopup:
         if self.include_output_folder:
             settings['output_folder'] = self.output_folder.get()
 
-        if self.include_audio and self.audio_settings:
-            audio_settings = self.audio_settings.get_settings()
-            settings.update(audio_settings)
+        # Legacy audio section removed - audio controls moved to TTS section
 
         if self.include_tts:
             settings['tts_language'] = self.tts_language.get()
             settings['tts_voice_actor'] = self.tts_voice_actor.get()
             settings['tts_speed'] = self.tts_speed.get()
             settings['tts_emotion'] = self.tts_emotion.get()
+            # Include audio controls only if included (video tab)
+            if self.include_audio_controls:
+                settings['mute'] = self.mute_audio.get()
+                settings['volume'] = self.audio_volume.get()
 
         if self.include_image_processing:
             settings['image_fit_method'] = self.image_fit_method.get()
@@ -593,12 +670,7 @@ class SettingsPopup:
         if self.include_output_folder and 'output_folder' in settings:
             self.output_folder.set(settings['output_folder'])
 
-        if self.include_audio and self.audio_settings:
-            # Filter out non-audio settings
-            audio_keys = ['voice_actor', 'speed', 'emotion', 'mute', 'volume']
-            audio_settings = {k: v for k, v in settings.items() if k in audio_keys}
-            if audio_settings:
-                self.audio_settings.set_settings(audio_settings)
+        # Legacy audio section removed - audio controls moved to TTS section
 
         if self.include_tts:
             if 'tts_language' in settings:
@@ -609,6 +681,22 @@ class SettingsPopup:
                 self.tts_speed.set(settings['tts_speed'])
             if 'tts_emotion' in settings:
                 self.tts_emotion.set(settings['tts_emotion'])
+            # Set audio controls only if included (video tab)
+            if self.include_audio_controls:
+                # Check both new and legacy mute setting names
+                if 'mute' in settings:
+                    self.mute_audio.set(settings['mute'])
+                elif 'mute_original_audio' in settings:
+                    self.mute_audio.set(settings['mute_original_audio'])
+
+                if 'volume' in settings:
+                    self.audio_volume.set(settings['volume'])
+                elif 'original_audio_volume' in settings:
+                    self.audio_volume.set(settings['original_audio_volume'])
+
+                # Update volume state after setting values
+                if hasattr(self, 'volume_scale'):
+                    self._update_volume_state()
 
         if self.include_image_processing:
             if 'image_fit_method' in settings:
@@ -641,7 +729,8 @@ class SettingsPopup:
 # Convenience functions for different popup configurations
 def show_settings_popup(parent, title="Settings", main_gui=None, current_settings=None,
                        callback=None, include_audio=True, include_output_folder=True,
-                       include_tts=True, include_speech_recognition=False, include_image_processing=False):
+                       include_tts=True, include_speech_recognition=False, include_image_processing=False,
+                       include_audio_controls=True, current_tab="image_tab"):
     """
     Convenience function to create and show a customizable settings popup
 
@@ -656,12 +745,16 @@ def show_settings_popup(parent, title="Settings", main_gui=None, current_setting
         include_tts: Whether to include TTS settings section
         include_speech_recognition: Whether to include speech recognition settings section
         include_image_processing: Whether to include image processing settings section
+        include_audio_controls: Whether to include mute/volume controls in TTS section
 
     Returns:
         SettingsPopup: The created popup instance
     """
     popup = SettingsPopup(parent, title, main_gui, include_audio, include_output_folder,
-                         include_tts, include_speech_recognition, include_image_processing)
+                         include_tts, include_speech_recognition, include_image_processing, include_audio_controls)
+
+    # Set the current tab for tab-specific settings
+    popup.current_tab = current_tab
 
     # Set current settings before showing (will be stored as pending if needed)
     if current_settings:

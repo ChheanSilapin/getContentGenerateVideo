@@ -34,7 +34,7 @@ class VideoTab:
         
         # Settings popup and current settings (load from persistent storage)
         self.settings_popup = None
-        self.current_settings = self.settings_manager.load_settings()
+        self.current_settings = self.settings_manager.get_tab_settings('video_tab')
         
         # Sync settings with model when the application starts
         if hasattr(self.main_gui, 'model'):
@@ -42,8 +42,11 @@ class VideoTab:
                 self.main_gui.model.output_folder = self.current_settings['output_folder']
         
         # Audio settings variables (for backward compatibility)
-        self.mute_original_audio = tk.BooleanVar(value=self.current_settings.get('mute', False))
-        self.original_audio_volume = tk.DoubleVar(value=self.current_settings.get('volume', 0.7))
+        # Check both new and legacy mute setting names
+        mute_value = self.current_settings.get('mute_original_audio', self.current_settings.get('mute', False))
+        volume_value = self.current_settings.get('original_audio_volume', self.current_settings.get('volume', 0.7))
+        self.mute_original_audio = tk.BooleanVar(value=mute_value)
+        self.original_audio_volume = tk.DoubleVar(value=volume_value)
 
         # Folder processing components
         self.folder_processor = FolderProcessor()
@@ -176,6 +179,7 @@ class VideoTab:
             include_output_folder=True,
             include_tts=True,
             include_speech_recognition=False,  # Now automatic
+            current_tab="video_tab",  # Specify this is for video tab
             current_settings=self.current_settings  # Pass current settings explicitly
         )
         
@@ -193,10 +197,16 @@ class VideoTab:
             self.main_gui.model.output_folder = settings['output_folder']
         
         # Sync audio settings with tkinter variables (for backward compatibility)
+        # Handle both new and legacy setting names
         if 'mute' in settings:
             self.mute_original_audio.set(settings['mute'])
+        elif 'mute_original_audio' in settings:
+            self.mute_original_audio.set(settings['mute_original_audio'])
+
         if 'volume' in settings:
             self.original_audio_volume.set(settings['volume'])
+        elif 'original_audio_volume' in settings:
+            self.original_audio_volume.set(settings['original_audio_volume'])
         
         # Update the info label
         self._update_settings_info_label()
@@ -206,7 +216,10 @@ class VideoTab:
         # Audio info (legacy)
         voice = self.current_settings.get('voice_actor', 'Default')
         speed = int(self.current_settings.get('speed', 0.8) * 100)
-        volume = "Muted" if self.current_settings.get('mute', False) else f"{int(self.current_settings.get('volume', 0.7) * 100)}%"
+        # Check both new and legacy mute setting names
+        is_muted = self.current_settings.get('mute_original_audio', self.current_settings.get('mute', False))
+        volume_value = self.current_settings.get('original_audio_volume', self.current_settings.get('volume', 0.7))
+        volume = "Muted" if is_muted else f"{int(volume_value * 100)}%"
 
         # TTS info (new)
         tts_voice = self.current_settings.get('tts_voice_actor', 'Default')
@@ -580,19 +593,7 @@ class VideoTab:
                 'text_file': pair['text_file'],
                 'directory': pair['directory']
             })
-        
-        # Find pairs in each directory
-        for dir_path, files in dir_files.items():
-            videos = files['videos']
-            texts = files['texts']
-            
-            if not videos or not texts:
-                continue
-            
-            # Try to match pairs
-            matched_pairs = self._match_video_text_pairs(videos, texts)
-            pairs.extend(matched_pairs)
-        
+
         return pairs
 
     def _match_video_text_pairs(self, videos, texts):
@@ -737,8 +738,11 @@ class VideoTab:
         """Add individual video jobs to batch processing"""
         for i, entry_data in enumerate(valid_entries):
             # Add audio settings to the entry data from current settings
-            entry_data["mute_original_audio"] = self.current_settings.get('mute', False)
-            entry_data["original_audio_volume"] = self.current_settings.get('volume', 0.7)
+            # Check both new and legacy setting names
+            mute_value = self.current_settings.get('mute_original_audio', self.current_settings.get('mute', False))
+            volume_value = self.current_settings.get('original_audio_volume', self.current_settings.get('volume', 0.7))
+            entry_data["mute_original_audio"] = mute_value
+            entry_data["original_audio_volume"] = volume_value
 
             # For video processing, we'll use the video file as the "image source"
             # and the prompt as the text input
@@ -756,11 +760,14 @@ class VideoTab:
         """Add grouped video jobs to batch processing"""
         for group_data in valid_groups:
             # Add group job to batch processing
+            # Check both new and legacy setting names
+            mute_value = self.current_settings.get('mute_original_audio', self.current_settings.get('mute', False))
+            volume_value = self.current_settings.get('original_audio_volume', self.current_settings.get('volume', 0.7))
             job_id = self.main_gui.model.add_group_batch_job(
                 group_data=group_data,
                 audio_settings={
-                    "mute_original": self.current_settings.get('mute', False),
-                    "original_volume": self.current_settings.get('volume', 0.7)
+                    "mute_original": mute_value,
+                    "original_volume": volume_value
                 }
             )
             self.main_gui.log(f"Added group job #{job_id}: {group_data['output_name']} ({len(group_data['pairs'])} videos)")

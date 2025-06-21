@@ -141,8 +141,8 @@ def create_gui():
             root.withdraw()
             messagebox.showerror("Startup Error", error_msg)
             root.destroy()
-        except:
-            pass
+        except Exception as e:
+            print(f"Warning: Could not show FFmpeg warning: {e}")
         
         print("Falling back to console mode...")
         run_console_mode()
@@ -189,15 +189,25 @@ def main():
             import threading
             warning_thread = threading.Thread(target=show_ffmpeg_warning, daemon=True)
             warning_thread.start()
-        except:
-            pass  # Continue without warning if threading fails
+        except Exception as e:
+            print(f"Warning: Could not start FFmpeg warning thread: {e}")  # Continue without warning if threading fails
     
     # Check command line arguments
-    if len(sys.argv) > 1 and sys.argv[1] == "--console":
-        run_console_mode()
-    else:
-        # Start the GUI (with lazy imports)
-        create_gui()
+    if len(sys.argv) > 1:
+        if "--console" in sys.argv:
+            run_console_mode()
+            return
+        elif "--verbose" in sys.argv:
+            # Enable verbose logging
+            try:
+                import config
+                config.LOGGING_CONFIG['verbose_mode'] = True
+                print("Verbose logging enabled")
+            except Exception as e:
+                print(f"Warning: Could not enable verbose mode: {e}")
+
+    # Start the GUI (with lazy imports)
+    create_gui()
 
 if __name__ == "__main__":
     try:

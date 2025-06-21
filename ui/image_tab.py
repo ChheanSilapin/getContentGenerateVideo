@@ -629,7 +629,7 @@ class ImageTab:
 
         # Show optimization status
         try:
-            from services.optimization_service import get_optimization_manager
+            from services.video_optimization import get_optimization_manager
             opt_manager = get_optimization_manager()
             opt_manager.print_optimization_status()
         except ImportError:
@@ -718,7 +718,7 @@ class ImageTab:
             self.main_gui.log(f"Generating videos for group: {group_name} ({len(pairs)} folders)")
 
             # Import optimization service
-            from services.optimization_service import get_optimization_manager
+            from services.video_optimization import get_optimization_manager
             opt_manager = get_optimization_manager()
 
             # Process each pair in the group
@@ -794,14 +794,22 @@ class ImageTab:
                 self.main_gui.root.after(0, lambda: self.update_progress(value, message))
             self.main_gui.model.set_progress_callback(progress_callback)
 
-            # Apply TTS settings to model
-            if hasattr(self.main_gui.model, 'tts_settings'):
-                self.main_gui.model.tts_settings = {
-                    'language': self.current_settings.get('tts_language', 'en'),
-                    'voice_actor': self.current_settings.get('tts_voice_actor', 'Default'),
-                    'speed': self.current_settings.get('tts_speed', 1.0),
-                    'emotion': self.current_settings.get('tts_emotion', 'neutral')
-                }
+            # Get tab-specific settings
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            image_tab_settings = settings_manager.get_tab_settings('image_tab')
+
+            # Apply TTS settings to model (from shared settings)
+            self.main_gui.model.tts_settings = {
+                'language': image_tab_settings.get('tts_language', 'en'),
+                'voice_actor': image_tab_settings.get('tts_voice_actor', 'Default'),
+                'speed': image_tab_settings.get('tts_speed', 1.0),
+                'emotion': image_tab_settings.get('tts_emotion', 'neutral')
+            }
+
+            # Apply image-specific settings
+            self.main_gui.model.enable_speech_validation = image_tab_settings.get('enable_speech_validation', True)
+            self.main_gui.model.content_analysis_enabled = image_tab_settings.get('content_analysis_enabled', True)
 
             # Set output folder if user selected one
             output_folder_value = self.current_settings.get('output_folder', 'Default (Auto)')
@@ -914,10 +922,12 @@ class ImageTab:
             main_gui=self.main_gui,
             callback=self._on_settings_applied,
             include_audio=False,  # Use TTS instead
+            current_tab="image_tab",  # Specify this is for image tab
             include_output_folder=True,
             include_tts=True,
             include_speech_recognition=False,  # Now automatic
             include_image_processing=True,  # Include image processing for Image tab
+            include_audio_controls=False,  # No mute/volume controls for image tab
             current_settings=self.current_settings
         )
 

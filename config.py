@@ -196,24 +196,15 @@ SUBTITLE_CONFIG = {
     # Default style to use
     "default_style": "gradient_gold"
 }
-# File cleanup settings
-AUTO_CLEANUP_AFTER_COMPLETION = True  # Set to True to automatically clean up intermediate files after video generation
 
-# =============================================================================
-# PERFORMANCE OPTIMIZATION SETTINGS
-# =============================================================================
-
-# Content Analysis Caching - Prevents duplicate analysis for same content
+AUTO_CLEANUP_AFTER_COMPLETION = True  
 ENABLE_CONTENT_ANALYSIS_CACHE = True
-CONTENT_CACHE_MAX_SIZE = 100  # Maximum number of cached analyses
-CONTENT_CACHE_TTL_HOURS = 24  # Cache time-to-live in hours
-
-# TTS Audio Caching - Reuse audio for identical text/settings
+CONTENT_CACHE_MAX_SIZE = 100  
+CONTENT_CACHE_TTL_HOURS = 24  
 ENABLE_TTS_CACHE = True
-TTS_CACHE_MAX_SIZE = 50  # Maximum number of cached audio files
-TTS_CACHE_TTL_HOURS = 48  # Cache time-to-live in hours
+TTS_CACHE_MAX_SIZE = 50  
+TTS_CACHE_TTL_HOURS = 48  
 
-# FFmpeg Optimization Settings - Optimized for speed while maintaining quality
 FFMPEG_OPTIMIZATION = {
     "preset": "fast",           # Balance of speed/quality (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
     "crf": 22,                  # Quality setting (18-28, lower = better quality)
@@ -259,6 +250,18 @@ PROCESSING_OPTIMIZATIONS = {
     "optimize_image_loading": True,      # Optimize image loading and caching
     "smart_temp_cleanup": True,          # Clean temporary files during processing
     "memory_efficient_mode": True       # Use memory-efficient processing for large batches
+}
+
+# Logging Configuration
+LOGGING_CONFIG = {
+    "verbose_mode": False,               # Enable/disable verbose logging
+    "show_emojis": False,               # Show emoji indicators in logs
+    "show_performance_status": False,    # Show performance optimization status
+    "show_content_analysis": False,      # Show detailed content synchronization analysis
+    "show_speech_recognition": True,     # Show speech recognition results (keep essential info)
+    "show_file_operations": False,       # Show file copy/move operations
+    "show_cache_operations": False,      # Show cache hit/miss operations
+    "show_ffmpeg_commands": False,       # Show FFmpeg command details
 }
 TAB_VISIBILITY = {
     'input': False,

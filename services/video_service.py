@@ -8,7 +8,7 @@ import shutil
 
 # Import modular video components
 from .video_slideshow import create_slideshow, createSideShowWithFFmpeg
-from .video_voiceover import add_voiceover_to_video, merge_video_with_subtitles
+from .video_voiceover import add_voiceover_to_video
 from .video_utils import (
     calculate_loops_needed, get_media_duration, validate_video_file,
     convert_video_to_compatible_format, reset_moviepy_configuration
@@ -44,23 +44,8 @@ except ImportError:
     RATIO_16_9 = {"name": "16:9 (Horizontal)", "width": 1280, "height": 720}
     RATIO_1_1 = {"name": "1:1 (Square)", "width": 1080, "height": 1080}
 
-# Import from Final_Video.py
-try:
-    from Final_Video import merge_video_subtitle
-except ImportError:
-    print("Error importing merge_video_subtitle from Final_Video.py")
-
-    # Fallback implementation
-    def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp4"):
-        """Fallback implementation for merging video and subtitle"""
-        print(f"WARNING: Using fallback merge_video_subtitle function")
-        try:
-            # Just copy the video file as a fallback
-            shutil.copy2(video_path, output_file)
-            return output_file
-        except Exception as e:
-            print(f"Error in fallback merge_video_subtitle: {e}")
-            return None
+# Import from centralized video finalization service
+from services.video_finalization import merge_video_subtitle
 
 # =============================================================================
 # PUBLIC API - Main video service functions that delegate to specialized modules

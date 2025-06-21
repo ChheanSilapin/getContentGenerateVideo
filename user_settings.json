@@ -1,9 +1,18 @@
 {
-  "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
-  "tts_language": "en",
-  "tts_voice_actor": "Default",
-  "tts_speed": 1.0,
-  "tts_emotion": "neutral",
-  "image_fit_method": "contain",
-  "aspect_ratio": "9:16 (Portrait)"
+  "shared_settings": {
+    "tts_language": "en-uk",
+    "tts_voice_actor": "British",
+    "tts_speed": 1.0,
+    "tts_emotion": "neutral",
+    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output"
+  },
+  "image_tab_settings": {
+    "image_fit_method": "contain",
+    "aspect_ratio": "9:16 (Portrait)"
+  },
+  "video_tab_settings": {
+    "mute_original_audio": true,
+    "original_audio_volume": 0.7,
+    "subtitle_style": "modern_glow"
+  }
 }

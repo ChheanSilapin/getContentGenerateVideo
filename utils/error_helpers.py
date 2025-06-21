@@ -137,13 +137,70 @@ def safe_operation(main_gui, operation_name, operation_func, *args, **kwargs):
 def confirm_action(title, message, default_yes=False):
     """
     Show confirmation dialog with standardized formatting
-    
+
     Args:
         title: Dialog title
         message: Confirmation message
         default_yes: Whether "Yes" should be the default button
-        
+
     Returns:
         bool: True if user confirmed, False otherwise
     """
     return messagebox.askyesno(title, message, default='yes' if default_yes else 'no')
+
+
+def retry_operation(operation_func, max_retries=3, delay=1.0, backoff_factor=2.0,
+                   operation_name="operation", logger_func=None, *args, **kwargs):
+    """
+    Execute an operation with retry logic and exponential backoff
+
+    Args:
+        operation_func: Function to execute
+        max_retries: Maximum number of retry attempts
+        delay: Initial delay between retries in seconds
+        backoff_factor: Factor to multiply delay by after each retry
+        operation_name: Name of operation for logging
+        logger_func: Optional logging function
+        *args: Arguments for the operation function
+        **kwargs: Keyword arguments for the operation function
+
+    Returns:
+        tuple: (success: bool, result: any, error: Exception or None)
+    """
+    import time
+
+    last_exception = None
+    current_delay = delay
+
+    for attempt in range(max_retries + 1):  # +1 for initial attempt
+        try:
+            result = operation_func(*args, **kwargs)
+            if attempt > 0:  # Only log if we had to retry
+                message = f"✅ {operation_name} succeeded on attempt {attempt + 1}"
+                if logger_func:
+                    logger_func(message)
+                else:
+                    print(message)
+            return True, result, None
+
+        except Exception as e:
+            last_exception = e
+
+            if attempt < max_retries:
+                message = f"⚠️ {operation_name} failed on attempt {attempt + 1}/{max_retries + 1}: {str(e)}"
+                if logger_func:
+                    logger_func(message)
+                else:
+                    print(message)
+
+                print(f"🔄 Retrying in {current_delay:.1f} seconds...")
+                time.sleep(current_delay)
+                current_delay *= backoff_factor
+            else:
+                message = f"❌ {operation_name} failed after {max_retries + 1} attempts: {str(e)}"
+                if logger_func:
+                    logger_func(message)
+                else:
+                    print(message)
+
+    return False, None, last_exception

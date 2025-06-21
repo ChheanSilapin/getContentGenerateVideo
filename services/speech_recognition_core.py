@@ -34,22 +34,39 @@ class SpeechRecognitionService:
         if VOSK_AVAILABLE and self.model_path:
             self.vosk_model, self.vosk_recognizer = initialize_speech_recognition(self.model_path)
             if self.vosk_model and self.vosk_recognizer:
-                print(f"✅ Speech recognition initialized with model: {self.model_path}")
+                from utils.logging_utils import log_speech_recognition
+                log_speech_recognition(f"✅ Speech recognition ready")
             else:
-                print("⚠️ Failed to initialize speech recognition")
+                print("⚠️ Speech recognition initialization failed")
         else:
-            print("⚠️ Vosk not available or model not found")
+            print("⚠️ Speech recognition unavailable")
     
     def _find_vosk_model(self) -> Optional[str]:
         """Find available Vosk model in the models directory"""
+        import sys
+
+        # Check if running as PyInstaller executable
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller executable
+            if hasattr(sys, '_MEIPASS'):
+                # PyInstaller extracts files to sys._MEIPASS
+                bundled_model = os.path.join(sys._MEIPASS, 'vosk-model')
+                if os.path.exists(bundled_model) and self._is_valid_vosk_model(bundled_model):
+                    from utils.logging_utils import log_speech_recognition
+                    log_speech_recognition(f"✅ Found bundled Vosk model: {bundled_model}")
+                    return bundled_model
+
+        # Fallback: check in models directory (for development)
         models_dir = "models"
         if not os.path.exists(models_dir):
             return None
-        
+
         for item in os.listdir(models_dir):
             item_path = os.path.join(models_dir, item)
             if os.path.isdir(item_path) and "vosk-model" in item.lower():
                 if self._is_valid_vosk_model(item_path):
+                    from utils.logging_utils import log_speech_recognition
+                    log_speech_recognition(f"✅ Found development Vosk model: {item_path}")
                     return item_path
         return None
     
@@ -81,8 +98,9 @@ class SpeechRecognitionService:
             if post_processed_text != result.recognized_text:
                 # Only show post-processing changes if significant
                 if len(post_processed_text) > 50:  # Only for longer texts
-                    print(f"📝 Post-processing applied: '{result.recognized_text[:50]}...' → '{post_processed_text[:50]}...'")
-                
+                    from utils.logging_utils import log_speech_recognition
+                    log_speech_recognition(f"📝 Post-processing applied: '{result.recognized_text[:50]}...' → '{post_processed_text[:50]}...'")
+
                 # Update comparison metrics with post-processed text
                 comparison_metrics = self._compare_texts(text, post_processed_text)
                 
@@ -126,7 +144,8 @@ class SpeechRecognitionService:
                 if post_processed_text != recognized_text:
                     # Only show post-processing changes if significant
                     if len(post_processed_text) > 50:  # Only for longer texts
-                        print(f"📝 Post-processing applied: '{recognized_text[:50]}...' → '{post_processed_text[:50]}...'")
+                        from utils.logging_utils import log_speech_recognition
+                        log_speech_recognition(f"📝 Post-processing applied: '{recognized_text[:50]}...' → '{post_processed_text[:50]}...'")
 
                 recognized_text = post_processed_text
 
@@ -208,8 +227,8 @@ class SpeechRecognitionService:
             if cleanup_audio and os.path.exists(audio_file):
                 try:
                     os.remove(audio_file)
-                except:
-                    pass  # Ignore cleanup errors
+                except Exception as e:
+                    print(f"Warning: Could not cleanup audio file {audio_file}: {e}")
             
             return result
             
@@ -263,18 +282,17 @@ class SpeechRecognitionService:
             if not os.path.exists(audio_file):
                 print(f"❌ Audio file not found: {audio_file}")
                 return ""
-            
+
             recognized_text = recognize_speech_from_file(
                 audio_file,
                 self.vosk_model,
                 self.vosk_recognizer
             )
-            
-            print(f"✅ Speech recognized: '{recognized_text}'")
+
             return recognized_text.strip()
-            
+
         except Exception as e:
-            print(f"❌ Error recognizing speech: {e}")
+            print(f"❌ Speech recognition error: {e}")
             return ""
     
     def _compare_texts(self, original: str, recognized: str) -> TextComparisonMetrics:

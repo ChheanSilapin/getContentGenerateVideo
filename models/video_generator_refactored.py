@@ -44,7 +44,15 @@ class VideoGeneratorModel:
         self.enable_speech_validation = True
         self.speech_validation_threshold = 0.7  # Minimum similarity score to pass validation
         self.speech_validation_settings = {}
-        
+
+        # TTS settings (initialized with defaults)
+        self.tts_settings = {
+            'language': 'en',
+            'voice_actor': 'Default',
+            'speed': 1.0,
+            'emotion': 'neutral'
+        }
+
         # Progress tracking
         self.progress_callback = progress_callback
         
@@ -137,7 +145,7 @@ class VideoGeneratorModel:
 
             self.update_progress(95, "Finalizing video...")
 
-            from Final_Video import merge_video_subtitle
+            from services.video_finalization import merge_video_subtitle
             final_output = os.path.join(output_dir, "final_output.mp4")
 
             result = merge_video_subtitle(video_path, subtitle_path, final_output)
@@ -175,7 +183,8 @@ class VideoGeneratorModel:
         """
         # Set up the video processor with current settings
         self.video_processor.enhancement_options = self.enhancement_options.copy()
-        
+        self.video_processor.tts_settings = self.tts_settings.copy()
+
         # Delegate to video processor
         return self.video_processor.process_video_with_prompt(
             video_file, text_input, stop_event, output_folder, skip_auto_cleanup
@@ -536,7 +545,8 @@ class VideoGeneratorModel:
                              content_analysis=content_analysis, sync_precision=sync_precision):
             self.update_progress(90, "Subtitles generated successfully with emotion-aware sync")
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
-                print(f"📝 Subtitles generated using validated text")
+                from utils.logging_utils import log_speech_recognition
+                log_speech_recognition(f"📝 Subtitles generated using validated text")
             return subtitle_file
         else:
             self.update_progress(0, "Failed to generate subtitles")
@@ -620,12 +630,13 @@ class VideoGeneratorModel:
 
             # Automatically apply recognized text to final output if validation passes
             if passes_validation and similarity_score >= 0.8:  # High confidence threshold
-                print(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
+                from utils.logging_utils import log_speech_recognition
+                log_speech_recognition(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
                 # Update the text input with the recognized text for consistency
                 self.validated_text = recognized_text
                 # Log the change for transparency (condensed)
                 if recognized_text != self.text_input:
-                    print(f"📝 Text refined for better accuracy")
+                    log_speech_recognition(f"📝 Text refined for better accuracy")
             else:
                 # Keep original text if validation fails or confidence is low
                 self.validated_text = self.text_input
@@ -651,6 +662,10 @@ class VideoGeneratorModel:
             ContentType.HISTORICAL: 0.75,      # Higher threshold for historical content (more proper nouns)
             ContentType.STORY_REVIEW: 0.70,    # Standard threshold for stories
             ContentType.QUOTE_REFLECTION: 0.65, # Lower threshold for philosophical content
+            ContentType.EDUCATIONAL: 0.72,     # Slightly higher for educational content
+            ContentType.ENTERTAINMENT: 0.68,   # Lower for entertainment (more casual language)
+            ContentType.DOCUMENTARY: 0.74,     # Higher for documentary (technical terms)
+            ContentType.PERSONAL: 0.66,        # Lower for personal content (informal language)
             ContentType.UNKNOWN: 0.70          # Default threshold
         }
 

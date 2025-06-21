@@ -65,12 +65,26 @@ class EmotionAwareEffects:
         }
         
         self.transition_styles = {
+            # Content types
             'historical': 'dissolve',
+            'story_review': 'crossfade',
+            'quote_reflection': 'slow_fade',
+            'educational': 'fade',
+            'entertainment': 'quick_fade',
+            'documentary': 'dissolve',
+            'personal': 'soft_fade',
+            'unknown': 'fade',
+            # Emotional tones
             'dramatic': 'crossfade_fast',
             'reflective': 'slow_fade',
             'inspirational': 'zoom_transition',
             'nostalgic': 'film_dissolve',
-            'mysterious': 'fade_to_black'
+            'mysterious': 'fade_to_black',
+            'energetic': 'quick_fade',
+            'calm': 'soft_fade',
+            'serious': 'dissolve',
+            'uplifting': 'fade',
+            'melancholic': 'slow_fade'
         }
 
     def apply_emotion_aware_effects(self, clip, content_analysis, duration_per_image=4.0):
@@ -162,21 +176,41 @@ class EmotionAwareEffects:
     def _apply_content_effects(self, clip, content_analysis):
         """Apply effects specific to content type"""
         content_type = content_analysis.content_type.value
-        
+
         if content_type == 'historical':
             # Add vintage film effect
             clip = self._add_vintage_effect(clip)
             # Add subtle vignette
             clip = self._add_vignette(clip, strength=0.3)
-            
+
         elif content_type == 'story_review':
             # Add cinematic letterbox effect
             clip = self._add_letterbox(clip)
-            
+
         elif content_type == 'quote_reflection':
             # Add soft glow effect
             clip = self._add_soft_glow(clip)
-            
+
+        elif content_type == 'educational':
+            # DISABLED: No effects for educational content to prevent image display issues
+            # Keep original clip without modifications
+            pass
+
+        elif content_type == 'entertainment':
+            # Vibrant, energetic effects
+            clip = self._add_color_enhancement(clip, saturation=1.2)
+
+        elif content_type == 'documentary':
+            # Natural, realistic look with slight desaturation
+            clip = self._add_color_enhancement(clip, saturation=0.9)
+            clip = self._add_vignette(clip, strength=0.2)
+
+        elif content_type == 'personal':
+            # Warm, intimate feel
+            clip = self._add_warm_tone(clip)
+
+        # For 'unknown' or other types, apply minimal effects
+
         return clip
 
     def _apply_emotional_effects(self, clip, emotional_tone):
@@ -334,11 +368,91 @@ class EmotionAwareEffects:
 
     def _apply_transition_style(self, clip, style, duration):
         """Apply specific transition style to clip"""
+        # Ensure minimum clip duration to prevent black frames
+        clip_duration = clip.duration
+        max_fade_duration = min(duration, clip_duration * 0.2)  # Max 20% of clip duration
+
         if style == 'slow_fade':
-            return clip.fadeout(duration * 1.5).fadein(duration * 1.5)
-        elif style == 'crossfade_fast':
-            return clip.fadeout(duration * 0.5).fadein(duration * 0.5)
+            fade_duration = min(max_fade_duration, 0.8)  # Reduced from 1.5x to prevent black gaps
+            return clip.fadeout(fade_duration).fadein(fade_duration)
+        elif style == 'crossfade_fast' or style == 'crossfade':
+            fade_duration = min(max_fade_duration, 0.3)  # Reduced from 0.5x
+            return clip.fadeout(fade_duration).fadein(fade_duration)
         elif style == 'dissolve':
-            return clip.fadeout(duration).fadein(duration)
+            fade_duration = min(max_fade_duration, 0.5)  # Reduced from 1x
+            return clip.fadeout(fade_duration).fadein(fade_duration)
+        elif style == 'quick_fade':
+            fade_duration = min(max_fade_duration, 0.2)  # Very quick for entertainment
+            return clip.fadeout(fade_duration).fadein(fade_duration)
+        elif style == 'soft_fade':
+            fade_duration = min(max_fade_duration, 0.6)  # Gentle for personal content
+            return clip.fadeout(fade_duration).fadein(fade_duration)
+        elif style == 'fade':
+            fade_duration = min(max_fade_duration, 0.4)  # Standard fade
+            return clip.fadeout(fade_duration).fadein(fade_duration)
         else:
-            return clip.fadeout(duration).fadein(duration)
+            fade_duration = min(max_fade_duration, 0.4)  # Conservative default
+            return clip.fadeout(fade_duration).fadein(fade_duration)
+
+    def _add_subtle_contrast_boost(self, clip, factor=1.1):
+        """Add subtle contrast boost for educational content"""
+        try:
+            def contrast_effect(get_frame, t):
+                frame = get_frame(t)
+                # Simple contrast adjustment
+                adjusted = np.clip((frame - 0.5) * factor + 0.5, 0, 1)
+                return adjusted
+
+            return clip.fl(contrast_effect)
+        except Exception:
+            return clip
+
+    def _add_color_enhancement(self, clip, saturation=1.2):
+        """Add color enhancement with saturation adjustment"""
+        try:
+            if CV2_AVAILABLE:
+                def enhance_color(get_frame, t):
+                    frame = get_frame(t)
+                    # Convert to HSV for saturation adjustment
+                    hsv = cv2.cvtColor((frame * 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
+                    hsv[:, :, 1] = np.clip(hsv[:, :, 1] * saturation, 0, 255)
+
+                    # Convert back to RGB
+                    result = cv2.cvtColor(hsv, cv2.COLOR_HSV2RGB)
+                    return result.astype(np.float32) / 255.0
+
+                return clip.fl(enhance_color)
+            else:
+                # Fallback: simple brightness adjustment
+                return clip
+        except Exception:
+            return clip
+
+    def _add_warm_tone(self, clip):
+        """Add warm tone for personal content"""
+        try:
+            def warm_effect(get_frame, t):
+                frame = get_frame(t)
+                # Add warm tone by slightly boosting red and reducing blue
+                warmed = frame.copy()
+                warmed[:, :, 0] = np.clip(warmed[:, :, 0] * 1.1, 0, 1)  # Red
+                warmed[:, :, 2] = np.clip(warmed[:, :, 2] * 0.95, 0, 1)  # Blue
+                return warmed
+
+            return clip.fl(warm_effect)
+        except Exception:
+            return clip
+
+    def _add_subtle_contrast_boost(self, clip, factor=1.05):
+        """Add subtle contrast boost for educational content"""
+        try:
+            def contrast_effect(get_frame, t):
+                frame = get_frame(t)
+                # Simple contrast adjustment - very subtle to prevent issues
+                adjusted = np.clip((frame - 0.5) * factor + 0.5, 0, 1)
+                return adjusted
+
+            return clip.fl(contrast_effect)
+        except Exception:
+            # If any error occurs, return original clip
+            return clip
