@@ -16,6 +16,7 @@ class ImageEntry:
         # Entry data
         self.folder_path = tk.StringVar()
         self.prompt_text = tk.StringVar()
+        self.custom_filename = tk.StringVar()
         self.detected_images = []
         self.detected_text_file = None
 
@@ -33,12 +34,12 @@ class ImageEntry:
         )
         self.entry_frame.pack(fill="x", padx=6, pady=4)
 
-        # Folder selection section
+        # Folder selection section (includes custom filename)
         self.setup_folder_section()
-        
+
         # Prompt section
         self.setup_prompt_section()
-        
+
         # Status and remove section
         self.setup_status_section()
 
@@ -47,7 +48,7 @@ class ImageEntry:
         folder_frame = ttk.Frame(self.entry_frame)
         folder_frame.pack(fill="x", pady=(0, 8))
 
-        # Folder label row with remove button
+        # Folder label row with remove button and custom filename
         label_row = ttk.Frame(folder_frame)
         label_row.pack(fill="x", pady=(0, 4))
 
@@ -58,6 +59,45 @@ class ImageEntry:
             font=("Cascadia Code", 8, "bold")
         )
         folder_label.pack(side="left", anchor="w")
+
+        # Custom filename section (small, inline)
+        filename_section = ttk.Frame(label_row)
+        filename_section.pack(side="left", padx=(20, 0))
+
+        # Small filename label
+        filename_label = ttk.Label(
+            filename_section,
+            text="📝 Custom Filename:",
+            font=("Cascadia Code", 8, "bold")
+        )
+        filename_label.pack(side="left")
+
+        # Small filename entry
+        self.filename_entry = ttk.Entry(
+            filename_section,
+            textvariable=self.custom_filename,
+            font=("Cascadia Code", 9),
+            width=25
+        )
+        self.filename_entry.pack(side="left", padx=(5, 2))
+
+        # .mp4 label
+        mp4_label = ttk.Label(
+            filename_section,
+            text=".mp4",
+            font=("Cascadia Code", 9),
+            foreground="#7f8c8d"
+        )
+        mp4_label.pack(side="left")
+
+        # Placeholder text
+        self.filename_entry.insert(0, "Enter custom filename (optional)")
+        self.filename_entry.config(foreground="#999999")
+
+        # Bind events for placeholder behavior
+        self.filename_entry.bind('<FocusIn>', self._on_filename_focus_in)
+        self.filename_entry.bind('<FocusOut>', self._on_filename_focus_out)
+        self.filename_entry.bind('<KeyRelease>', self._on_filename_change)
 
         # Add remove icon button aligned with folder label
         from config import GUI_COLORS
@@ -180,6 +220,36 @@ class ImageEntry:
         status_text = get_media_folder_status(analysis_result)
         self.status_label.config(text=status_text)
 
+    def _on_filename_focus_in(self, event):
+        """Handle filename entry focus in (remove placeholder)"""
+        if self.filename_entry.get() == "Enter custom filename (optional)":
+            self.filename_entry.delete(0, tk.END)
+            self.filename_entry.config(foreground="black")
+
+    def _on_filename_focus_out(self, event):
+        """Handle filename entry focus out (add placeholder if empty)"""
+        if not self.filename_entry.get().strip():
+            self.filename_entry.delete(0, tk.END)
+            self.filename_entry.insert(0, "Enter custom filename (optional)")
+            self.filename_entry.config(foreground="#999999")
+            self.custom_filename.set("")
+        else:
+            self.custom_filename.set(self.filename_entry.get().strip())
+
+    def _on_filename_change(self, event):
+        """Handle filename entry changes with validation"""
+        current_text = self.filename_entry.get()
+        if current_text != "Enter custom filename (optional)":
+            # Validate filename in real-time
+            from utils.filename_validator import validate_and_suggest_filename
+            result = validate_and_suggest_filename(current_text)
+
+            # Update the StringVar with the current value
+            self.custom_filename.set(current_text.strip())
+
+            # You could add visual feedback here if needed
+            # For now, just store the value
+
     def on_prompt_change(self, event=None):
         """Handle prompt text changes"""
         # Update the prompt_text variable when text widget changes
@@ -223,6 +293,7 @@ class ImageEntry:
         return {
             'folder_path': folder_path_value,
             'prompt': self.prompt_text_widget.get('1.0', tk.END).strip(),
+            'custom_filename': self.custom_filename.get().strip(),
             'images': self.detected_images.copy(),
             'text_file': self.detected_text_file,
             'entry_id': self.entry_id,

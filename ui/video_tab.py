@@ -966,7 +966,8 @@ class VideoTab:
                 audio_settings={
                     "mute_original": entry_data["mute_original_audio"],
                     "original_volume": entry_data["original_audio_volume"]
-                }
+                },
+                custom_filename=entry_data.get("custom_filename", "")
             )
             self.main_gui.log(f"Added video job #{job_id}: {os.path.basename(entry_data['video_file'])}")
 

@@ -33,14 +33,15 @@ class BatchProcessor:
         self.batch_jobs.append(job)
         return len(self.batch_jobs)  # Return job ID (1-based index)
     
-    def add_video_batch_job(self, text_input, video_file, audio_settings=None):
+    def add_video_batch_job(self, text_input, video_file, audio_settings=None, custom_filename=None):
         """Add a video processing job to the batch queue"""
         job = {
             "text_input": text_input,
             "video_file": video_file,
             "job_type": "video",
             "status": "pending",
-            "audio_settings": audio_settings or {"mute_original": False, "original_volume": 0.3}
+            "audio_settings": audio_settings or {"mute_original": False, "original_volume": 0.3},
+            "custom_filename": custom_filename or ""
         }
         self.batch_jobs.append(job)
         return len(self.batch_jobs)  # Return job ID (1-based index)
@@ -190,6 +191,7 @@ class BatchProcessor:
 
             # Set up video processor
             video_processor.current_audio_settings = job.get("audio_settings", {"mute_original": False, "original_volume": 0.3})
+            video_processor.custom_filename = job.get("custom_filename", "")
 
             # Create progress callback wrapper
             original_callback = self.progress_callback

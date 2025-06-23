@@ -395,7 +395,12 @@ class VideoProcessor:
         self.update_progress(95, "Finalizing video...")
         
         from services.video_finalization import merge_video_subtitle
-        final_output = os.path.join(output_dir, "final_output.mp4")
+        from utils.filename_validator import get_final_output_filename
+
+        # Use custom filename if provided, otherwise use default
+        custom_filename = getattr(self, 'custom_filename', '')
+        final_filename = get_final_output_filename(custom_filename, "final_output")
+        final_output = os.path.join(output_dir, final_filename)
         
         result = merge_video_subtitle(video_file, subtitle_file, final_output)
         

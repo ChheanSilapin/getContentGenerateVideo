@@ -1,47 +1,30 @@
 {
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
-  "voice_actor": "Default",
-  "speed": 0.8,
-  "emotion": "neutral",
-  "mute": false,
-  "volume": 0.7,
-  "tts_language": "en-uk",
-  "tts_voice_actor": "British",
-  "tts_speed": 1.0,
-  "tts_emotion": "neutral",
-  "sr_enabled": true,
-  "sr_language": "en-us",
-  "sr_model_path": "",
-  "timing_mode": "balanced",
-  "min_image_duration": 0.8,
-  "max_image_duration": 8.0,
-  "optimal_image_duration": 3.0,
-  "image_fit_method": "cover",
-  "aspect_ratio": "16:9 (Landscape)",
   "shared_settings": {
-    "tts_language": "en-uk",
-    "tts_voice_actor": "British",
-    "tts_speed": 1.0,
-    "tts_emotion": "neutral",
+    "tts_language": "en-us",
+    "tts_voice_actor": "American",
+    "tts_speed": 1.038235294117647,
+    "tts_emotion": "excited",
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output"
   },
   "image_tab_settings": {
     "image_fit_method": "contain",
-    "aspect_ratio": "9:16 (Portrait)"
+    "aspect_ratio": "1:1 (Square)"
   },
   "video_tab_settings": {
     "mute_original_audio": true,
     "original_audio_volume": 0.7,
-    "subtitle_style": "modern_glow",
-    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
-    "mute": true,
-    "volume": 0.7
+    "subtitle_style": "modern_glow"
   },
-  "legacy_settings": {
-    "tts_language": "en-uk",
-    "tts_voice_actor": "British",
-    "tts_speed": 1.0,
-    "tts_emotion": "neutral",
-    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output"
+  "speech_recognition": {
+    "sr_enabled": true,
+    "sr_language": "en-us",
+    "sr_model_path": ""
+  },
+  "content_timing": {
+    "timing_mode": "balanced",
+    "min_image_duration": 0.8,
+    "max_image_duration": 8.0,
+    "optimal_image_duration": 3.0
   }
 }

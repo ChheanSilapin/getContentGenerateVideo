@@ -146,7 +146,12 @@ class VideoGeneratorModel:
             self.update_progress(95, "Finalizing video...")
 
             from services.video_finalization import merge_video_subtitle
-            final_output = os.path.join(output_dir, "final_output.mp4")
+            from utils.filename_validator import get_final_output_filename
+
+            # Use custom filename if provided, otherwise use default
+            custom_filename = getattr(self, 'custom_filename', '')
+            final_filename = get_final_output_filename(custom_filename, "final_output")
+            final_output = os.path.join(output_dir, final_filename)
 
             result = merge_video_subtitle(video_path, subtitle_path, final_output)
 
@@ -196,9 +201,9 @@ class VideoGeneratorModel:
             text_input, image_source, selected_images, website_url, local_folder
         )
     
-    def add_video_batch_job(self, text_input, video_file, audio_settings=None):
+    def add_video_batch_job(self, text_input, video_file, audio_settings=None, custom_filename=None):
         """Add a video processing job to the batch queue - delegates to BatchProcessor"""
-        return self.batch_processor.add_video_batch_job(text_input, video_file, audio_settings)
+        return self.batch_processor.add_video_batch_job(text_input, video_file, audio_settings, custom_filename)
     
     def add_group_batch_job(self, group_data, audio_settings=None):
         """Add a grouped video processing job to the batch queue - delegates to BatchProcessor"""
@@ -434,8 +439,9 @@ class VideoGeneratorModel:
         try:
             from utils.settings_manager import SettingsManager
             settings_manager = SettingsManager()
-            user_settings = settings_manager.load_settings()
-            user_aspect_ratio = user_settings.get('aspect_ratio', '16:9 (Landscape)')
+            # Use image tab specific settings for aspect ratio
+            image_tab_settings = settings_manager.get_tab_settings('image_tab')
+            user_aspect_ratio = image_tab_settings.get('aspect_ratio', '16:9 (Landscape)')
 
             # Convert user aspect ratio preset to simple ratio string
             if '16:9' in user_aspect_ratio:
@@ -489,8 +495,9 @@ class VideoGeneratorModel:
         try:
             from utils.settings_manager import SettingsManager
             settings_manager = SettingsManager()
-            user_settings = settings_manager.load_settings()
-            fit_method = user_settings.get('image_fit_method', 'cover')
+            # Use image tab specific settings for image processing
+            image_tab_settings = settings_manager.get_tab_settings('image_tab')
+            fit_method = image_tab_settings.get('image_fit_method', 'cover')
         except Exception:
             pass  # Use default
 

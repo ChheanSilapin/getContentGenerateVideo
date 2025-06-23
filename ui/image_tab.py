@@ -958,7 +958,8 @@ class ImageTab:
                 pair_entry_data = {
                     'folder_path': folder_path,
                     'prompt': prompt,
-                    'images': images
+                    'images': images,
+                    'custom_filename': group_data.get('custom_filename', '')
                 }
 
                 # Generate video for this pair
@@ -988,6 +989,7 @@ class ImageTab:
             folder_path = entry_data.get('folder_path')
             prompt = entry_data.get('prompt', '')
             images = entry_data.get('images', [])
+            custom_filename = entry_data.get('custom_filename', '')
 
             if not folder_path or not prompt or not images:
                 self.main_gui.log(f"Skipping invalid entry: {folder_path}")
@@ -999,6 +1001,7 @@ class ImageTab:
             self.main_gui.model.image_source = "selected"  # Use "selected" instead of "3"
             self.main_gui.model.website_url = ""
             self.main_gui.model.local_folder = ""
+            self.main_gui.model.custom_filename = custom_filename
 
             # Set up progress callback for this generation
             def progress_callback(value, message=None):

@@ -62,6 +62,8 @@ class SettingsPopup:
             self._initialize_output_folder()
         if self.include_tts:
             self._initialize_tts_settings()
+        if self.include_image_processing:
+            self._initialize_image_processing_settings()
         if self.include_speech_recognition:
             self._initialize_speech_recognition_settings()
 
@@ -98,17 +100,28 @@ class SettingsPopup:
             self.tts_speed.set(tab_settings.get('tts_speed', 1.0))
             self.tts_emotion.set(tab_settings.get('tts_emotion', 'neutral'))
 
-            # Set tab-specific settings
-            if tab_name == 'image_tab':
-                self.image_fit_method.set(tab_settings.get('image_fit_method', 'cover'))
-                self.aspect_ratio.set(tab_settings.get('aspect_ratio', '16:9 (Landscape)'))
-
         except Exception as e:
             # Set defaults
             self.tts_language.set('en')
             self.tts_voice_actor.set('Default')
             self.tts_speed.set(1.0)
             self.tts_emotion.set('neutral')
+
+    def _initialize_image_processing_settings(self):
+        """Initialize image processing settings with default values"""
+        try:
+            # Determine which tab we're configuring for
+            tab_name = getattr(self, 'current_tab', 'image_tab')  # Default to image_tab
+
+            # Get tab-specific settings
+            tab_settings = self.settings_manager.get_tab_settings(tab_name)
+
+            # Set image processing settings
+            self.image_fit_method.set(tab_settings.get('image_fit_method', 'cover'))
+            self.aspect_ratio.set(tab_settings.get('aspect_ratio', '16:9 (Landscape)'))
+
+        except Exception as e:
+            # Set defaults
             self.image_fit_method.set('cover')
             self.aspect_ratio.set('16:9 (Landscape)')
 
@@ -410,7 +423,6 @@ class SettingsPopup:
 
         ttk.Label(aspect_row, text="Aspect Ratio:", font=("Cascadia Code", 10)).pack(side="left")
 
-        self.aspect_ratio = tk.StringVar()
         aspect_combo = ttk.Combobox(
             aspect_row,
             textvariable=self.aspect_ratio,
