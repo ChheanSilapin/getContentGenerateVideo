@@ -221,11 +221,11 @@ class VideoProcessor:
 
             self.update_progress(42, "Validating speech recognition accuracy...")
 
-            # Import speech recognition service
-            from services.speech_recognition_core import SpeechRecognitionService
+            # Import enhanced speech recognition service
+            from services.enhanced_speech_recognition import EnhancedSpeechRecognitionService
 
-            # Initialize speech recognition service
-            speech_service = SpeechRecognitionService()
+            # Initialize enhanced speech recognition service
+            speech_service = EnhancedSpeechRecognitionService()
 
             if not speech_service.is_available():
                 print("⚠️ Speech recognition service not available, skipping validation")
@@ -240,43 +240,55 @@ class VideoProcessor:
                 'language': tts_settings.get('language', 'en')
             }
 
-            # Use content-type aware speech recognition with post-processing
+            # Use enhanced speech recognition with multiple validation methods
             content_analysis = getattr(self, 'content_analysis', None)
             content_type = content_analysis.content_type if content_analysis else None
 
-            # Use the existing audio file instead of generating a new one
-            result = speech_service.recognize_speech_from_audio_with_postprocessing(
+            # Use enhanced validation with both Vosk and whisper-timestamped
+            enhanced_result = speech_service.validate_audio_with_enhanced_methods(
                 audio_file=audio_file,
                 original_text=self.text_input,
                 content_type=content_type
             )
 
-            if not result.success or not result.recognized_text:
-                print("⚠️ Speech recognition failed or returned empty text")
+            if not enhanced_result.success:
+                print("⚠️ Enhanced speech recognition failed")
                 return False
 
-            recognized_text = result.recognized_text
+            recognized_text = enhanced_result.final_text
+            confidence_score = enhanced_result.confidence_score
+            method_used = enhanced_result.method_used
 
             # Check if validation passes threshold (with content-type aware thresholds)
-            similarity_score = result.similarity_score
             threshold = self._get_content_aware_threshold(content_type)
-            passes_validation = similarity_score >= threshold
+            passes_validation = confidence_score >= threshold
 
-            # Log validation results (condensed)
-            print(f"Speech Recognition Validation: {similarity_score:.1%} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
+            # Log validation results with method information
+            print(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
 
-            # Store validation results
+            # Log service status for transparency
+            service_status = speech_service.get_service_status()
+            if service_status['enhanced_mode']:
+                print(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}")
+            else:
+                print(f"🔧 Standard mode: Vosk={service_status['vosk_available']}")
+
+            # Store enhanced validation results
             self.last_speech_validation_result = {
                 'original_text': self.text_input,
                 'recognized_text': recognized_text,
-                'similarity_score': similarity_score,
+                'confidence_score': confidence_score,
+                'method_used': method_used,
                 'passes_validation': passes_validation,
-                'threshold': threshold
+                'threshold': threshold,
+                'vosk_available': service_status['vosk_available'],
+                'whisper_available': service_status['whisper_available'],
+                'enhanced_mode': service_status['enhanced_mode']
             }
 
             # Automatically apply recognized text if validation passes
-            if passes_validation and similarity_score >= 0.8:  # High confidence threshold
-                print(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
+            if passes_validation and confidence_score >= 0.8:  # High confidence threshold
+                print(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})")
                 self.validated_text = recognized_text
             else:
                 # Keep original text if validation fails or confidence is low
@@ -284,7 +296,7 @@ class VideoProcessor:
                 if not passes_validation:
                     print(f"⚠️ Using original text due to validation failure")
                 else:
-                    print(f"⚠️ Using original text due to low confidence ({similarity_score:.1%})")
+                    print(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})")
 
             return passes_validation
 
@@ -348,7 +360,7 @@ class VideoProcessor:
         if stop_event and stop_event.is_set():
             return None
             
-        print("\n--- Step 3: Generating Subtitles ---")
+        # Step 3: Generating Subtitles
         self.update_progress(75, "Generating subtitles...")
         
         from services.subtitle_service import generate_subtitles
@@ -359,10 +371,17 @@ class VideoProcessor:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
         
-        if not generate_subtitles(text_input, video_file, audio_file, subtitle_file, subtitle_style):
+        # Use validated text if available, otherwise use original text
+        text_for_subtitles = getattr(self, 'validated_text', text_input)
+
+        if not generate_subtitles(text_for_subtitles, video_file, audio_file, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None
+
+        # Log which text was used for subtitles
+        if hasattr(self, 'validated_text') and self.validated_text != text_input:
+            print("📝 Subtitles generated using validated text from speech recognition")
 
         self.update_progress(90, "Subtitles generated successfully")
         return subtitle_file

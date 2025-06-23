@@ -569,11 +569,11 @@ class VideoGeneratorModel:
 
             self.update_progress(52, "Validating speech recognition accuracy...")
 
-            # Import speech recognition service
-            from services.speech_recognition_core import SpeechRecognitionService
+            # Import enhanced speech recognition service
+            from services.enhanced_speech_recognition import EnhancedSpeechRecognitionService
 
-            # Initialize speech recognition service
-            speech_service = SpeechRecognitionService()
+            # Initialize enhanced speech recognition service
+            speech_service = EnhancedSpeechRecognitionService()
 
             if not speech_service.is_available():
                 print("⚠️ Speech recognition service not available, skipping validation")
@@ -594,56 +594,64 @@ class VideoGeneratorModel:
             content_analysis = getattr(self, 'content_analysis', None)
             content_type = content_analysis.content_type if content_analysis else None
 
-            # Use the existing audio file instead of generating a new one
-            # This avoids redundant TTS generation
-            result = speech_service.recognize_speech_from_audio_with_postprocessing(
+            # Use enhanced speech recognition with multiple validation methods
+            enhanced_result = speech_service.validate_audio_with_enhanced_methods(
                 audio_file=audio_file,
                 original_text=self.text_input,
                 content_type=content_type
             )
 
-            if not result.success or not result.recognized_text:
-                print("⚠️ Speech recognition failed or returned empty text")
+            if not enhanced_result.success:
+                print("⚠️ Enhanced speech recognition failed")
                 return False
 
-            recognized_text = result.recognized_text
+            recognized_text = enhanced_result.final_text
+            confidence_score = enhanced_result.confidence_score
+            method_used = enhanced_result.method_used
 
             # Check if validation passes threshold (with content-type aware thresholds)
-            similarity_score = result.similarity_score
             threshold = self._get_content_aware_threshold(content_type)
-            passes_validation = similarity_score >= threshold
+            passes_validation = confidence_score >= threshold
 
-            # Log validation results (condensed)
-            print(f"Speech Recognition Validation: {similarity_score:.1%} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
+            # Log validation results with method information
+            print(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
 
-            # Store validation results for potential use by UI
+            # Log service status for transparency
+            service_status = speech_service.get_service_status()
+            if service_status['enhanced_mode']:
+                print(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}")
+            else:
+                print(f"🔧 Standard mode: Vosk={service_status['vosk_available']}")
+
+            # Store enhanced validation results for potential use by UI
             self.last_speech_validation_result = {
                 'original_text': self.text_input,
                 'recognized_text': recognized_text,
-                'similarity_score': similarity_score,
-                'word_accuracy': result.word_accuracy,
-                'character_accuracy': result.character_accuracy,
+                'confidence_score': confidence_score,
+                'method_used': method_used,
                 'passes_validation': passes_validation,
                 'threshold': threshold,
-                'differences': result.differences
+                'vosk_available': service_status['vosk_available'],
+                'whisper_available': service_status['whisper_available'],
+                'enhanced_mode': service_status['enhanced_mode']
             }
 
             # Automatically apply recognized text to final output if validation passes
-            if passes_validation and similarity_score >= 0.8:  # High confidence threshold
+            if passes_validation and confidence_score >= 0.8:  # High confidence threshold
                 from utils.logging_utils import log_speech_recognition
-                log_speech_recognition(f"🎯 Applying recognized text to video output (confidence: {similarity_score:.1%})")
+                log_speech_recognition(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})")
                 # Update the text input with the recognized text for consistency
                 self.validated_text = recognized_text
                 # Log the change for transparency (condensed)
                 if recognized_text != self.text_input:
-                    log_speech_recognition(f"📝 Text refined for better accuracy")
+                    log_speech_recognition(f"📝 Text refined for better accuracy using {method_used}")
             else:
                 # Keep original text if validation fails or confidence is low
                 self.validated_text = self.text_input
                 if not passes_validation:
                     print(f"⚠️ Using original text due to validation failure")
                 else:
-                    print(f"⚠️ Using original text due to low confidence ({similarity_score:.1%})")
+                    print(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})")
 
             return passes_validation
 

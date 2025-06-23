@@ -29,6 +29,8 @@ class SpeechRecognitionPostProcessor:
             "this in the most extreme conditions imagine this": "thrives in the most extreme conditions imaginable. This",  # Fix full phrase
             "imagine this": "imaginable this",  # Fix context issues
             "too survive": "to survive",  # Fix specific "to" -> "too" error
+            "world there remains": "world that remains",  # Fix grammatical error
+            "there remains largely": "that remains largely",  # Fix grammatical error
             "too fascinate": "to fascinate",
             "too dive": "to dive",
             "abyss zones": "abyssal zones",  # Fix "abyss" -> "abyssal"
@@ -182,6 +184,10 @@ class SpeechRecognitionPostProcessor:
             (r'\bdeep\s+sea\b', 'deep-sea'),
             (r'\badd\s+up\s+patience\b', 'adaptations'),  # Fix "add up patience" -> "adaptations"
             (r'\bozone\s+hold\b', 'zones hold'),  # Fix "ozone" -> "zones"
+            # Grammatical corrections for common speech recognition errors
+            (r'\b(a\s+world|the\s+world|this\s+world)\s+there\s+(remains|exists|lies)\b', r'\1 that \2'),  # Fix "world there remains" -> "world that remains"
+            (r'\bthere\s+(remains|exists|lies)\s+(largely|mostly|completely)\b', r'that \1 \2'),  # Fix "there remains largely" -> "that remains largely"
+            (r'\bworld\s+there\s+remains\b', 'world that remains'),  # Specific fix for the reported error
             # Story/novel specific corrections
             (r'\bdicks\s+unexpected\b', 'takes unexpected'),  # Fix "dicks unexpected" -> "takes unexpected"
             (r'\bnovel\s+dicks\b', 'novel takes'),  # Fix "novel dicks" -> "novel takes"

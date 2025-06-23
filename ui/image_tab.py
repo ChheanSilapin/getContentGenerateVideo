@@ -6,7 +6,8 @@ Handles folder-based image-to-video generation with multi-folder support
 import os
 
 # Use centralized UI imports
-from utils.common_imports import tk, messagebox, ttk, filedialog, threading
+from utils.common_imports import tk, ttk, filedialog, threading
+from config import GUI_FONTS
 
 from ui.components.settings_popup import show_settings_popup
 from ui.components.group_entry import GroupEntry, SmartNotification
@@ -84,7 +85,7 @@ class ImageTab:
         title_label = ttk.Label(
             title_frame,
             text="Image-to-Video Generation",
-            font=("Cascadia Code", 12, "bold")
+            font=GUI_FONTS["heading"]
         )
         title_label.pack(anchor="w")
 
@@ -111,8 +112,59 @@ class ImageTab:
         # Action buttons with better layout
         self.setup_action_buttons(main_frame)
 
-        # Add initial image entry
-        self.add_image_entry()
+        # Start with empty state - no initial entries
+        self.empty_state_frame = None
+        self.show_empty_state()
+
+    def show_empty_state(self):
+        """Show empty state with instructions"""
+        if self.empty_state_frame:
+            return  # Already showing
+
+        # Create empty state frame
+        self.empty_state_frame = ttk.Frame(self.entries_frame)
+        self.empty_state_frame.pack(fill="both", expand=True, padx=20, pady=40)
+
+        # Center container
+        center_frame = ttk.Frame(self.empty_state_frame)
+        center_frame.pack(expand=True)
+
+        # Icon and title
+        icon_label = ttk.Label(center_frame, text="📁", font=("Cascadia Code", 48))
+        icon_label.pack(pady=(0, 10))
+
+        title_label = ttk.Label(
+            center_frame,
+            text="Add images to start creating videos",
+            font=("Cascadia Code", 14, "bold"),
+            foreground="#333333"
+        )
+        title_label.pack(pady=(0, 20))
+
+        # Instructions
+        instructions = [
+            "Step 1: Click 'Add Content ▾' above",
+            "Step 2: Choose your content source:",
+            "   • Add Folder - Import image folders",
+            "   • Add Files - Pick individual image files",
+            "Step 3: Add text prompts for each entry",
+            "Step 4: Click 'Generate All Videos' to start"
+        ]
+
+        for instruction in instructions:
+            label = ttk.Label(
+                center_frame,
+                text=instruction,
+                font=("Cascadia Code", 10),
+                foreground="#666666"
+            )
+            label.pack(anchor="w", pady=2)
+
+    def hide_empty_state(self):
+        """Hide empty state when entries are added"""
+        if self.empty_state_frame:
+            self.empty_state_frame.destroy()
+            self.empty_state_frame = None
 
     def setup_settings_section(self, parent):
         """Set up compact settings section"""
@@ -124,7 +176,7 @@ class ImageTab:
         self.settings_info_label = ttk.Label(
             settings_row,
             text="TTS: Default Voice, 1.0x Speed, Neutral | Output: Default Folder",
-            font=("Cascadia Code", 8),
+            font=GUI_FONTS["small"],
             foreground="#7f8c8d"
         )
         self.settings_info_label.pack(side="left", anchor="w")
@@ -141,7 +193,7 @@ class ImageTab:
         entries_title = ttk.Label(
             entries_header,
             text="🖼️ Image Folder Entries",
-            font=("Cascadia Code", 11, "bold")
+            font=GUI_FONTS["heading"]
         )
         entries_title.pack(side="left")
 
@@ -152,19 +204,15 @@ class ImageTab:
         )
         settings_button.pack(side="right", padx=(0, 4))
 
-        # Add image folder button
-        add_image_button = self.main_gui.ui_factory.create_icon_button(
-            entries_header, "Add Image", self.add_image_entry,
-            icon="➕", width=15
+        # Add Content dropdown button with enhanced options
+        from ui.components.dropdown_menu import create_image_content_dropdown
+        self.content_dropdown = create_image_content_dropdown(
+            entries_header,
+            load_folder_command=self.load_images_from_folder,
+            select_multiple_command=self.select_multiple_images,
+            width=20
         )
-        add_image_button.pack(side="right", padx=(0, 4))
-
-        # Load from folder button
-        load_folder_button = self.main_gui.ui_factory.create_icon_button(
-            entries_header, "Load from Folder", self.load_images_from_folder,
-            icon="📁", width=20
-        )
-        load_folder_button.pack(side="right", padx=(0, 4))
+        self.content_dropdown.pack(side="right", padx=(0, 4))
 
         # Create canvas and scrollbar with better styling
         canvas_frame = ttk.Frame(parent)
@@ -224,7 +272,7 @@ class ImageTab:
             text_container,
             wrap='word',
             height=4,
-            font=("Cascadia Code", 10),
+            font=GUI_FONTS["default"],
             borderwidth=1,
             relief="solid"
         )
@@ -238,7 +286,7 @@ class ImageTab:
         help_label = ttk.Label(
             text_frame,
             text="Enter text that will be converted to speech and used as voiceover for the generated video",
-            font=("Cascadia Code", 9),
+            font=GUI_FONTS["small"],
             foreground="#7f8c8d"
         )
         help_label.pack(anchor="w", pady=(5, 0))
@@ -276,7 +324,7 @@ class ImageTab:
         help_label = ttk.Label(
             image_frame,
             text="Select images that will be used to create the video slideshow",
-            font=("Cascadia Code", 9),
+            font=GUI_FONTS["small"],
             foreground="#7f8c8d"
         )
         help_label.pack(anchor="w", pady=(5, 0))
@@ -312,8 +360,18 @@ class ImageTab:
         self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def add_image_entry(self, folder_path=None, prompt=None):
-        """Add a new image entry to the list"""
+        """Add a new image entry to the list with duplicate prevention"""
         from ui.components.image_entry import ImageEntry
+
+        # Hide empty state when adding first entry
+        self.hide_empty_state()
+
+        # Check for duplicates if folder_path is provided
+        if folder_path:
+            existing_folders = self._get_existing_folder_paths()
+            if folder_path in existing_folders:
+                self.main_gui.log(f"Duplicate folder path detected, skipping: {os.path.basename(folder_path)}")
+                return None
 
         entry_id = self.next_entry_id
         self.next_entry_id += 1
@@ -340,20 +398,47 @@ class ImageTab:
         self.main_gui.log(f"Added image folder entry #{entry_id}")
         return entry_id
 
+    def add_image_entry_with_images(self, image_files):
+        """Add a new image entry with specific image files (not folder-based)"""
+        from ui.components.image_entry import ImageEntry
+
+        # Hide empty state when adding first entry
+        self.hide_empty_state()
+
+        entry_id = self.next_entry_id
+        self.next_entry_id += 1
+
+        # Create new image entry
+        image_entry = ImageEntry(
+            self.entries_frame,
+            self.main_gui,
+            self.remove_image_entry,
+            entry_id
+        )
+
+        # Set the images directly instead of using folder path
+        image_entry.set_images_directly(image_files)
+
+        # Store the entry
+        self.image_entries[entry_id] = image_entry
+
+        # Update scroll region
+        self.scrollable_frame.update_idletasks()
+        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+        self.main_gui.log(f"Added image entry #{entry_id} with {len(image_files)} selected images")
+        return entry_id
+
     def remove_image_entry(self, entry_id):
         """Remove an image entry from the list"""
         if entry_id in self.image_entries:
-            # Don't allow removing the last entry
-            if len(self.image_entries) <= 1:
-                if self.progress_manager:
-                    self.progress_manager.show_warning("Cannot Remove", "At least one image folder entry must remain.")
-                else:
-                    messagebox.showwarning("Cannot Remove", "At least one image folder entry must remain.")
-                return
-
             # Remove the entry
             self.image_entries[entry_id].destroy()
             del self.image_entries[entry_id]
+
+            # If no entries left, show empty state
+            if not self.image_entries and not self.group_entries:
+                self.show_empty_state()
 
             # Update scroll region
             self.scrollable_frame.update_idletasks()
@@ -400,6 +485,118 @@ class ImageTab:
 
         self.main_gui.log(f"Found {len(valid_groups)} valid groups")
         return valid_groups
+
+    def _get_existing_folder_paths(self):
+        """Get list of folder paths already loaded in entries (only folder-based entries)"""
+        existing_folders = []
+        for entry in self.image_entries.values():
+            data = entry.get_data()
+            # Only include actual folder paths, not file-based entries
+            if data['folder_path'] and not data.get('is_file_based', False):
+                existing_folders.append(data['folder_path'])
+        return existing_folders
+
+    def _get_existing_image_files(self):
+        """Get list of individual image files already loaded in entries"""
+        existing_images = set()
+        for entry in self.image_entries.values():
+            data = entry.get_data()
+            if data.get('images'):
+                existing_images.update(data['images'])
+        return existing_images
+
+    def _generate_unique_name(self, base_path, existing_paths):
+        """Generate a unique name by adding numbers if duplicates exist"""
+        if base_path not in existing_paths:
+            return base_path
+
+        # Extract directory and filename
+        directory = os.path.dirname(base_path)
+        filename = os.path.basename(base_path)
+        name, ext = os.path.splitext(filename)
+
+        # Try numbered versions
+        counter = 1
+        while True:
+            new_filename = f"{name}({counter}){ext}"
+            new_path = os.path.join(directory, new_filename)
+            if new_path not in existing_paths:
+                return new_path
+            counter += 1
+
+    def _find_empty_entry(self):
+        """Find the first empty entry (no folder path and no images)"""
+        for entry_id, entry in self.image_entries.items():
+            data = entry.get_data()
+            # Check if entry is empty (no folder path and no images)
+            has_folder = data.get('folder_path') and not data.get('is_file_based', False)
+            has_images = data.get('images') and len(data['images']) > 0
+            has_prompt = data.get('prompt', '').strip()
+
+            # Entry is empty if it has no folder, no images, and no prompt
+            if not has_folder and not has_images and not has_prompt:
+                return entry_id
+        return None
+
+    def select_multiple_images(self):
+        """Select multiple individual image files and create entries"""
+        from utils.dialog_helpers import select_image_files
+
+        try:
+            # Show file selection dialog
+            selected_files = select_image_files(title="Select Multiple Images", multiple=True)
+
+            if not selected_files:
+                return
+
+            # Convert to list if it's a tuple
+            if isinstance(selected_files, tuple):
+                selected_files = list(selected_files)
+            elif isinstance(selected_files, str):
+                selected_files = [selected_files]
+
+            # Get existing images to handle duplicates with numbering
+            existing_images = self._get_existing_image_files()
+
+            # Generate unique names for duplicates
+            processed_images = []
+            for img in selected_files:
+                if img in existing_images:
+                    # Generate unique name with numbering
+                    unique_name = self._generate_unique_name(img, existing_images)
+                    processed_images.append(unique_name)
+                    existing_images.add(unique_name)  # Add to set to avoid conflicts
+                else:
+                    processed_images.append(img)
+                    existing_images.add(img)
+
+            new_images = processed_images
+
+            # Try to find an existing empty entry to populate first
+            empty_entry_id = self._find_empty_entry()
+
+            if empty_entry_id is not None:
+                # Populate the existing empty entry
+                entry = self.image_entries[empty_entry_id]
+                entry.set_images_directly(new_images)
+                entry_id = empty_entry_id
+                action = "populated"
+            else:
+                # Create a new entry with all selected images
+                entry_id = self.add_image_entry_with_images(new_images)
+                action = "created"
+
+            # Log results
+            duplicate_count = len(selected_files) - len([img for img in selected_files if img not in self._get_existing_image_files()])
+            if duplicate_count > 0:
+                self.main_gui.log(f"Added {len(new_images)} images to entry #{entry_id} ({action}), {duplicate_count} duplicates renamed with numbers")
+            else:
+                self.main_gui.log(f"Added {len(new_images)} images to entry #{entry_id} ({action})")
+
+        except Exception as e:
+            self.main_gui.log(f"Error selecting images: {e}")
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(self.main_gui, "Error", "Failed to select images", e)
 
     def clear_all_entries(self):
         """Clear all image entries (both individual and grouped)"""
@@ -468,15 +665,30 @@ class ImageTab:
                 self.add_image_entry()
 
     def load_as_individual_entries(self, folder_data):
-        """Load folder data as individual entries"""
+        """Load folder data as individual entries with duplicate prevention"""
         self.current_mode = "individual"
+
+        # Get existing folder paths to prevent duplicates
+        existing_folders = self._get_existing_folder_paths()
+        new_items = []
 
         for item in folder_data:
             folder_path = item.get('folder_path')
             prompt = item.get('prompt', '')
 
-            if folder_path:
+            if folder_path and folder_path not in existing_folders:
+                new_items.append(item)
                 self.add_image_entry(folder_path, prompt)
+
+        # Log duplicate prevention results
+        total_items = len(folder_data)
+        new_count = len(new_items)
+        duplicate_count = total_items - new_count
+
+        if duplicate_count > 0:
+            self.main_gui.log(f"Loaded {new_count} new entries, skipped {duplicate_count} duplicates")
+        else:
+            self.main_gui.log(f"Loaded {new_count} entries")
 
         # Ensure we have at least one entry
         if not self.image_entries:
@@ -521,6 +733,9 @@ class ImageTab:
 
     def add_group_entry(self, group_name, items):
         """Add a new group entry"""
+        # Hide empty state when adding first entry
+        self.hide_empty_state()
+
         group_id = self.next_group_id
         self.next_group_id += 1
 
@@ -566,17 +781,13 @@ class ImageTab:
     def remove_group_entry(self, group_id):
         """Remove a group entry"""
         if group_id in self.group_entries:
-            # Don't allow removing the last group
-            if len(self.group_entries) <= 1:
-                if self.progress_manager:
-                    self.progress_manager.show_warning("Cannot Remove", "At least one group must remain.")
-                else:
-                    messagebox.showwarning("Cannot Remove", "At least one group must remain.")
-                return
-
             # Remove the group entry
             self.group_entries[group_id].destroy()
             del self.group_entries[group_id]
+
+            # If no entries left, show empty state
+            if not self.image_entries and not self.group_entries:
+                self.show_empty_state()
 
             # Update scroll region
             self.scrollable_frame.update_idletasks()

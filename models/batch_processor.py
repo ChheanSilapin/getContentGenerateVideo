@@ -314,7 +314,22 @@ class BatchProcessor:
             if merge_result and os.path.exists(combined_output):
                 # Clean up individual video folders after successful merge using unified cleanup
                 cleanup_manager = getattr(self, 'cleanup_manager', None)
-                self._cleanup_individual_folders(processed_videos, cleanup_manager)
+
+                # Check if auto-cleanup is enabled before removing individual folders
+                import config
+                cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+
+                if cleanup_enabled:
+                    self._cleanup_individual_folders(processed_videos, cleanup_manager)
+                else:
+                    print(f"🔧 Keeping individual video folders for debugging (AUTO_CLEANUP_AFTER_COMPLETION = False)")
+                    print(f"📁 Individual folders preserved: {len(processed_videos)} folders with debug files")
+
+                    # Log the specific folders being preserved for debugging
+                    for video_path in processed_videos:
+                        individual_folder = os.path.dirname(video_path)
+                        folder_name = os.path.basename(individual_folder)
+                        print(f"   📂 Debug folder: {folder_name} (contains subtitles.ass, voice.mp3, etc.)")
                 self.update_progress(int((job_index + 1) * (100 / total_jobs)),
                                    f"✅ Completed group {job_index+1}: {group_data['output_name']}")
                 return combined_output

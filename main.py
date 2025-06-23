@@ -42,7 +42,7 @@ def setup_environment():
             output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
             os.makedirs(output_dir, exist_ok=True)
             os.environ['VIDEO_GENERATOR_OUTPUT_DIR'] = output_dir
-            print(f"Set up output directory: {output_dir}")
+            print(f"Set up fallback output directory: {output_dir}")
         except OSError as e:
             print(f"Warning: Could not create output directory: {e}")
             # Will use the current directory as fallback

@@ -5,7 +5,6 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips
 
 # Import centralized utility functions
 from utils.helpers import create_temp_file_with_cleanup, cleanup_temp_files, get_media_duration_safe
-from services.video_utils import get_media_duration
 
 class VideoService:
     @staticmethod

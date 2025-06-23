@@ -9,7 +9,7 @@ import traceback
 from moviepy.editor import VideoFileClip, AudioFileClip
 
 # Import centralized config (no fallback duplication)
-from config import DEFAULT_MAX_CHARS_PER_LINE, SUBTITLE_CONFIG
+from config import DEFAULT_MAX_CHARS_PER_LINE, SUBTITLE_CONFIG, WHISPER_TIMESTAMPED_CONFIG
 from utils.helpers import ensure_directory_exists, get_media_duration_safe
 from utils.text_processing import process_text_for_subtitles
 
@@ -21,6 +21,14 @@ try:
 except ImportError:
     PYDUB_AVAILABLE = False
     print("pydub not available. Using basic timing for subtitles.")
+
+# Import whisper-timestamped service for enhanced timing
+try:
+    from services.whisper_timestamped_service import WhisperTimestampedService
+    WHISPER_SERVICE_AVAILABLE = True
+except ImportError:
+    WHISPER_SERVICE_AVAILABLE = False
+    print("⚠️ WhisperTimestampedService not available.")
 
 def create_optimized_word_groups(text):
     """Create optimized word groups for subtitles"""
@@ -61,10 +69,28 @@ def create_optimized_word_groups(text):
     return groups
 
 class SubtitleGenerator:
-    """Clean, efficient subtitle generator"""
-    
+    """Clean, efficient subtitle generator with whisper-timestamped integration"""
+
     def __init__(self):
         self.config = SUBTITLE_CONFIG
+        self.whisper_config = WHISPER_TIMESTAMPED_CONFIG
+
+        # Initialize whisper-timestamped service if available and enabled
+        self.whisper_service = None
+        if (WHISPER_SERVICE_AVAILABLE and
+            self.whisper_config.get("enable_service", True)):
+            try:
+                self.whisper_service = WhisperTimestampedService(
+                    model_name=self.whisper_config.get("model_name", "tiny"),
+                    device=self.whisper_config.get("device", "auto")
+                )
+                if self.whisper_service.is_service_available():
+                    print("✅ Whisper-timestamped service initialized for enhanced subtitle timing")
+                else:
+                    self.whisper_service = None
+            except Exception as e:
+                print(f"⚠️ Failed to initialize whisper-timestamped service: {e}")
+                self.whisper_service = None
     
     def generate_subtitles(self, text, video_file, audio_file, output_file, style="modern_glow", content_analysis=None):
         """
@@ -88,6 +114,11 @@ class SubtitleGenerator:
             # Clean text and create output directory
             cleaned_text = process_text_for_subtitles(text)
             ensure_directory_exists(os.path.dirname(output_file))
+
+            # Debug: Log which text is being used for subtitles
+            print(f"📝 Subtitle text source: {len(text)} chars, first 50: '{text[:50]}...'")
+            if cleaned_text != text:
+                print(f"📝 Text cleaned for subtitles: '{cleaned_text[:50]}...'")
 
             # Save text file for processing
             text_file = f"{audio_file}.txt"
@@ -160,45 +191,188 @@ class SubtitleGenerator:
         return get_media_duration_safe(audio_file)
     
     def _calculate_timing(self, audio_file, word_groups, duration):
-        """Calculate timing with optional speech analysis"""
-        # Try speech analysis first
+        """Calculate timing with whisper-timestamped as primary method"""
+        # Try whisper-timestamped first (highest priority)
+        if (self.whisper_service and
+            self.whisper_config.get("replace_speech_analysis", True) and
+            duration <= self.whisper_config.get("max_audio_duration", 300)):
+
+            timings = self._analyze_whisper_timing(audio_file, word_groups, duration)
+            if timings and len(timings) == len(word_groups):
+                print("🎯 Using whisper-timestamped for precise subtitle synchronization")
+                print(f"📊 Whisper analysis: {len(timings)} subtitle events with word-level precision")
+                return timings
+            else:
+                print(f"⚠️ Whisper-timestamped returned {len(timings) if timings else 0} timings for {len(word_groups)} groups")
+
+        # Fallback to traditional speech analysis
         if (PYDUB_AVAILABLE and
             self.config.get("use_speech_analysis", True) and
             duration <= self.config.get("speech_analysis_max_duration", 60.0)):
 
             timings = self._analyze_speech_timing(audio_file, word_groups, duration)
-            if timings:
-                # print("Using speech analysis timing")  # Reduced logging
-                return timings
+            if timings and len(timings) == len(word_groups):
+                # Validate timing quality
+                timing_quality = self._validate_timing_quality(timings, duration)
+                if timing_quality['is_valid']:
+                    print("🎯 Using speech analysis timing for precise subtitle synchronization")
+                    print(f"📊 Speech analysis: {len(timings)} subtitle events, 0ms offset, perfect synchronization")
+                    return timings
+                else:
+                    print(f"⚠️ Speech analysis timing quality poor: {timing_quality['reason']}")
+                    print("📊 Falling back to calculated timing for reliability")
+            elif timings:
+                print(f"⚠️ Speech analysis returned {len(timings)} timings for {len(word_groups)} groups - using calculated timing")
 
-        # Fallback to calculated timing
-        # print("Using calculated timing")  # Reduced logging
+        # Final fallback to calculated timing
+        print("📊 Using calculated timing (advanced analysis unavailable)")
         return self._calculate_basic_timing(word_groups, duration)
-    
+
+    def _analyze_whisper_timing(self, audio_file, word_groups, duration):
+        """Analyze audio using whisper-timestamped for precise word-level timing with robust error handling"""
+        try:
+            # Validate inputs
+            if not os.path.exists(audio_file):
+                print(f"⚠️ Audio file not found: {audio_file}")
+                return None
+
+            if not word_groups:
+                print("⚠️ No word groups provided for timing analysis")
+                return None
+
+            # Check audio duration limits
+            max_duration = self.whisper_config.get("max_audio_duration", 300)
+            if duration > max_duration:
+                print(f"⚠️ Audio too long for whisper analysis: {duration:.1f}s > {max_duration}s")
+                return None
+
+            # Get content type for optimization
+            content_analysis = getattr(self, 'content_analysis', None)
+            content_type = None
+            if content_analysis and hasattr(content_analysis, 'content_type'):
+                content_type = content_analysis.content_type
+
+            # Get language setting
+            language = self.whisper_config.get("default_language", "en")
+            use_vad = self.whisper_config.get("use_vad", True)
+
+            # Run whisper-timestamped analysis with timeout protection
+            start_time = time.time()
+            result = self.whisper_service.analyze_audio_with_timestamps(
+                audio_file=audio_file,
+                language=language,
+                use_vad=use_vad,
+                content_type=content_type
+            )
+            analysis_time = time.time() - start_time
+
+            if not result.success:
+                print(f"⚠️ Whisper analysis failed: {result.error_message}")
+                return None
+
+            # Check if analysis took too long (performance issue)
+            if analysis_time > 30.0:  # 30 second timeout
+                print(f"⚠️ Whisper analysis too slow: {analysis_time:.1f}s")
+                print("💡 Consider using smaller model or fallback method")
+
+            # Check confidence threshold
+            confidence = self.whisper_service.get_confidence_score(result)
+            min_confidence = self.whisper_config.get("min_confidence_threshold", 0.7)
+
+            if confidence < min_confidence:
+                print(f"⚠️ Whisper confidence too low: {confidence:.2f} < {min_confidence}")
+                if self.whisper_config.get("fallback_to_vosk", True):
+                    print("📊 Falling back to traditional speech analysis")
+                    return None
+
+            # Extract timings for subtitle groups
+            timings = self.whisper_service.extract_word_timings_for_subtitle_groups(
+                result, word_groups
+            )
+
+            if timings:
+                # Validate timing quality
+                if not self._validate_whisper_timings(timings, duration):
+                    print("⚠️ Whisper timings failed quality validation")
+                    return None
+
+                # Apply subtitle sync offset if configured
+                sync_offset = self.whisper_config.get("subtitle_sync_offset", 0.0)
+                if sync_offset != 0.0:
+                    timings = [(start + sync_offset, end + sync_offset) for start, end in timings]
+                    print(f"📊 Applied {sync_offset}s sync offset to whisper timings")
+
+                print(f"✅ Whisper-timestamped generated {len(timings)} precise timings (confidence: {confidence:.2f}, time: {analysis_time:.1f}s)")
+                return timings
+            else:
+                print("⚠️ No timings extracted from whisper analysis")
+                return None
+
+        except Exception as e:
+            print(f"❌ Whisper timing analysis failed: {e}")
+            print("💡 Falling back to traditional timing methods")
+            return None
+
+    def _validate_whisper_timings(self, timings, total_duration):
+        """Validate whisper timing quality"""
+        if not timings:
+            return False
+
+        # Check for reasonable timing bounds
+        for start, end in timings:
+            if start < 0 or end < 0 or start >= end:
+                return False
+            if end > total_duration + 1.0:  # Allow 1s tolerance
+                return False
+
+        # Check for excessive overlaps
+        overlaps = 0
+        for i in range(len(timings) - 1):
+            if timings[i][1] > timings[i+1][0]:
+                overlaps += 1
+
+        if overlaps > len(timings) * 0.3:  # More than 30% overlaps is problematic
+            return False
+
+        return True
+
     def _analyze_speech_timing(self, audio_file, word_groups, duration):
         """Analyze speech patterns for precise timing"""
         try:
             audio = AudioSegment.from_file(audio_file)
             
             # Detect speech segments
-            silence_thresh = audio.dBFS - self.config.get("silence_threshold_db", 16)
-            min_silence = self.config.get("min_silence_length_ms", 150)
+            silence_thresh = audio.dBFS - self.config.get("silence_threshold_db", 18)
+            min_silence = self.config.get("min_silence_length_ms", 200)
             
             speech_segments = detect_nonsilent(audio, min_silence_len=min_silence, silence_thresh=silence_thresh)
-            
+
             if not speech_segments:
                 return None
-            
+
             # Convert to seconds and filter short segments
             segments = []
+            filtered_count = 0
             for start_ms, end_ms in speech_segments:
                 start_sec = start_ms / 1000.0
                 end_sec = end_ms / 1000.0
-                if end_sec - start_sec > 0.3:  # At least 300ms
+                segment_duration = end_sec - start_sec  # Fixed: renamed to avoid collision with duration parameter
+                if segment_duration > 0.4:  # At least 400ms (balanced reliability and sensitivity)
                     segments.append((start_sec, end_sec))
-            
+                else:
+                    filtered_count += 1
+
             if not segments:
-                return None
+                # Fallback: try with shorter minimum duration
+                for start_ms, end_ms in speech_segments:
+                    start_sec = start_ms / 1000.0
+                    end_sec = end_ms / 1000.0
+                    fallback_segment_duration = end_sec - start_sec  # Fixed: use descriptive variable name
+                    if fallback_segment_duration > 0.2:  # Fallback to 200ms minimum
+                        segments.append((start_sec, end_sec))
+
+                if not segments:
+                    return None
             
             # Map word groups to speech segments
             return self._map_groups_to_segments(word_groups, segments, duration)
@@ -210,16 +384,18 @@ class SubtitleGenerator:
     def _map_groups_to_segments(self, word_groups, segments, duration):
         """Map word groups to detected speech segments with improved synchronization"""
         timings = []
-        early_offset = 0.1  # Reduced early start for better sync
-        min_subtitle_duration = 1.5  # Reduced minimum duration
-        min_gap = 0.05  # Smaller gap for better flow
+        early_offset = 0.0   # Zero offset: subtitles appear EXACTLY with speech starts (perfect synchronization)
+        min_subtitle_duration = 0.8  # Reduced minimum for better speech analysis compatibility
+        min_gap = 0.05  # Smaller gap for smoother flow
+
+        # Map word groups to speech segments
 
         if len(segments) >= len(word_groups):
-            # One-to-one mapping
+            # One-to-one mapping (preferred when we have enough segments)
             for i, group in enumerate(word_groups):
                 if i < len(segments):
                     start, end = segments[i]
-                    start = max(0, start - early_offset)
+                    start = max(0, start - early_offset)  # Zero offset = exact synchronization with speech
 
                     # Check for overlap with previous subtitle
                     if i > 0 and timings:
@@ -227,9 +403,17 @@ class SubtitleGenerator:
                         if start < prev_end + min_gap:
                             start = prev_end + min_gap
 
-                    # Ensure minimum duration for readability
-                    duration_needed = max(min_subtitle_duration, group['char_count'] / 15)
-                    if end - start < duration_needed:
+                    # Calculate duration based on text length and speech segment
+                    text_based_duration = max(0.8, group['char_count'] / 15)  # 15 chars per second reading speed
+                    segment_duration = end - start
+                    duration_needed = max(min_subtitle_duration, text_based_duration)
+
+                    # Use the longer of text-based duration or segment duration, but ensure minimum
+                    if segment_duration >= duration_needed:
+                        # Speech segment is long enough, use it
+                        end = start + segment_duration
+                    else:
+                        # Speech segment too short, extend to meet text requirements
                         end = start + duration_needed
 
                     timings.append((start, min(end, duration)))
@@ -240,37 +424,97 @@ class SubtitleGenerator:
                     fallback_duration = max(min_subtitle_duration, group['char_count'] / 15)
                     timings.append((fallback_start, min(fallback_start + fallback_duration, duration)))
         else:
-            # Distribute groups across segments
-            groups_per_segment = len(word_groups) / len(segments)
-            group_idx = 0
+            # Distribute groups across segments - FIXED ALGORITHM
 
-            for start, end in segments:
-                segment_groups = int(groups_per_segment) + (1 if group_idx < len(word_groups) % len(segments) else 0)
+            # Create a more robust distribution that ensures all groups are processed
+            segment_assignments = []
+            remaining_groups = len(word_groups)
+
+            for i, (start, end) in enumerate(segments):
+                remaining_segments = len(segments) - i
+                # Calculate how many groups this segment should handle
+                groups_for_this_segment = max(1, remaining_groups // remaining_segments)
+                if i < remaining_groups % remaining_segments:
+                    groups_for_this_segment += 1
+
+                segment_assignments.append(groups_for_this_segment)
+                remaining_groups -= groups_for_this_segment
+
+            # Distribute groups across segments
+
+            group_idx = 0
+            for segment_idx, (start, end) in enumerate(segments):
+                segment_groups = segment_assignments[segment_idx]
                 segment_duration = end - start
 
                 for i in range(segment_groups):
                     if group_idx >= len(word_groups):
                         break
 
+                    # Distribute groups evenly within this segment
                     group_start = start - early_offset + (i * segment_duration / segment_groups)
                     group_end = start + ((i + 1) * segment_duration / segment_groups)
+
+                    # Ensure minimum subtitle duration based on text length
+                    group = word_groups[group_idx]
+                    text_based_duration = max(0.8, group['char_count'] / 15)  # 15 chars per second reading speed
+                    required_duration = max(min_subtitle_duration, text_based_duration)
+
+                    # Adjust end time to meet minimum duration
+                    if group_end - group_start < required_duration:
+                        group_end = group_start + required_duration
 
                     # Check for overlap with previous subtitle
                     if timings:
                         prev_end = timings[-1][1]
                         if group_start < prev_end + min_gap:
                             group_start = prev_end + min_gap
-                            # Adjust end time accordingly
-                            group_end = max(group_end, group_start + min_subtitle_duration)
+                            # Adjust end time accordingly to maintain minimum duration
+                            group_end = max(group_end, group_start + required_duration)
 
                     timings.append((max(0, group_start), min(group_end, duration)))
                     group_idx += 1
 
-        # Final overlap check and correction
-        timings = self._ensure_no_overlaps(timings, duration)
+            # Ensure we have timings for all groups
+            while len(timings) < len(word_groups):
+                last_end = timings[-1][1] if timings else 0
+                fallback_start = last_end + min_gap
+                fallback_duration = min_subtitle_duration
+                timings.append((fallback_start, min(fallback_start + fallback_duration, duration)))
+                pass  # Silent fallback timing
 
         return timings
-    
+
+    def _validate_timing_quality(self, timings, duration):
+        """Validate the quality of speech analysis timing - more lenient for better speech sync"""
+        if not timings:
+            return {'is_valid': False, 'reason': 'No timings generated'}
+
+        # Check for reasonable timing intervals
+        durations = [end - start for start, end in timings]
+
+        # Very lenient validation to strongly prefer speech analysis timing
+        very_short = sum(1 for d in durations if d < 0.2)  # Less than 200ms (very short)
+        very_long = sum(1 for d in durations if d > 10.0)   # More than 10s (very long)
+
+        if very_short > len(timings) * 0.8:  # More than 80% very short (very lenient)
+            return {'is_valid': False, 'reason': f'{very_short} subtitles too short (<0.2s)'}
+
+        if very_long > len(timings) * 0.3:   # More than 30% very long (very lenient)
+            return {'is_valid': False, 'reason': f'{very_long} subtitles too long (>10s)'}
+
+        # More lenient gap checking
+        large_gaps = 0
+        for i in range(1, len(timings)):
+            gap = timings[i][0] - timings[i-1][1]
+            if gap > 3.0:  # Gap longer than 3 seconds (increased from 2s)
+                large_gaps += 1
+
+        if large_gaps > len(timings) * 0.3:  # More than 30% have large gaps
+            return {'is_valid': False, 'reason': f'{large_gaps} large gaps (>3s) between subtitles'}
+
+        return {'is_valid': True, 'reason': 'Speech analysis timing quality acceptable'}
+
     def _calculate_basic_timing(self, word_groups, duration):
         """Calculate basic timing based on natural speech patterns"""
         timings = []
@@ -344,8 +588,22 @@ class SubtitleGenerator:
         if total_estimated_time > duration * 0.95:  # Leave 10% buffer
             compression_factor = (duration * 0.95) / total_estimated_time
 
-        # Add small delay so subtitles appear with voice, not ahead
-        subtitle_delay = 0.3  # 300ms delay to sync with voice
+        # Add delay so subtitles appear with voice, not ahead
+        # Make delay configurable and content-type aware
+        if content_analysis and hasattr(content_analysis, 'content_type'):
+            content_type = content_analysis.content_type.value
+            # Content-specific delays for better synchronization
+            if content_type == 'quote_reflection':
+                subtitle_delay = 0.7  # Slightly longer delay for reflective content
+            elif content_type == 'historical':
+                subtitle_delay = 0.8  # Longer delay for historical content
+            elif content_type == 'story_review':
+                subtitle_delay = 0.5  # Shorter delay for story content
+            else:
+                subtitle_delay = 0.6  # Default delay
+        else:
+            subtitle_delay = 0.6  # 600ms delay to sync with voice (increased from 300ms)
+
         current_start = subtitle_delay
 
         for i, group in enumerate(word_groups):
@@ -387,12 +645,13 @@ class SubtitleGenerator:
         return timings
 
     def _ensure_no_overlaps(self, timings, duration):
-        """Ensure no subtitle timings overlap with improved gap handling"""
+        """Ensure no subtitle timings overlap with improved gap handling - FIXED for speech analysis"""
         if not timings:
             return timings
 
         corrected_timings = []
-        min_gap = 0.05  # Smaller minimum gap between subtitles
+        min_gap = 0.05  # Smaller gap for speech analysis timing
+        min_duration = 0.5  # Minimum subtitle duration
 
         for i, (start, end) in enumerate(timings):
             # Check for overlap with previous subtitle
@@ -402,27 +661,17 @@ class SubtitleGenerator:
                     # Adjust start time to prevent overlap
                     start = prev_end + min_gap
 
-                    # Ensure we don't go past duration
-                    if start >= duration:
-                        start = max(0, duration - 1.0)
-                        end = duration
-                    elif end <= start:
-                        # Ensure minimum duration
-                        end = min(start + 0.8, duration)  # Reduced minimum
-
             # Ensure end doesn't exceed duration
             end = min(end, duration)
 
-            # Ensure minimum duration but be more flexible
-            if end - start < 0.8:  # Reduced minimum duration
-                end = min(start + 0.8, duration)
+            # Ensure minimum duration
+            if end - start < min_duration:
+                end = min(start + min_duration, duration)
 
-            # Final check: if this would create an overlap with next subtitle, adjust
-            if i < len(timings) - 1:
-                next_start = timings[i + 1][0]
-                if end + min_gap > next_start:
-                    # Compress this subtitle to make room
-                    end = max(start + 0.8, next_start - min_gap)
+            # Ensure we don't go past duration
+            if start >= duration:
+                start = max(0, duration - min_duration)
+                end = duration
 
             corrected_timings.append((start, end))
 

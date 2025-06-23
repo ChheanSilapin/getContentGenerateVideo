@@ -7,6 +7,7 @@ from ui.components.video_entry import VideoEntry
 import threading
 import os
 import config
+from config import GUI_FONTS
 from utils.helpers import get_output_directory
 
 # Import folder processing utilities
@@ -87,7 +88,7 @@ class VideoTab:
         title_label = ttk.Label(
             title_frame,
             text=" Video Generation",
-            font=("Cascadia Code", 12, "bold")
+            font=GUI_FONTS["heading"]
         )
         title_label.pack(anchor="w")
 
@@ -114,8 +115,59 @@ class VideoTab:
         # Action buttons with better layout
         self.setup_action_buttons(main_frame)
 
-        # Add initial video entry
-        self.add_video_entry()
+        # Start with empty state - no initial entries
+        self.empty_state_frame = None
+        self.show_empty_state()
+
+    def show_empty_state(self):
+        """Show empty state with instructions"""
+        if self.empty_state_frame:
+            return  # Already showing
+
+        # Create empty state frame
+        self.empty_state_frame = ttk.Frame(self.entries_frame)
+        self.empty_state_frame.pack(fill="both", expand=True, padx=20, pady=40)
+
+        # Center container
+        center_frame = ttk.Frame(self.empty_state_frame)
+        center_frame.pack(expand=True)
+
+        # Icon and title
+        icon_label = ttk.Label(center_frame, text="🎥", font=("Cascadia Code", 48))
+        icon_label.pack(pady=(0, 10))
+
+        title_label = ttk.Label(
+            center_frame,
+            text="Add videos to start processing",
+            font=("Cascadia Code", 14, "bold"),
+            foreground="#333333"
+        )
+        title_label.pack(pady=(0, 20))
+
+        # Instructions
+        instructions = [
+            "Step 1: Click 'Add Content ▾' above",
+            "Step 2: Choose your content source:",
+            "   • Add Folder - Import video folders",
+            "   • Add Files - Pick individual video files",
+            "Step 3: Add text prompts for each entry",
+            "Step 4: Click 'Generate All Videos' to start"
+        ]
+
+        for instruction in instructions:
+            label = ttk.Label(
+                center_frame,
+                text=instruction,
+                font=("Cascadia Code", 10),
+                foreground="#666666"
+            )
+            label.pack(anchor="w", pady=2)
+
+    def hide_empty_state(self):
+        """Hide empty state when entries are added"""
+        if self.empty_state_frame:
+            self.empty_state_frame.destroy()
+            self.empty_state_frame = None
 
     def setup_action_buttons(self, parent):
         """Set up action buttons with better styling"""
@@ -153,7 +205,7 @@ class VideoTab:
         self.settings_info_label = ttk.Label(
             settings_row,
             text="Audio: Default Voice, 80% Speed, 70% Volume | Output: Default Folder",
-            font=("Cascadia Code", 8),
+            font=GUI_FONTS["small"],
             foreground="#7f8c8d"
         )
         self.settings_info_label.pack(side="left", anchor="w")
@@ -246,7 +298,7 @@ class VideoTab:
         entries_title = ttk.Label(
             entries_header,
             text="📹 Video Entries",
-            font=("Cascadia Code", 11, "bold")
+            font=GUI_FONTS["heading"]
         )
         entries_title.pack(side="left")
 
@@ -257,19 +309,15 @@ class VideoTab:
         )
         settings_button.pack(side="right", padx=(0, 4))
 
-        # Add video button moved to header
-        add_video_button = self.main_gui.ui_factory.create_icon_button(
-            entries_header, "Add Video", self.add_video_entry,
-            icon="➕", width=15
+        # Add Content dropdown button with enhanced options
+        from ui.components.dropdown_menu import create_video_content_dropdown
+        self.content_dropdown = create_video_content_dropdown(
+            entries_header,
+            load_folder_command=self.load_videos_from_folder,
+            select_multiple_command=self.select_multiple_videos,
+            width=20
         )
-        add_video_button.pack(side="right", padx=(0, 4))
-
-        # Load from folder button (renamed and improved)
-        load_folder_button = self.main_gui.ui_factory.create_icon_button(
-            entries_header, "Load from Folder", self.load_videos_from_folder,
-            icon="📁", width=20
-        )
-        load_folder_button.pack(side="right", padx=(0, 4))
+        self.content_dropdown.pack(side="right", padx=(0, 4))
 
         # Create canvas and scrollbar with better styling
         canvas_frame = ttk.Frame(parent)
@@ -321,7 +369,17 @@ class VideoTab:
         self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def add_video_entry(self, video_file=None, prompt=None):
-        """Add a new video entry to the list"""
+        """Add a new video entry to the list with duplicate prevention"""
+        # Hide empty state when adding first entry
+        self.hide_empty_state()
+
+        # Check for duplicates if video_file is provided
+        if video_file:
+            existing_files = self._get_existing_video_files()
+            if video_file in existing_files:
+                self.main_gui.log(f"Duplicate video file detected, skipping: {os.path.basename(video_file)}")
+                return None
+
         entry_id = self.next_entry_id
         self.next_entry_id += 1
 
@@ -334,8 +392,8 @@ class VideoTab:
         )
 
         # Set data if provided
-        if video_file and prompt:
-            video_entry.set_data(video_file, prompt)
+        if video_file is not None:
+            video_entry.set_data(video_file, prompt or "")
 
         # Store the entry
         self.video_entries[entry_id] = video_entry
@@ -350,17 +408,13 @@ class VideoTab:
     def remove_video_entry(self, entry_id):
         """Remove a video entry from the list"""
         if entry_id in self.video_entries:
-            # Don't allow removing the last entry
-            if len(self.video_entries) <= 1:
-                if self.progress_manager:
-                    self.progress_manager.show_warning("Cannot Remove", "At least one video entry must remain.")
-                else:
-                    messagebox.showwarning("Cannot Remove", "At least one video entry must remain.")
-                return
-
             # Remove the entry
             self.video_entries[entry_id].destroy()
             del self.video_entries[entry_id]
+
+            # If no entries left, show empty state
+            if not self.video_entries and not self.group_entries:
+                self.show_empty_state()
 
             # Update scroll region
             self.scrollable_frame.update_idletasks()
@@ -527,12 +581,50 @@ class VideoTab:
         # Check for duplicates and handle them
         existing_files = self._get_existing_video_files()
         new_pairs = [pair for pair in all_pairs if pair['video_file'] not in existing_files]
-        
-        # Add individual entries
-        for pair in new_pairs:
-            self.add_video_entry(pair['video_file'], pair['prompt'])
-        
-        self.main_gui.log(f"Loaded {len(new_pairs)} individual videos")
+
+        # Add individual entries with smart population
+        empty_entry_id = self._find_empty_entry()
+        created_entries = []
+        populated_entries = []
+
+        # Process pairs one by one
+        for i, pair in enumerate(new_pairs):
+            if i == 0 and empty_entry_id is not None:
+                # Populate the first empty entry with the first pair
+                entry = self.video_entries[empty_entry_id]
+                entry.set_data(pair['video_file'], pair['prompt'])
+                populated_entries.append(empty_entry_id)
+            else:
+                # Create new entries for remaining pairs
+                entry_id = self.add_video_entry(pair['video_file'], pair['prompt'])
+                if entry_id is not None:
+                    created_entries.append(entry_id)
+
+        # Log results with smart population info
+        total_pairs = len(all_pairs)
+        new_count = len(new_pairs)
+        duplicate_count = total_pairs - new_count
+
+        if populated_entries and created_entries:
+            if duplicate_count > 0:
+                self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries")
+        elif populated_entries:
+            if duplicate_count > 0:
+                self.main_gui.log(f"Populated entry #{populated_entries[0]}, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log(f"Populated entry #{populated_entries[0]}")
+        elif created_entries:
+            if duplicate_count > 0:
+                self.main_gui.log(f"Created {len(created_entries)} new video entries, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log(f"Created {len(created_entries)} new video entries")
+        else:
+            if duplicate_count > 0:
+                self.main_gui.log(f"No new videos loaded, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log("No videos found to load")
 
     def _handle_detection_override(self, detection_result):
         """Handle user override of smart detection"""
@@ -548,6 +640,9 @@ class VideoTab:
 
     def add_group_entry(self, group_info):
         """Add a new group entry to the UI"""
+        # Hide empty state when adding first entry
+        self.hide_empty_state()
+
         group_id = self.next_group_id
         self.next_group_id += 1
         
@@ -577,6 +672,16 @@ class VideoTab:
         if group_id in self.group_entries:
             self.group_entries[group_id].destroy()
             del self.group_entries[group_id]
+
+            # If no entries left, show empty state
+            if not self.video_entries and not self.group_entries:
+                self.show_empty_state()
+
+            # Update scroll region
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+            self.main_gui.log(f"Removed group entry #{group_id}")
 
     def _scan_folder_for_pairs(self, folder_path):
         """Scan folder for video+text file pairs"""
@@ -655,6 +760,115 @@ class VideoTab:
             if data['video_file']:
                 existing_files.append(data['video_file'])
         return existing_files
+
+    def _generate_unique_name(self, base_path, existing_paths):
+        """Generate a unique name by adding numbers if duplicates exist"""
+        if base_path not in existing_paths:
+            return base_path
+
+        # Extract directory and filename
+        directory = os.path.dirname(base_path)
+        filename = os.path.basename(base_path)
+        name, ext = os.path.splitext(filename)
+
+        # Try numbered versions
+        counter = 1
+        while True:
+            new_filename = f"{name}({counter}){ext}"
+            new_path = os.path.join(directory, new_filename)
+            if new_path not in existing_paths:
+                return new_path
+            counter += 1
+
+    def _find_empty_entry(self):
+        """Find the first empty entry (no video file and no prompt)"""
+        for entry_id, entry in self.video_entries.items():
+            data = entry.get_data()
+            # Check if entry is empty (no video file and no prompt)
+            has_video = data.get('video_file', '').strip()
+            has_prompt = data.get('prompt', '').strip()
+
+            # Entry is empty if it has no video file and no prompt
+            if not has_video and not has_prompt:
+                return entry_id
+        return None
+
+    def select_multiple_videos(self):
+        """Select multiple individual video files and create entries"""
+        from utils.dialog_helpers import select_video_files
+
+        try:
+            # Show file selection dialog
+            selected_files = select_video_files(title="Select Multiple Videos", multiple=True)
+
+            if not selected_files:
+                return
+
+            # Convert to list if it's a tuple
+            if isinstance(selected_files, tuple):
+                selected_files = list(selected_files)
+            elif isinstance(selected_files, str):
+                selected_files = [selected_files]
+
+            # Get existing videos to handle duplicates with numbering
+            existing_videos = self._get_existing_video_files()
+
+            # Generate unique names for duplicates
+            processed_videos = []
+            for vid in selected_files:
+                if vid in existing_videos:
+                    # Generate unique name with numbering
+                    unique_name = self._generate_unique_name(vid, existing_videos)
+                    processed_videos.append(unique_name)
+                    existing_videos.append(unique_name)  # Add to list to avoid conflicts
+                else:
+                    processed_videos.append(vid)
+                    existing_videos.append(vid)
+
+            new_videos = processed_videos
+
+            # Try to find an existing empty entry to populate first
+            empty_entry_id = self._find_empty_entry()
+            created_entries = []
+            populated_entries = []
+
+            # Process videos one by one
+            for i, video_file in enumerate(new_videos):
+                if i == 0 and empty_entry_id is not None:
+                    # Populate the first empty entry with the first video
+                    entry = self.video_entries[empty_entry_id]
+                    entry.set_data(video_file, "")
+                    populated_entries.append(empty_entry_id)
+                else:
+                    # Create new entries for remaining videos
+                    entry_id = self.add_video_entry(video_file, "")
+                    if entry_id is not None:
+                        created_entries.append(entry_id)
+
+            # Log results
+            duplicate_count = len(selected_files) - len([vid for vid in selected_files if vid not in self._get_existing_video_files()])
+            if populated_entries and created_entries:
+                if duplicate_count > 0:
+                    self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries, {duplicate_count} duplicates renamed with numbers")
+                else:
+                    self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries")
+            elif populated_entries:
+                if duplicate_count > 0:
+                    self.main_gui.log(f"Populated entry #{populated_entries[0]}, {duplicate_count} duplicates renamed with numbers")
+                else:
+                    self.main_gui.log(f"Populated entry #{populated_entries[0]}")
+            elif created_entries:
+                if duplicate_count > 0:
+                    self.main_gui.log(f"Created {len(created_entries)} new video entries, {duplicate_count} duplicates renamed with numbers")
+                else:
+                    self.main_gui.log(f"Created {len(created_entries)} new video entries")
+
+        except Exception as e:
+            self.main_gui.log(f"Error selecting multiple videos: {str(e)}")
+            if self.progress_manager:
+                self.progress_manager.show_error("Selection Error", f"Failed to select videos: {str(e)}")
+            else:
+                messagebox.showerror("Selection Error", f"Failed to select videos: {str(e)}")
 
     def start_video_generation(self):
         """Start the multi-video generation process"""

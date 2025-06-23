@@ -26,52 +26,7 @@ def calculate_loops_needed(target_duration, single_item_duration, min_loops=1):
     """
     return max(min_loops, int(target_duration / single_item_duration) + 1)
 
-def get_media_duration(media_file):
-    """
-    Get the duration of a media file (video or audio) using FFprobe
-    
-    Args:
-        media_file: Path to media file
-        
-    Returns:
-        float: Duration in seconds, or 0 if failed
-    """
-    try:
-        ffprobe_path = get_ffprobe_path()
-        if not ffprobe_path:
-            print("FFprobe not available for duration detection")
-            return 0
-            
-        cmd = [
-            ffprobe_path,
-            '-v', 'quiet',
-            '-show_entries', 'format=duration',
-            '-of', 'csv=p=0',
-            media_file
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-
-        if result.returncode == 0:
-            try:
-                duration = float(result.stdout.strip())
-                return duration
-            except (ValueError, TypeError) as e:
-                print(f"Error parsing duration from FFprobe output: {e}")
-                return 0
-        else:
-            print(f"FFprobe failed to get duration: {result.stderr}")
-            return 0
-            
-    except subprocess.TimeoutExpired:
-        print("FFprobe timeout while getting media duration")
-        return 0
-    except ValueError:
-        print("Invalid duration value from FFprobe")
-        return 0
-    except Exception as e:
-        print(f"Error getting media duration: {e}")
-        return 0
+# get_media_duration function removed - use get_media_duration_safe from utils.helpers instead
 
 def validate_video_file(video_file):
     """

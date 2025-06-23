@@ -2,7 +2,7 @@
 Group Entry Component - UI component for managing grouped video entries
 Handles display and editing of video groups that will be combined into single outputs
 """
-from utils.common_imports import tk, messagebox, ttk
+from utils.common_imports import tk, ttk
 import os
 
 
@@ -73,17 +73,41 @@ class GroupEntry:
         button_frame = ttk.Frame(summary_frame)
         button_frame.pack(side="right")
 
-        # Expand/collapse button (icon only)
-        self.expand_button = self.main_gui.ui_factory.create_icon_button(
-            button_frame, "", self.toggle_details,
-            icon="🔽", width=4
+        # Expand/collapse icon (consistent with remove icon)
+        from config import GUI_COLORS
+        self.expand_button = tk.Button(
+            button_frame,
+            text="🔽",
+            font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"],  # Dark text color
+            bg=GUI_COLORS["background"],  # Light gray background
+            relief="flat",
+            borderwidth=0,
+            width=2,
+            height=1,
+            command=self.toggle_details,
+            cursor="hand2",
+            highlightthickness=0,
+            takefocus=False
         )
         self.expand_button.pack(side="right", padx=(4, 0))
 
-        # Remove group button (icon only)
-        remove_button = self.main_gui.ui_factory.create_icon_button(
-            button_frame, "", lambda: self.remove_callback(self.group_id),
-            icon="🗑️", width=4
+        # Remove group button (icon only) - consistent with single entries
+        from config import GUI_COLORS
+        remove_button = tk.Button(
+            button_frame,
+            text="✕",
+            font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"],  # Dark text color instead of red
+            bg=GUI_COLORS["background"],  # Light gray background
+            relief="flat",
+            borderwidth=0,
+            width=2,
+            height=1,
+            command=lambda: self.remove_callback(self.group_id),
+            cursor="hand2",
+            highlightthickness=0,
+            takefocus=False
         )
         remove_button.pack(side="right", padx=(4, 0))
 

@@ -10,7 +10,7 @@ import shutil
 from .video_slideshow import create_slideshow, createSideShowWithFFmpeg
 from .video_voiceover import add_voiceover_to_video
 from .video_utils import (
-    calculate_loops_needed, get_media_duration, validate_video_file,
+    calculate_loops_needed, validate_video_file,
     convert_video_to_compatible_format, reset_moviepy_configuration
 )
 from .video_looping import loop_video

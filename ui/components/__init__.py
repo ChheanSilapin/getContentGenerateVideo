@@ -12,6 +12,7 @@ from .layout_factory import LayoutFactory
 from .video_loader import VideoLoader
 from .progress_manager import ProgressManager  # Enhanced with dialog helpers and UI utilities
 from .video_grid import VideoGrid
+from .dropdown_menu import DropdownMenu
 
 # Export all components
 __all__ = [
@@ -24,4 +25,5 @@ __all__ = [
     'VideoLoader',
     'ProgressManager',  # Now includes BaseUIComponent functionality
     'VideoGrid',
-] 
+    'DropdownMenu',
+]

@@ -182,11 +182,9 @@ def get_media_duration_safe(media_file):
             with AudioFileClip(media_file) as clip:
                 duration = clip.duration
 
-        print(f"Media duration: {duration:.2f} seconds")
+        # Only log duration for debugging if needed
         return duration
     except Exception as e:
-        print(f"Failed to get media duration with moviepy: {e}")
-
         # Fallback: try FFprobe
         try:
             ffprobe_path = get_ffprobe_path()
@@ -200,13 +198,13 @@ def get_media_duration_safe(media_file):
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             if result.returncode == 0:
                 duration = float(result.stdout.strip())
-                print(f"Media duration (ffprobe): {duration:.2f} seconds")
                 return duration
         except Exception as e2:
-            print(f"Failed to get media duration with ffprobe: {e2}")
+            pass  # Silent fallback
 
-        # Final fallback
-        print("Using default media duration: 10.0 seconds")
+        # Final fallback - only log if there's an actual issue
+        if not os.path.exists(media_file):
+            print(f"⚠️ Media file not found, using default duration")
         return 10.0
 
 def get_app_data_dir():

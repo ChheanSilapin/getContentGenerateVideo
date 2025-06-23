@@ -2,7 +2,7 @@
 Video Entry Component - Individual video input entry
 Extracted from video_tab.py for reusability and maintainability
 """
-from utils.common_imports import tk, ttk, os
+from utils.common_imports import tk, ttk
 
 class VideoEntry:
     """Individual video entry with file selector and prompt input"""
@@ -35,7 +35,7 @@ class VideoEntry:
         file_section = ttk.Frame(self.entry_frame)
         file_section.pack(fill="x", pady=(0, 6))
 
-        # File label with icon
+        # File label with icon and remove button
         file_label_frame = ttk.Frame(file_section)
         file_label_frame.pack(fill="x", pady=(0, 3))
 
@@ -44,6 +44,25 @@ class VideoEntry:
             text="📁 Video File:",
             font=("Cascadia Code", 8, "bold")
         ).pack(side="left")
+
+        # Add remove icon button aligned with video file label
+        from config import GUI_COLORS
+        remove_button = tk.Button(
+            file_label_frame,
+            text="✕",
+            font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"],  # Dark text color instead of red
+            bg=GUI_COLORS["background"],  # Light gray background
+            relief="flat",
+            borderwidth=0,
+            width=2,
+            height=1,
+            command=lambda: self.remove_callback(self.entry_id),
+            cursor="hand2",
+            highlightthickness=0,
+            takefocus=False
+        )
+        remove_button.pack(side="right")
 
         # File input row
         file_input_frame = ttk.Frame(file_section)
@@ -58,11 +77,7 @@ class VideoEntry:
         )
         file_entry.pack(side="left", fill="x", expand=True, padx=(0, 12))
 
-        browse_button = self.main_gui.ui_factory.create_icon_button(
-            file_input_frame, "Browse", self.browse_video_file,
-            icon="📂", width=12
-        )
-        browse_button.pack(side="right")
+
 
         # Clean text frame like the selected style
         text_frame = ttk.LabelFrame(self.entry_frame, text="📝 Text Prompt for Video", padding=8)
@@ -82,29 +97,17 @@ class VideoEntry:
             padx=6,
             pady=4
         )
-        prompt_text.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        prompt_text.pack(fill="x", expand=True)
 
         # Bind text changes to update the StringVar
         prompt_text.bind('<KeyRelease>', lambda e: self.prompt_text.set(prompt_text.get("1.0", tk.END).strip()))
 
-        # Remove button with clean styling
-        remove_button = self.main_gui.ui_factory.create_icon_button(
-            prompt_input_frame, "🗑️ Remove", lambda: self.remove_callback(self.entry_id),
-            width=12
-        )
-        remove_button.pack(side="right", anchor="n", pady=(0, 0))
-
         # Store text widget reference for getting content
         self.prompt_widget = prompt_text
 
-    def browse_video_file(self):
-        """Open file dialog to select a video file"""
-        from utils.dialog_helpers import select_video_files
 
-        file_path = select_video_files(title="Select Video File", multiple=False)
-        if file_path:
-            self.video_file_path.set(file_path)
-            self.main_gui.log(f"Selected video file: {os.path.basename(file_path)}")
+
+
 
     def get_data(self):
         """Get the video file path and prompt text"""
@@ -128,4 +131,4 @@ class VideoEntry:
     def destroy(self):
         """Remove this entry from the UI"""
         if self.entry_frame:
-            self.entry_frame.destroy() 
+            self.entry_frame.destroy()

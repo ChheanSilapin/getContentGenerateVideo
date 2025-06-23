@@ -47,13 +47,36 @@ class ImageEntry:
         folder_frame = ttk.Frame(self.entry_frame)
         folder_frame.pack(fill="x", pady=(0, 8))
 
+        # Folder label row with remove button
+        label_row = ttk.Frame(folder_frame)
+        label_row.pack(fill="x", pady=(0, 4))
+
         # Folder label
         folder_label = ttk.Label(
-            folder_frame,
+            label_row,
             text="📁 Image Folder:",
             font=("Cascadia Code", 8, "bold")
         )
-        folder_label.pack(anchor="w", pady=(0, 4))
+        folder_label.pack(side="left", anchor="w")
+
+        # Add remove icon button aligned with folder label
+        from config import GUI_COLORS
+        remove_button = tk.Button(
+            label_row,
+            text="✕",
+            font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"],  # Dark text color instead of red
+            bg=GUI_COLORS["background"],  # Light gray background
+            relief="flat",
+            borderwidth=0,
+            width=2,
+            height=1,
+            command=lambda: self.remove_callback(self.entry_id),
+            cursor="hand2",
+            highlightthickness=0,
+            takefocus=False
+        )
+        remove_button.pack(side="right")
 
         # Folder path row
         path_row = ttk.Frame(folder_frame)
@@ -68,12 +91,7 @@ class ImageEntry:
         )
         self.folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
-        # Browse button
-        browse_button = self.main_gui.ui_factory.create_icon_button(
-            path_row, "Browse", self.browse_folder,
-            icon="📁", width=12
-        )
-        browse_button.pack(side="right")
+
 
     def setup_prompt_section(self):
         """Set up prompt input section"""
@@ -81,7 +99,7 @@ class ImageEntry:
         text_frame = ttk.LabelFrame(self.entry_frame, text="📝 Text Prompt for Video", padding=8)
         text_frame.pack(fill="x", pady=(0, 8))
 
-        # Text input row with remove button (like video entry)
+        # Text input row
         prompt_input_frame = ttk.Frame(text_frame)
         prompt_input_frame.pack(fill="x")
 
@@ -96,14 +114,7 @@ class ImageEntry:
             padx=4,
             pady=2
         )
-        self.prompt_text_widget.pack(side="left", fill="x", expand=True, padx=(0, 8))
-
-        # Remove button aligned with text input - compact size with text
-        remove_button = self.main_gui.ui_factory.create_icon_button(
-            prompt_input_frame, "🗑️ Remove", self.remove_entry,
-            width=12
-        )
-        remove_button.pack(side="right", anchor="n", pady=(0, 0))
+        self.prompt_text_widget.pack(fill="x", expand=True)
 
         # Bind text changes
         self.prompt_text_widget.bind('<KeyRelease>', self.on_prompt_change)
@@ -122,15 +133,7 @@ class ImageEntry:
         )
         self.status_label.pack(side="left", anchor="w")
 
-    def browse_folder(self):
-        """Browse for image folder"""
-        from utils.dialog_helpers import select_folder
-        folder_path = select_folder(title="Select Image Folder")
-        
-        if folder_path:
-            self.folder_path.set(folder_path)
-            self.analyze_folder(folder_path)
-            self.main_gui.log(f"Selected folder: {os.path.basename(folder_path)}")
+
 
     def analyze_folder(self, folder_path):
         """Analyze the selected folder for images and text files"""
@@ -192,20 +195,38 @@ class ImageEntry:
         """Check if this entry has valid data"""
         folder = self.folder_path.get().strip()
         prompt = self.prompt_text_widget.get('1.0', tk.END).strip()
-        
-        return (folder and 
-                os.path.exists(folder) and 
-                len(self.detected_images) > 0 and 
-                prompt)
+
+        # Valid if we have images and prompt, regardless of whether it's folder-based or file-based
+        has_images = len(self.detected_images) > 0
+        has_prompt = bool(prompt)
+
+        # For folder-based entries, check if folder exists
+        # For file-based entries (multiple selected images), folder path will be a display string
+        if folder.startswith("Multiple Selected Images"):
+            # File-based entry - just check images and prompt
+            return has_images and has_prompt
+        else:
+            # Folder-based entry - check folder exists too
+            return (folder and
+                    os.path.exists(folder) and
+                    has_images and
+                    has_prompt)
 
     def get_data(self):
         """Get the entry data"""
+        folder_path_value = self.folder_path.get()
+
+        # For file-based entries, set folder_path to None since it's not a real folder
+        if folder_path_value.startswith("Multiple Selected Images"):
+            folder_path_value = None
+
         return {
-            'folder_path': self.folder_path.get(),
+            'folder_path': folder_path_value,
             'prompt': self.prompt_text_widget.get('1.0', tk.END).strip(),
             'images': self.detected_images.copy(),
             'text_file': self.detected_text_file,
-            'entry_id': self.entry_id
+            'entry_id': self.entry_id,
+            'is_file_based': folder_path_value is None  # Flag to indicate file-based entry
         }
 
     def set_data(self, folder_path, prompt=None):
@@ -213,10 +234,49 @@ class ImageEntry:
         if folder_path:
             self.folder_path.set(folder_path)
             self.analyze_folder(folder_path)
-        
+
         if prompt:
             self.prompt_text_widget.delete('1.0', tk.END)
             self.prompt_text_widget.insert('1.0', prompt)
+
+    def set_images_directly(self, image_files):
+        """Set images directly without using folder path (for multiple file selection)"""
+        try:
+            # Validate that all files exist and are images
+            valid_images = []
+            for img_file in image_files:
+                if os.path.exists(img_file) and self._is_image_file(img_file):
+                    valid_images.append(img_file)
+                else:
+                    self.main_gui.log(f"Warning: Skipping invalid image file: {os.path.basename(img_file)}")
+
+            if not valid_images:
+                raise ValueError("No valid image files provided")
+
+            # Set the detected images directly
+            self.detected_images = valid_images
+            self.detected_text_file = None  # No text file for direct selection
+
+            # Update the folder path display to show "Multiple Selected Images"
+            self.folder_path.set(f"Multiple Selected Images ({len(valid_images)} files)")
+
+            # Update the entry title to reflect it's a file-based entry
+            if self.entry_frame:
+                self.entry_frame.config(text=f"🖼️ Selected Images {self.entry_id}")
+
+            # Update status
+            self.update_status()
+
+            self.main_gui.log(f"Set {len(valid_images)} images directly for entry #{self.entry_id}")
+
+        except Exception as e:
+            self.main_gui.log(f"Error setting images directly: {e}")
+            self.status_label.config(text="Error setting images")
+
+    def _is_image_file(self, file_path):
+        """Check if file is a valid image file"""
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
+        return os.path.splitext(file_path.lower())[1] in image_extensions
 
     def destroy(self):
         """Clean up the entry"""

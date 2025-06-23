@@ -9,9 +9,8 @@ import time
 from utils.helpers import (
     validate_output_file, cleanup_temp_files, build_ffmpeg_command,
     create_temp_file_with_cleanup, execute_ffmpeg_command, validate_loop_count,
-    validate_ffmpeg_path, TempVideoFile, log_message
+    validate_ffmpeg_path, TempVideoFile, log_message, get_media_duration_safe
 )
-from .video_utils import get_media_duration
 
 def loop_video(video_file, target_duration, ffmpeg_path, output_file, method="seamless",
                logger_func=None, content_analysis=None, sync_with_audio=True):
@@ -43,7 +42,7 @@ def loop_video(video_file, target_duration, ffmpeg_path, output_file, method="se
             log_message(error_msg, "ERROR", logger_func)
             return None
 
-        video_duration = get_media_duration(video_file)
+        video_duration = get_media_duration_safe(video_file)
         if video_duration <= 0:
             log_message("Could not determine video duration or video is empty", "ERROR", logger_func)
             return None
@@ -127,7 +126,7 @@ def create_direct_loop(video_file, target_duration, ffmpeg_path, loops_needed, o
     log_message("Creating direct looped video...", "INFO", logger_func)
 
     # Use centralized FFmpeg execution with dynamic timeout
-    video_duration = get_media_duration(video_file)
+    video_duration = get_media_duration_safe(video_file)
     success, result, error_msg = execute_ffmpeg_command(
         loop_cmd, "Direct loop creation", video_duration=video_duration
     )
@@ -158,7 +157,7 @@ def create_crossfade_loop(video_file, target_duration, ffmpeg_path, loops_needed
     with TempVideoFile(suffix='.mp4', prefix=f'temp_crossfade_loop_{timestamp}_') as temp_looped:
         # Create crossfade loop using FFmpeg's complex filter
         crossfade_duration = 0.5  # 0.5 second crossfade
-        video_duration = get_media_duration(video_file)
+        video_duration = get_media_duration_safe(video_file)
 
         # Build complex filter for crossfade looping
         filter_complex = f"[0:v]split={loops_needed}"
@@ -253,7 +252,7 @@ def create_seamless_loop(video_file, target_duration, ffmpeg_path, loops_needed,
         log_message("Creating seamless looped video...", "INFO", logger_func)
 
         # Use centralized FFmpeg execution with dynamic timeout
-        video_duration = get_media_duration(video_file)
+        video_duration = get_media_duration_safe(video_file)
         success, result, error_msg = execute_ffmpeg_command(
             cmd, "Seamless loop creation", video_duration=video_duration
         )
@@ -308,7 +307,7 @@ def create_optimized_crossfade_loop(video_file, target_duration, ffmpeg_path, lo
         log_message("Creating optimized crossfade loop...", "INFO", logger_func)
 
         # Use centralized FFmpeg execution with extended timeout for longer videos
-        video_duration = get_media_duration(video_file)
+        video_duration = get_media_duration_safe(video_file)
         success, result, error_msg = execute_ffmpeg_command(
             cmd, "Optimized crossfade loop creation", timeout=600, video_duration=video_duration
         )
@@ -338,7 +337,7 @@ def create_pingpong_loop(video_file, target_duration, ffmpeg_path, loops_needed,
     """
     try:
         # Get video duration for calculations
-        video_duration = get_media_duration(video_file)
+        video_duration = get_media_duration_safe(video_file)
 
         # Use context managers for automatic cleanup of temporary files
         with TempVideoFile(suffix='.mp4', prefix=f'temp_reversed_{timestamp}_') as temp_reversed, \

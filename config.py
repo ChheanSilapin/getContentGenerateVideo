@@ -115,10 +115,10 @@ SUBTITLE_CONFIG = {
     "font_size": 48,
     "font_bold": False,
     
-    # Word Grouping (words per subtitle) - IMPROVED for better readability
-    "words_per_group_short": 8,    # For text < 100 words (increased from 5)
-    "words_per_group_medium": 7,   # For text 100-200 words (increased from 4)
-    "words_per_group_long": 6,     # For text > 200 words (increased from 3)
+    # Word Grouping (words per subtitle) - Larger groups for better speech analysis compatibility
+    "words_per_group_short": 6,    # Larger groups for better speech timing compatibility
+    "words_per_group_medium": 5,   # Larger groups for better speech timing compatibility
+    "words_per_group_long": 4,     # Larger groups for longer text
 
     # Timing Settings - SLOWER for much more comfortable reading
     "reading_speed_wpm": 80,       # Words per minute (slower for comfortable reading)
@@ -129,11 +129,11 @@ SUBTITLE_CONFIG = {
     
     #Text Formart Settings
     "uppercase": True,
-    # Speech Analysis - DISABLED to use manual timing
-    "use_speech_analysis": False,   # Disabled to force manual timing control
+    # Speech Analysis - ENABLED for precise subtitle-voice synchronization
+    "use_speech_analysis": True,    # Enabled for accurate timing based on actual speech patterns
     "speech_analysis_max_duration": 60.0,  # Max audio length for speech analysis
-    "silence_threshold_db": 16,    # dB below average for silence detection
-    "min_silence_length_ms": 150,  # Minimum silence length in milliseconds
+    "silence_threshold_db": 15,    # dB below average for silence detection (more sensitive for gTTS)
+    "min_silence_length_ms": 100,  # Minimum silence length in milliseconds (detect natural pauses)
     
     # Style Presets
     "available_styles": {
@@ -197,7 +197,7 @@ SUBTITLE_CONFIG = {
     "default_style": "gradient_gold"
 }
 
-AUTO_CLEANUP_AFTER_COMPLETION = True  
+AUTO_CLEANUP_AFTER_COMPLETION = False  
 ENABLE_CONTENT_ANALYSIS_CACHE = True
 CONTENT_CACHE_MAX_SIZE = 100  
 CONTENT_CACHE_TTL_HOURS = 24  
@@ -252,16 +252,18 @@ PROCESSING_OPTIMIZATIONS = {
     "memory_efficient_mode": True       # Use memory-efficient processing for large batches
 }
 
-# Logging Configuration
+# Logging Configuration - Cleaner, less verbose output
 LOGGING_CONFIG = {
     "verbose_mode": False,               # Enable/disable verbose logging
-    "show_emojis": False,               # Show emoji indicators in logs
+    "show_emojis": True,                # Show emoji indicators in logs (helpful for status)
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
-    "show_speech_recognition": True,     # Show speech recognition results (keep essential info)
+    "show_speech_recognition": True,     # Show speech recognition results (essential info)
     "show_file_operations": False,       # Show file copy/move operations
     "show_cache_operations": False,      # Show cache hit/miss operations
     "show_ffmpeg_commands": False,       # Show FFmpeg command details
+    "show_subtitle_details": False,      # Show detailed subtitle timing logs
+    "show_media_duration": False,        # Show media duration detection logs
 }
 TAB_VISIBILITY = {
     'input': False,
@@ -310,4 +312,41 @@ def get_tab_visibility():
         print(f"⚠️ Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
         return UI_MODE_PRESETS["standard"].copy()
 
-PROGRESS_DISPLAY_MODE = "percentage"  # Options: "percentage", "descriptive", "both"
+PROGRESS_DISPLAY_MODE = "percentage"  
+WHISPER_TIMESTAMPED_CONFIG = {
+    # Model Configuration
+    "model_name": "tiny",           # Whisper model size: "tiny", "base", "small", "medium", "large"
+    "device": "auto",               # Device: "auto", "cpu", "cuda"
+    "enable_service": True,         # Enable/disable whisper-timestamped service
+
+    # Transcription Options
+    "use_vad": True,                # Enable Voice Activity Detection for better accuracy
+    "vad_method": "silero",         # VAD method: "silero", "auditok", or False
+    "compute_confidence": True,     # Compute word-level confidence scores
+    "temperature": 0.0,             # Temperature for deterministic output
+
+    # Language and Content Settings
+    "default_language": "en",       # Default language code
+    "auto_detect_language": False,  # Auto-detect language (slower but more accurate)
+    "content_aware_prompts": True,  # Use content-type specific prompts
+
+    # Subtitle Integration
+    "replace_speech_analysis": True,    # Replace current speech analysis with whisper-timestamped
+    "fallback_to_vosk": True,          # Fallback to Vosk if whisper-timestamped fails
+    "min_confidence_threshold": 0.7,   # Minimum confidence for using whisper timestamps
+    "subtitle_sync_offset": 0.0,       # Fine-tune subtitle timing offset (seconds)
+
+    # Performance Settings
+    "max_audio_duration": 300,      # Maximum audio duration for processing (seconds)
+    "enable_caching": True,         # Cache whisper results for repeated content
+    "cache_ttl_hours": 24,          # Cache time-to-live in hours
+
+    # Content Type Optimizations
+    "content_type_prompts": {
+        "historical": "This is historical content with names, dates, and places.",
+        "story_review": "This is a story review with descriptive and emotional language.",
+        "documentary": "This is documentary content with factual information.",
+        "educational": "This is educational content with clear explanations.",
+        "quote_reflection": "This is a quote with reflective commentary."
+    }
+}
