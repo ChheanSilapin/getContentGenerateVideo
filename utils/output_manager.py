@@ -382,23 +382,13 @@ class OutputManager:
         """Clean up individual video files after batch processing"""
         cleaned_count = 0
 
-        # Look for numbered video files that might be individual outputs
-        video_patterns = [
-            os.path.join(output_dir, "*_1.mp4"),
-            os.path.join(output_dir, "*_2.mp4"),
-            os.path.join(output_dir, "*_3.mp4"),
-            os.path.join(output_dir, "*_4.mp4"),
-            os.path.join(output_dir, "*_5.mp4"),
-        ]
+        # For group processing, we should NOT clean up numbered files automatically
+        # because the final merged file might have a number suffix due to conflict resolution
+        # This function should only be called with explicit file lists, not pattern matching
 
-        for pattern in video_patterns:
-            matching_files = glob.glob(pattern)
-            for video_file in matching_files:
-                # Only remove if there's also a merged file present
-                base_name = os.path.basename(video_file).rsplit('_', 1)[0]
-                merged_file = os.path.join(output_dir, f"{base_name}.mp4")
-                if os.path.exists(merged_file) and os.path.exists(video_file):
-                    cleaned_count += self._remove_video_file_with_retry(video_file)
+        # Skip automatic cleanup of numbered files to prevent deleting final merged videos
+        # Individual video cleanup should be handled explicitly by the batch processor
+        # with specific file paths, not pattern matching
 
         return cleaned_count
 

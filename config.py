@@ -341,15 +341,16 @@ PROCESSING_OPTIMIZATIONS = {
 # Logging Configuration - Cleaner, less verbose output
 LOGGING_CONFIG = {
     "verbose_mode": False,               # Enable/disable verbose logging
-    "show_emojis": False,               # Show emoji indicators in logs (helpful for status)
+    "show_emojis": True,                # Show emoji indicators in logs (helpful for status)
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
-    "show_speech_recognition": True,     # Show speech recognition results (essential info)
+    "show_speech_recognition": False,    # Show speech recognition results (essential info)
     "show_file_operations": False,       # Show file copy/move operations
     "show_cache_operations": False,      # Show cache hit/miss operations
     "show_ffmpeg_commands": False,       # Show FFmpeg command details
     "show_subtitle_details": False,      # Show detailed subtitle timing logs
     "show_media_duration": False,        # Show media duration detection logs
+    "show_cleanup_details": False,       # Show detailed cleanup operations
 }
 # Simplified tab configuration - only active tabs
 TAB_VISIBILITY = {

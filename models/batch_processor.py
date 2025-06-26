@@ -350,7 +350,6 @@ class BatchProcessor:
         try:
             from services.merge_service import VideoService
             from utils.output_manager import get_output_manager
-            from utils.error_helpers import handle_operation_error
 
             print(f"🔗 Starting merge process for group {job_index+1} with {len(processed_videos)} videos...")
 
@@ -443,13 +442,44 @@ class BatchProcessor:
                     print(f"🧹 Cleanup enabled: {cleanup_enabled}")
                     if cleanup_enabled:
                         print(f"🗑️ Cleaning up {len(valid_videos)} individual video files...")
-                        # Use centralized OutputManager cleanup system
-                        output_manager.cleanup_after_video_complete(temp_dir, keep_debug_files=False)
-                        # Clean up individual video temporary directories
-                        output_manager.cleanup_individual_temp_directories(valid_videos)
-                        # Also clean up the temporary directory
+
+                        # Clean up the specific individual video files that were merged
+                        cleaned_count = 0
+                        temp_dirs_to_clean = []
+
+                        for video_file in valid_videos:
+                            if os.path.exists(video_file):
+                                try:
+                                    os.remove(video_file)
+                                    cleaned_count += 1
+                                    print(f" Cleaned: {os.path.basename(video_file)}")
+
+                                    # Find corresponding temp directory
+                                    video_basename = os.path.splitext(os.path.basename(video_file))[0]
+                                    output_dir = os.path.dirname(video_file)
+
+                                    # Look for temp directories matching this video
+                                    import glob
+                                    temp_pattern = os.path.join(output_dir, f"video_{video_basename}_*")
+                                    matching_dirs = glob.glob(temp_pattern)
+                                    temp_dirs_to_clean.extend(matching_dirs)
+
+                                except Exception as e:
+                                    print(f"⚠️ Could not remove {os.path.basename(video_file)}: {e}")
+
+                        # Clean up the temporary directories we found
+                        cleaned_dirs = 0
+                        for temp_dir_path in temp_dirs_to_clean:
+                            if os.path.exists(temp_dir_path):
+                                try:
+                                    output_manager.cleanup_temp_directory(temp_dir_path)
+                                    cleaned_dirs += 1
+                                except Exception as e:
+                                    print(f"⚠️ Could not clean up directory {temp_dir_path}: {e}")
+
+                        # Also clean up the main temporary directory
                         output_manager.cleanup_temp_directory(temp_dir)
-                        print(f"✅ Cleanup completed successfully")
+                        print(f"✅ Cleanup completed: removed {cleaned_count} individual files and {cleaned_dirs} temp directories")
                     else:
                         print(f"🔧 Keeping individual video folders for debugging (AUTO_CLEANUP_AFTER_COMPLETION = False)")
                         print(f"📁 Individual folders preserved: {len(valid_videos)} folders with debug files")
