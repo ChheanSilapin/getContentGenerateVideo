@@ -26,10 +26,10 @@ class ImageEntry:
 
     def setup_entry(self):
         """Set up the UI for this image entry"""
-        # Main entry frame with better styling
+        # Main entry frame without title - we'll create custom header
         self.entry_frame = ttk.LabelFrame(
             self.parent_frame,
-            text=f"🖼️ Image Folder {self.entry_id}",
+            text="",  # Empty title, we'll create custom header
             padding=8
         )
         self.entry_frame.pack(fill="x", padx=6, pady=4)
@@ -45,32 +45,21 @@ class ImageEntry:
 
     def setup_folder_section(self):
         """Set up folder selection section"""
-        folder_frame = ttk.Frame(self.entry_frame)
-        folder_frame.pack(fill="x", pady=(0, 8))
+        # Custom header row with entry label, filename, and remove button on same line
+        header_frame = ttk.Frame(self.entry_frame)
+        header_frame.pack(fill="x", pady=(0, 8))
 
-        # Folder label row with remove button and custom filename
-        label_row = ttk.Frame(folder_frame)
-        label_row.pack(fill="x", pady=(0, 4))
-
-        # Folder label
-        folder_label = ttk.Label(
-            label_row,
-            text="📁 Image Folder:",
-            font=("Cascadia Code", 8, "bold")
+        # Entry label on the left
+        entry_label = ttk.Label(
+            header_frame,
+            text=f"🖼️ {self.entry_id}",
+            font=("Cascadia Code", 10, "bold")
         )
-        folder_label.pack(side="left", anchor="w")
+        entry_label.pack(side="left")
 
-        # Custom filename section (small, inline)
-        filename_section = ttk.Frame(label_row)
+        # Custom filename section in the middle
+        filename_section = ttk.Frame(header_frame)
         filename_section.pack(side="left", padx=(20, 0))
-
-        # Small filename label
-        filename_label = ttk.Label(
-            filename_section,
-            text="📝 Custom Filename:",
-            font=("Cascadia Code", 8, "bold")
-        )
-        filename_label.pack(side="left")
 
         # Small filename entry
         self.filename_entry = ttk.Entry(
@@ -79,7 +68,7 @@ class ImageEntry:
             font=("Cascadia Code", 9),
             width=25
         )
-        self.filename_entry.pack(side="left", padx=(5, 2))
+        self.filename_entry.pack(side="left", padx=(0, 2))
 
         # .mp4 label
         mp4_label = ttk.Label(
@@ -90,8 +79,8 @@ class ImageEntry:
         )
         mp4_label.pack(side="left")
 
-        # Placeholder text
-        self.filename_entry.insert(0, "Enter custom filename (optional)")
+        # Placeholder text - make it shorter
+        self.filename_entry.insert(0, "Custom filename (optional)")
         self.filename_entry.config(foreground="#999999")
 
         # Bind events for placeholder behavior
@@ -99,10 +88,10 @@ class ImageEntry:
         self.filename_entry.bind('<FocusOut>', self._on_filename_focus_out)
         self.filename_entry.bind('<KeyRelease>', self._on_filename_change)
 
-        # Add remove icon button aligned with folder label
+        # Add remove icon button on the right
         from config import GUI_COLORS
         remove_button = tk.Button(
-            label_row,
+            header_frame,
             text="✕",
             font=("Segoe UI", 10, "bold"),
             fg=GUI_COLORS["text"],  # Dark text color instead of red
@@ -118,6 +107,10 @@ class ImageEntry:
         )
         remove_button.pack(side="right")
 
+        # Folder path section
+        folder_frame = ttk.Frame(self.entry_frame)
+        folder_frame.pack(fill="x", pady=(0, 8))
+
         # Folder path row
         path_row = ttk.Frame(folder_frame)
         path_row.pack(fill="x")
@@ -129,7 +122,7 @@ class ImageEntry:
             font=("Cascadia Code", 10),
             state="readonly"
         )
-        self.folder_entry.pack(side="left", fill="x", expand=True, padx=(0, 8))
+        self.folder_entry.pack(fill="x", expand=True)
 
 
 
@@ -222,7 +215,7 @@ class ImageEntry:
 
     def _on_filename_focus_in(self, event):
         """Handle filename entry focus in (remove placeholder)"""
-        if self.filename_entry.get() == "Enter custom filename (optional)":
+        if self.filename_entry.get() == "Custom filename (optional)":
             self.filename_entry.delete(0, tk.END)
             self.filename_entry.config(foreground="black")
 
@@ -230,7 +223,7 @@ class ImageEntry:
         """Handle filename entry focus out (add placeholder if empty)"""
         if not self.filename_entry.get().strip():
             self.filename_entry.delete(0, tk.END)
-            self.filename_entry.insert(0, "Enter custom filename (optional)")
+            self.filename_entry.insert(0, "Custom filename (optional)")
             self.filename_entry.config(foreground="#999999")
             self.custom_filename.set("")
         else:
@@ -239,10 +232,10 @@ class ImageEntry:
     def _on_filename_change(self, event):
         """Handle filename entry changes with validation"""
         current_text = self.filename_entry.get()
-        if current_text != "Enter custom filename (optional)":
+        if current_text != "Custom filename (optional)":
             # Validate filename in real-time
             from utils.filename_validator import validate_and_suggest_filename
-            result = validate_and_suggest_filename(current_text)
+            validate_and_suggest_filename(current_text)
 
             # Update the StringVar with the current value
             self.custom_filename.set(current_text.strip())
@@ -264,23 +257,20 @@ class ImageEntry:
     def is_valid(self):
         """Check if this entry has valid data"""
         folder = self.folder_path.get().strip()
-        prompt = self.prompt_text_widget.get('1.0', tk.END).strip()
 
-        # Valid if we have images and prompt, regardless of whether it's folder-based or file-based
+        # Valid if we have images - prompt is optional and can be added manually
         has_images = len(self.detected_images) > 0
-        has_prompt = bool(prompt)
 
         # For folder-based entries, check if folder exists
         # For file-based entries (multiple selected images), folder path will be a display string
         if folder.startswith("Multiple Selected Images"):
-            # File-based entry - just check images and prompt
-            return has_images and has_prompt
+            # File-based entry - just check images (prompt optional)
+            return has_images
         else:
-            # Folder-based entry - check folder exists too
+            # Folder-based entry - check folder exists and has images (prompt optional)
             return (folder and
                     os.path.exists(folder) and
-                    has_images and
-                    has_prompt)
+                    has_images)
 
     def get_data(self):
         """Get the entry data"""
@@ -306,7 +296,7 @@ class ImageEntry:
             self.folder_path.set(folder_path)
             self.analyze_folder(folder_path)
 
-        if prompt:
+        if prompt is not None:
             self.prompt_text_widget.delete('1.0', tk.END)
             self.prompt_text_widget.insert('1.0', prompt)
 

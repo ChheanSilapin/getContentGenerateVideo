@@ -192,7 +192,7 @@ class ImageTab:
 
         entries_title = ttk.Label(
             entries_header,
-            text="🖼️ Image Folder Entries",
+            text="🖼️ Entries",
             font=GUI_FONTS["heading"]
         )
         entries_title.pack(side="left")
@@ -360,18 +360,11 @@ class ImageTab:
         self.scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def add_image_entry(self, folder_path=None, prompt=None):
-        """Add a new image entry to the list with duplicate prevention"""
+        """Add a new image entry to the list"""
         from ui.components.image_entry import ImageEntry
 
         # Hide empty state when adding first entry
         self.hide_empty_state()
-
-        # Check for duplicates if folder_path is provided
-        if folder_path:
-            existing_folders = self._get_existing_folder_paths()
-            if folder_path in existing_folders:
-                self.main_gui.log(f"Duplicate folder path detected, skipping: {os.path.basename(folder_path)}")
-                return None
 
         entry_id = self.next_entry_id
         self.next_entry_id += 1
@@ -385,8 +378,8 @@ class ImageTab:
         )
 
         # Set data if provided
-        if folder_path and prompt:
-            image_entry.set_data(folder_path, prompt)
+        if folder_path:
+            image_entry.set_data(folder_path, prompt or "")
 
         # Store the entry
         self.image_entries[entry_id] = image_entry
@@ -505,6 +498,18 @@ class ImageTab:
                 existing_images.update(data['images'])
         return existing_images
 
+    def _find_existing_folder_entry(self, folder_path):
+        """Find existing entry with the same folder path"""
+        if not folder_path:
+            return None
+
+        for entry_id, entry in self.image_entries.items():
+            data = entry.get_data()
+            existing_folder_path = data.get('folder_path')
+            if existing_folder_path and os.path.normpath(existing_folder_path) == os.path.normpath(folder_path):
+                return entry_id
+        return None
+
     def _generate_unique_name(self, base_path, existing_paths):
         """Generate a unique name by adding numbers if duplicates exist"""
         if base_path not in existing_paths:
@@ -622,25 +627,71 @@ class ImageTab:
         self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
 
     def load_images_from_folder(self):
-        """Load image folders from a parent directory"""
+        """Load image folder(s) - intelligently handles single folders or parent folders with subfolders"""
         from utils.dialog_helpers import select_folder
-        folder_path = select_folder(title="Select Parent Folder Containing Image Folders")
+        folder_path = select_folder(title="Select Image Folder or Parent Folder")
 
         if not folder_path:
             return
 
         try:
-            # Clear existing entries first
-            self.clear_all_entries()
+            # Process the selected folder
+            folder_data = self.folder_processor.process_folder_structure(folder_path)
 
+            if not folder_data:
+                from utils.error_helpers import show_warning_with_log
+                show_warning_with_log(self.main_gui, "No Data", "No valid images found in the selected folder.")
+                return
+
+            # Determine if this is a single folder or multiple subfolders
+            has_subfolders = any(item.get('type') == 'subfolder' for item in folder_data)
+
+            if len(folder_data) == 1 and not has_subfolders:
+                # Single folder - use individual loading logic
+                folder_item = folder_data[0]
+                selected_folder_path = folder_item.get('folder_path')
+                prompt = folder_item.get('prompt', '')
+
+                # Check if this folder already exists in current entries
+                existing_entry_id = self._find_existing_folder_entry(selected_folder_path)
+
+                if existing_entry_id is not None:
+                    # Update existing entry for the same folder
+                    existing_entry = self.image_entries[existing_entry_id]
+                    existing_entry.set_data(selected_folder_path, prompt)
+                    self.main_gui.log(f"Updated existing entry #{existing_entry_id} with folder: {os.path.basename(selected_folder_path)}")
+                else:
+                    # Create new entry for different folder
+                    entry_id = self.add_image_entry(selected_folder_path, prompt)
+                    if entry_id:
+                        self.main_gui.log(f"Added new entry #{entry_id} with folder: {os.path.basename(selected_folder_path)}")
+            else:
+                # Multiple folders/subfolders - always use individual entries for better control
+                # This allows updating existing entries and adding new ones
+                self.load_as_individual_entries(folder_data)
+                self.main_gui.log(f"Processed {len(folder_data)} image folder(s) from: {os.path.basename(folder_path)}")
+
+        except Exception as e:
+            self.main_gui.log(f"Error loading folder: {e}")
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(self.main_gui, "Error", "Failed to load folder", e)
+
+    def load_multiple_folders_from_parent(self):
+        """Load multiple image folders from a parent directory (bulk loading)"""
+        from utils.dialog_helpers import select_folder
+        folder_path = select_folder(title="Select Parent Folder Containing Multiple Image Folders")
+
+        if not folder_path:
+            return
+
+        try:
+            # Don't clear existing entries - we want to update/add as needed
             # Process the folder structure
             folder_data = self.folder_processor.process_folder_structure(folder_path)
 
             if not folder_data:
                 from utils.error_helpers import show_warning_with_log
                 show_warning_with_log(self.main_gui, "No Data", "No valid image folders found in the selected directory.")
-                # Add back a default entry
-                self.add_image_entry()
                 return
 
             # Determine if we should use grouped or individual mode
@@ -651,46 +702,59 @@ class ImageTab:
                 # Use grouped mode for complex folder structures
                 self.load_as_groups(folder_data, folder_path)
             else:
-                # Use individual mode for simple structures
+                # Use individual mode for simple structures - now with update/add logic
                 self.load_as_individual_entries(folder_data)
 
-            self.main_gui.log(f"Loaded {len(folder_data)} image folder(s) from: {os.path.basename(folder_path)}")
+            self.main_gui.log(f"Processed {len(folder_data)} image folder(s) from: {os.path.basename(folder_path)}")
 
         except Exception as e:
             self.main_gui.log(f"Error loading folders: {e}")
             from utils.error_helpers import show_error_with_log
             show_error_with_log(self.main_gui, "Error", "Failed to load folders", e)
-            # Ensure we have at least one entry
+            # Ensure we have at least one entry if none exist
             if not self.image_entries and not self.group_entries:
                 self.add_image_entry()
 
     def load_as_individual_entries(self, folder_data):
-        """Load folder data as individual entries with duplicate prevention"""
+        """Load folder data as individual entries with update/add logic"""
         self.current_mode = "individual"
 
-        # Get existing folder paths to prevent duplicates
-        existing_folders = self._get_existing_folder_paths()
-        new_items = []
+        updated_count = 0
+        new_count = 0
 
         for item in folder_data:
             folder_path = item.get('folder_path')
             prompt = item.get('prompt', '')
 
-            if folder_path and folder_path not in existing_folders:
-                new_items.append(item)
-                self.add_image_entry(folder_path, prompt)
+            if not folder_path:
+                continue
 
-        # Log duplicate prevention results
-        total_items = len(folder_data)
-        new_count = len(new_items)
-        duplicate_count = total_items - new_count
+            # Check if this folder already exists in current entries
+            existing_entry_id = self._find_existing_folder_entry(folder_path)
 
-        if duplicate_count > 0:
-            self.main_gui.log(f"Loaded {new_count} new entries, skipped {duplicate_count} duplicates")
-        else:
-            self.main_gui.log(f"Loaded {new_count} entries")
+            if existing_entry_id is not None:
+                # Update existing entry for the same folder
+                existing_entry = self.image_entries[existing_entry_id]
+                existing_entry.set_data(folder_path, prompt)
+                updated_count += 1
+                self.main_gui.log(f"Updated existing entry #{existing_entry_id} with folder: {os.path.basename(folder_path)}")
+            else:
+                # Create new entry for different folder
+                entry_id = self.add_image_entry(folder_path, prompt)
+                if entry_id:
+                    new_count += 1
+                    self.main_gui.log(f"Added new entry #{entry_id} with folder: {os.path.basename(folder_path)}")
 
-        # Ensure we have at least one entry
+        # Log summary
+        total_processed = updated_count + new_count
+        if updated_count > 0 and new_count > 0:
+            self.main_gui.log(f"Processed {total_processed} folders: {updated_count} updated, {new_count} new")
+        elif updated_count > 0:
+            self.main_gui.log(f"Updated {updated_count} existing folders")
+        elif new_count > 0:
+            self.main_gui.log(f"Added {new_count} new folders")
+
+        # Ensure we have at least one entry if none exist
         if not self.image_entries:
             self.add_image_entry()
 
@@ -828,7 +892,7 @@ class ImageTab:
 
         if not valid_entries:
             from utils.error_helpers import show_warning_with_log
-            show_warning_with_log(self.main_gui, "No Valid Entries", "Please add at least one valid image folder with prompt text.")
+            show_warning_with_log(self.main_gui, "No Valid Entries", "Please add at least one valid image folder.")
             return
 
         # Check if generation is already running
@@ -867,6 +931,7 @@ class ImageTab:
             total_entries = len(entries)
             successful_count = 0
             failed_count = 0
+            missing_prompt_count = 0
 
             for i, entry_data in enumerate(entries):
                 if self.main_gui.stop_event.is_set():
@@ -880,33 +945,42 @@ class ImageTab:
                 # Check if this is a group entry or individual entry
                 if self.current_mode == "grouped" and 'pairs' in entry_data:
                     # Handle group generation
-                    success = self.generate_group_video(entry_data)
+                    result = self.generate_group_video(entry_data)
                 else:
                     # Handle individual entry generation
-                    success = self.generate_single_video(entry_data)
+                    result = self.generate_single_video(entry_data)
 
-                if success:
+                if result is True:
                     successful_count += 1
+                elif result == "missing_prompt":
+                    missing_prompt_count += 1
                 else:
                     failed_count += 1
 
             # Final progress update with accurate results
             if not self.main_gui.stop_event.is_set():
+                total_failed = failed_count + missing_prompt_count
                 if successful_count > 0:
-                    self.main_gui.root.after(0, lambda: self.update_progress(100, f"Generation complete! {successful_count} successful, {failed_count} failed"))
-                    if failed_count == 0:
+                    self.main_gui.root.after(0, lambda: self.update_progress(100, f"Generation complete! {successful_count} successful, {total_failed} failed"))
+                    if total_failed == 0:
                         self.main_gui.root.after(0, lambda: self.main_gui.log(f"Successfully generated all {successful_count} video(s)"))
                         # Show completion message box
-                        self.main_gui.root.after(0, lambda: self._show_completion_message(successful_count, failed_count))
+                        self.main_gui.root.after(0, lambda: self._show_completion_message(successful_count, total_failed))
                     else:
-                        self.main_gui.root.after(0, lambda: self.main_gui.log(f"Generated {successful_count} video(s), {failed_count} failed"))
+                        self.main_gui.root.after(0, lambda: self.main_gui.log(f"Generated {successful_count} video(s), {total_failed} failed"))
                         # Show completion message box
-                        self.main_gui.root.after(0, lambda: self._show_completion_message(successful_count, failed_count))
+                        self.main_gui.root.after(0, lambda: self._show_completion_message(successful_count, total_failed))
                 else:
-                    self.main_gui.root.after(0, lambda: self.update_progress(0, "All video generation attempts failed"))
-                    self.main_gui.root.after(0, lambda: self.main_gui.log(f"Failed to generate any videos ({failed_count} attempts failed)"))
-                    # Show failure message box
-                    self.main_gui.root.after(0, lambda: self._show_failure_message(failed_count))
+                    # Only show generic failure message if there are actual failures (not just missing prompts)
+                    if failed_count > 0:
+                        self.main_gui.root.after(0, lambda: self.update_progress(0, "All video generation attempts failed"))
+                        self.main_gui.root.after(0, lambda: self.main_gui.log(f"Failed to generate any videos ({failed_count} attempts failed)"))
+                        # Show failure message box
+                        self.main_gui.root.after(0, lambda: self._show_failure_message(failed_count))
+                    elif missing_prompt_count > 0:
+                        # All failures were due to missing prompts - don't show generic failure message
+                        self.main_gui.root.after(0, lambda: self.update_progress(0, "No videos generated - missing text prompts"))
+                        self.main_gui.root.after(0, lambda: self.main_gui.log(f"No videos generated - {missing_prompt_count} entries missing text prompts"))
 
         except Exception as e:
             self.main_gui.root.after(0, lambda: self.main_gui.log(f"Error during video generation: {e}"))
@@ -990,9 +1064,24 @@ class ImageTab:
             prompt = entry_data.get('prompt', '')
             images = entry_data.get('images', [])
             custom_filename = entry_data.get('custom_filename', '')
+            is_file_based = entry_data.get('is_file_based', False)
 
-            if not folder_path or not prompt or not images:
-                self.main_gui.log(f"Skipping invalid entry: {folder_path}")
+            # For file-based entries, folder_path will be None, so check differently
+            if not images:
+                self.main_gui.log(f"Skipping invalid entry: no images found")
+                return False
+
+            # Check if prompt is provided
+            if not prompt:
+                self.main_gui.log(f"Skipping entry: no text prompt provided")
+                from utils.error_helpers import show_warning_with_log
+                show_warning_with_log(self.main_gui, "Missing Text Prompt",
+                                    "Please add a text prompt for this image entry before generating video.")
+                return "missing_prompt"  # Return special value to indicate missing prompt
+
+            # For folder-based entries, we still need a valid folder path
+            if not is_file_based and not folder_path:
+                self.main_gui.log(f"Skipping invalid folder-based entry: no folder path")
                 return False
 
             # Setup model with entry data
@@ -1002,6 +1091,8 @@ class ImageTab:
             self.main_gui.model.website_url = ""
             self.main_gui.model.local_folder = ""
             self.main_gui.model.custom_filename = custom_filename
+            # Set source files for intelligent default naming
+            self.main_gui.model.source_files = images
 
             # Set up progress callback for this generation
             def progress_callback(value, message=None):
@@ -1036,8 +1127,11 @@ class ImageTab:
                 self.main_gui.model.output_folder = None
 
             # Generate the video
-            folder_name = os.path.basename(folder_path)
-            self.main_gui.log(f"Generating video for folder: {folder_name}")
+            if is_file_based:
+                entry_name = f"Selected Images ({len(images)} files)"
+            else:
+                entry_name = os.path.basename(folder_path)
+            self.main_gui.log(f"Generating video for: {entry_name}")
 
             # Call the model's generate method
             result = self.main_gui.model.generate_video(self.main_gui.stop_event)
@@ -1051,13 +1145,13 @@ class ImageTab:
                 final_video = self.main_gui.model.finalize_video(subtitle_path, video_path, output_dir, self.main_gui.stop_event)
 
                 if final_video and os.path.exists(final_video):
-                    self.main_gui.log(f"Successfully generated video for: {folder_name} -> {os.path.basename(final_video)}")
+                    self.main_gui.log(f"Successfully generated video for: {entry_name} -> {os.path.basename(final_video)}")
                     return True
                 else:
-                    self.main_gui.log(f"Failed to finalize video for: {folder_name}")
+                    self.main_gui.log(f"Failed to finalize video for: {entry_name}")
                     return False
             else:
-                self.main_gui.log(f"Failed to generate video for: {folder_name}")
+                self.main_gui.log(f"Failed to generate video for: {entry_name}")
                 return False
 
         except Exception as e:

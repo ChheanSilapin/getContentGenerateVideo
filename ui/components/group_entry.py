@@ -19,17 +19,25 @@ class GroupEntry:
         # UI components
         self.entry_frame = None
         self.expanded = False
+
+        # Custom filename support
+        self.custom_filename = tk.StringVar()
+        self.filename_entry = None
+
         self.setup_group_entry()
 
     def setup_group_entry(self):
         """Set up the UI for this group entry"""
-        # Main group frame with distinctive styling
+        # Main group frame without title - we'll create custom header
         self.entry_frame = ttk.LabelFrame(
             self.parent_frame,
-            text=f"📦 Group: {self.group_info['folder_name']} ({len(self.group_info['pairs'])} videos)",
+            text="",  # Empty title, we'll create custom header
             padding=8
         )
         self.entry_frame.pack(fill="x", padx=6, pady=4)
+
+        # Header row with group label, custom filename, and buttons on same line
+        self.setup_group_header()
 
         # Group summary section
         self.setup_group_summary()
@@ -37,40 +45,53 @@ class GroupEntry:
         # Expandable details section (collapsed by default)
         self.details_frame = None
 
-    def setup_group_summary(self):
-        """Set up the group summary display"""
-        # Summary row
-        summary_frame = ttk.Frame(self.entry_frame)
-        summary_frame.pack(fill="x", pady=(0, 6))
+    def setup_group_header(self):
+        """Set up the group header with group label, custom filename, and buttons on same line"""
+        # Header row with group label, custom filename, and buttons on same line
+        header_frame = ttk.Frame(self.entry_frame)
+        header_frame.pack(fill="x", pady=(0, 8))
 
-        # Left side - group info
-        info_frame = ttk.Frame(summary_frame)
-        info_frame.pack(side="left", fill="x", expand=True)
-
-        # Output file info
-        output_label = ttk.Label(
-            info_frame,
-            text=f"📁 Output: {self.group_info['output_name']}",
+        # Group label on the left
+        group_label = ttk.Label(
+            header_frame,
+            text=f"📦 {self.group_info['folder_name']} ({len(self.group_info['pairs'])} videos)",
             font=("Cascadia Code", 10, "bold")
         )
-        output_label.pack(anchor="w")
+        group_label.pack(side="left")
 
-        # Video list preview
-        video_names = [os.path.basename(pair['video_file']) for pair in self.group_info['pairs']]
-        preview_text = ", ".join(video_names[:3])  # Show first 3
-        if len(video_names) > 3:
-            preview_text += f", ... (+{len(video_names) - 3} more)"
+        # Custom filename section in the middle
+        filename_section = ttk.Frame(header_frame)
+        filename_section.pack(side="left", padx=(20, 0))
 
-        video_preview_label = ttk.Label(
-            info_frame,
-            text=f"🎥 Videos: {preview_text}",
+        # Custom filename entry
+        self.filename_entry = ttk.Entry(
+            filename_section,
+            textvariable=self.custom_filename,
             font=("Cascadia Code", 9),
-            foreground="#666666"
+            width=30
         )
-        video_preview_label.pack(anchor="w")
+        self.filename_entry.pack(side="left", padx=(0, 2))
+
+        # .mp4 label
+        mp4_label = ttk.Label(
+            filename_section,
+            text=".mp4",
+            font=("Cascadia Code", 9),
+            foreground="#7f8c8d"
+        )
+        mp4_label.pack(side="left")
+
+        # Placeholder text - make it shorter and cleaner
+        self.filename_entry.insert(0, "Custom filename (optional)")
+        self.filename_entry.config(foreground="#999999")
+
+        # Bind events for placeholder behavior
+        self.filename_entry.bind('<FocusIn>', self._on_filename_focus_in)
+        self.filename_entry.bind('<FocusOut>', self._on_filename_focus_out)
+        self.filename_entry.bind('<KeyRelease>', self._on_filename_change)
 
         # Right side - action buttons
-        button_frame = ttk.Frame(summary_frame)
+        button_frame = ttk.Frame(header_frame)
         button_frame.pack(side="right")
 
         # Expand/collapse icon (consistent with remove icon)
@@ -93,7 +114,6 @@ class GroupEntry:
         self.expand_button.pack(side="right", padx=(4, 0))
 
         # Remove group button (icon only) - consistent with single entries
-        from config import GUI_COLORS
         remove_button = tk.Button(
             button_frame,
             text="✕",
@@ -110,6 +130,26 @@ class GroupEntry:
             takefocus=False
         )
         remove_button.pack(side="right", padx=(4, 0))
+
+    def setup_group_summary(self):
+        """Set up the group summary display"""
+        # Summary row with video list preview
+        summary_frame = ttk.Frame(self.entry_frame)
+        summary_frame.pack(fill="x", pady=(0, 6))
+
+        # Video list preview
+        video_names = [os.path.basename(pair['video_file']) for pair in self.group_info['pairs']]
+        preview_text = ", ".join(video_names[:3])  # Show first 3
+        if len(video_names) > 3:
+            preview_text += f", ... (+{len(video_names) - 3} more)"
+
+        video_preview_label = ttk.Label(
+            summary_frame,
+            text=f"🎥 {preview_text}",
+            font=("Cascadia Code", 9),
+            foreground="#666666"
+        )
+        video_preview_label.pack(anchor="w")
 
     def toggle_details(self):
         """Toggle the expanded details view"""
@@ -146,23 +186,17 @@ class GroupEntry:
 
     def create_video_detail_entry(self, parent, index, pair):
         """Create a detailed entry for one video in the group"""
-        # Individual video frame
+        # Individual video frame - cleaner title
         video_frame = ttk.LabelFrame(
             parent,
-            text=f"🎬 Video {index + 1}: {os.path.basename(pair['video_file'])}",
+            text=f"🎬 {index + 1}: {os.path.basename(pair['video_file'])}",
             padding=6
         )
         video_frame.pack(fill="x", pady=2)
 
-        # Video file path (read-only)
+        # Video file path (read-only) - remove redundant label
         path_frame = ttk.Frame(video_frame)
         path_frame.pack(fill="x", pady=(0, 4))
-
-        ttk.Label(
-            path_frame,
-            text="📁 File:",
-            font=("Cascadia Code", 9, "bold")
-        ).pack(side="left")
 
         path_entry = ttk.Entry(
             path_frame,
@@ -170,20 +204,14 @@ class GroupEntry:
             state="readonly",
             width=60
         )
-        path_entry.pack(side="left", fill="x", expand=True, padx=(8, 0))
+        path_entry.pack(fill="x", expand=True)
         path_entry.config(state="normal")
         path_entry.insert(0, pair['video_file'])
         path_entry.config(state="readonly")
 
-        # Prompt text (editable)
+        # Prompt text (editable) - remove redundant label
         prompt_frame = ttk.Frame(video_frame)
         prompt_frame.pack(fill="x")
-
-        ttk.Label(
-            prompt_frame,
-            text="💬 Prompt:",
-            font=("Cascadia Code", 9, "bold")
-        ).pack(anchor="w", pady=(0, 2))
 
         prompt_text = tk.Text(
             prompt_frame,
@@ -201,18 +229,57 @@ class GroupEntry:
         # Store reference to update data later
         pair['prompt_widget'] = prompt_text
 
+    def _on_filename_focus_in(self, event):
+        """Handle filename entry focus in (remove placeholder)"""
+        if self.filename_entry.get() == "Custom filename (optional)":
+            self.filename_entry.delete(0, tk.END)
+            self.filename_entry.config(foreground="black")
+
+    def _on_filename_focus_out(self, event):
+        """Handle filename entry focus out (add placeholder if empty)"""
+        if not self.filename_entry.get().strip():
+            self.filename_entry.delete(0, tk.END)
+            self.filename_entry.insert(0, "Custom filename (optional)")
+            self.filename_entry.config(foreground="#999999")
+            self.custom_filename.set("")
+        else:
+            self.custom_filename.set(self.filename_entry.get().strip())
+
+    def _on_filename_change(self, event):
+        """Handle filename entry changes with validation"""
+        current_text = self.filename_entry.get()
+        if current_text != "Custom filename (optional)":
+            # Validate filename in real-time
+            from utils.filename_validator import validate_and_suggest_filename
+            validate_and_suggest_filename(current_text)
+
+            # Update the StringVar with the current value
+            self.custom_filename.set(current_text.strip())
+
     def get_group_data(self):
         """Get the current group data with any user modifications"""
         # Update prompts from UI if details are expanded
         if self.expanded and self.details_frame:
             for pair in self.group_info['pairs']:
+                # Update prompt
                 if 'prompt_widget' in pair:
                     pair['prompt'] = pair['prompt_widget'].get("1.0", tk.END).strip()
+
+        # Get group custom filename or use default
+        custom_filename = self.custom_filename.get().strip()
+        if custom_filename and custom_filename != "Custom filename (optional)":
+            # Use custom filename with .mp4 extension
+            from utils.filename_validator import get_final_output_filename
+            output_name = get_final_output_filename(custom_filename, os.path.splitext(self.group_info['output_name'])[0])
+        else:
+            # Use default output name
+            output_name = self.group_info['output_name']
 
         return {
             "group_id": self.group_id,
             "folder_name": self.group_info['folder_name'],
-            "output_name": self.group_info['output_name'],
+            "output_name": output_name,
+            "custom_filename": custom_filename,
             "pairs": self.group_info['pairs']
         }
 
@@ -221,18 +288,19 @@ class GroupEntry:
         if not self.group_info or not self.group_info.get('pairs'):
             self.main_gui.log(f"Group {self.group_id} invalid: No group info or pairs")
             return False
-        
-        # Check if at least one pair has both video file and prompt
+
+        # Check if at least one pair has a video file (prompt is optional)
         valid_pairs = 0
         for i, pair in enumerate(self.group_info['pairs']):
             video_file = pair.get('video_file', '').strip()
             prompt = pair.get('prompt', '').strip()
-            
+
             self.main_gui.log(f"Group {self.group_id} Pair {i+1}: video_file='{video_file}', prompt_len={len(prompt)}")
-            
-            if video_file and prompt:
+
+            # Only require video file - prompt is optional
+            if video_file:
                 valid_pairs += 1
-        
+
         is_valid = valid_pairs > 0
         self.main_gui.log(f"Group {self.group_id} validation result: {valid_pairs} valid pairs, is_valid={is_valid}")
         return is_valid

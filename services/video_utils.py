@@ -31,14 +31,17 @@ def calculate_loops_needed(target_duration, single_item_duration, min_loops=1):
 def validate_video_file(video_file):
     """
     Validate video file compatibility with MoviePy and FFmpeg
-    
+
     Args:
         video_file: Path to video file to validate
-        
+
     Returns:
         tuple: (is_valid: bool, message: str, suggestion: str)
     """
     try:
+        # Normalize path to fix mixed path separators
+        video_file = os.path.normpath(video_file)
+
         if not os.path.exists(video_file):
             return False, "Video file not found", "Check the file path"
         
@@ -82,19 +85,25 @@ def validate_video_file(video_file):
 def convert_video_to_compatible_format(input_video, output_video=None):
     """
     Convert video to a MoviePy-compatible format using FFmpeg
-    
+
     Args:
         input_video: Path to input video file
         output_video: Path to output converted video (optional)
-        
+
     Returns:
         tuple: (success, converted_video_path, error_message)
     """
     try:
+        # Normalize input path to fix mixed path separators
+        input_video = os.path.normpath(input_video)
+
         if output_video is None:
             # Create output path with "_converted" suffix
             base, _ = os.path.splitext(input_video)
             output_video = f"{base}_converted.mp4"
+
+        # Normalize output path as well
+        output_video = os.path.normpath(output_video)
         
         print(f"Converting video to compatible format...")
         print(f"Input: {input_video}")

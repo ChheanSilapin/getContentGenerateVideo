@@ -1,20 +1,36 @@
 {
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
+  "_migration_completed": true,
   "shared_settings": {
-    "tts_language": "en-us",
-    "tts_voice_actor": "American",
-    "tts_speed": 1.038235294117647,
-    "tts_emotion": "excited",
-    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output"
+    "tts_language": "en-au",
+    "tts_voice_actor": "Australian",
+    "tts_speed": 0.8352941176470589,
+    "tts_emotion": "neutral",
+    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
+    "enabled_tts_providers": [
+      "google_tts",
+      "pyttsx3",
+      "windows_sapi"
+    ],
+    "tts_provider_priority": [
+      "google_tts",
+      "pyttsx3",
+      "windows_sapi"
+    ],
+    "prefer_offline_tts": false,
+    "tts_quality_threshold": 7,
+    "tts_fallback_enabled": true
   },
   "image_tab_settings": {
     "image_fit_method": "contain",
-    "aspect_ratio": "1:1 (Square)"
+    "aspect_ratio": "9:16 (Portrait)"
   },
   "video_tab_settings": {
     "mute_original_audio": true,
     "original_audio_volume": 0.7,
-    "subtitle_style": "modern_glow"
+    "subtitle_style": "modern_glow",
+    "mute": true,
+    "volume": 0.7
   },
   "speech_recognition": {
     "sr_enabled": true,

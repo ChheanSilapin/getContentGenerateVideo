@@ -80,10 +80,10 @@ class ProgressManager:
     def validate_text_input(self, text_widget):
         """
         Validate text input from a text widget
-        
+
         Args:
             text_widget: tkinter Text widget
-            
+
         Returns:
             str: Validated text or None if invalid
         """

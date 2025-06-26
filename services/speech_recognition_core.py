@@ -12,12 +12,15 @@ from services.speech_recognition_models import SpeechRecognitionResult, TextComp
 from services.speech_recognition_postprocessor import SpeechRecognitionPostProcessor
 from services.content_analysis import ContentType
 from services.audio_service import (
-    generate_audio, 
-    initialize_speech_recognition, 
+    generate_audio,
+    initialize_speech_recognition,
     recognize_speech_from_file,
     VOSK_AVAILABLE,
     GTTS_AVAILABLE
 )
+
+# Import logging utilities for emoji handling
+from utils.logging_utils import clean_log_message
 
 class SpeechRecognitionService:
     """Streamlined speech recognition service"""
@@ -37,9 +40,9 @@ class SpeechRecognitionService:
                 from utils.logging_utils import log_speech_recognition
                 log_speech_recognition(f"✅ Speech recognition ready")
             else:
-                print("⚠️ Speech recognition initialization failed")
+                print(clean_log_message("⚠️ Speech recognition initialization failed"))
         else:
-            print("⚠️ Speech recognition unavailable")
+            print(clean_log_message("⚠️ Speech recognition unavailable"))
     
     def _find_vosk_model(self) -> Optional[str]:
         """Find available Vosk model in the models directory"""
@@ -266,21 +269,21 @@ class SpeechRecognitionService:
             )
             
             if success and os.path.exists(audio_file):
-                print(f"✅ Audio generated: {audio_file}")
+                print(clean_log_message(f"✅ Audio generated: {audio_file}"))
                 return audio_file
             else:
-                print("❌ Failed to generate audio")
+                print(clean_log_message("❌ Failed to generate audio"))
                 return None
-                
+
         except Exception as e:
-            print(f"❌ Error generating audio: {e}")
+            print(clean_log_message(f"❌ Error generating audio: {e}"))
             return None
     
     def _recognize_speech_from_audio(self, audio_file: str) -> str:
         """Recognize speech from audio file using Vosk"""
         try:
             if not os.path.exists(audio_file):
-                print(f"❌ Audio file not found: {audio_file}")
+                print(clean_log_message(f"❌ Audio file not found: {audio_file}"))
                 return ""
 
             recognized_text = recognize_speech_from_file(
@@ -292,7 +295,7 @@ class SpeechRecognitionService:
             return recognized_text.strip()
 
         except Exception as e:
-            print(f"❌ Speech recognition error: {e}")
+            print(clean_log_message(f"❌ Speech recognition error: {e}"))
             return ""
     
     def _compare_texts(self, original: str, recognized: str) -> TextComparisonMetrics:
@@ -327,7 +330,7 @@ class SpeechRecognitionService:
             )
             
         except Exception as e:
-            print(f"❌ Error comparing texts: {e}")
+            print(clean_log_message(f"❌ Error comparing texts: {e}"))
             return TextComparisonMetrics(0, 0, 0, 0.0, 0.0, 0.0, 0, [])
     
     def _normalize_text(self, text: str) -> str:

@@ -283,7 +283,7 @@ class SettingsPopup:
 
     def _create_tts_section(self, parent):
         """Create TTS (Text-to-Speech) settings section"""
-        tts_frame = ttk.LabelFrame(parent, text="🗣️ Text-to-Speech (gTTS)", padding=15)
+        tts_frame = ttk.LabelFrame(parent, text="🗣️ Text-to-Speech (Hybrid TTS)", padding=15)
         tts_frame.pack(fill="x", pady=(0, 15))
 
         # Language selection
@@ -396,6 +396,8 @@ class SettingsPopup:
 
             # Initialize volume state
             self._update_volume_state()
+
+
 
     def _create_image_processing_section(self, parent):
         """Create Image Processing settings section"""
@@ -589,16 +591,44 @@ class SettingsPopup:
         # Determine which tab we're configuring for
         tab_name = getattr(self, 'current_tab', 'image_tab')  # Default to image_tab
 
-        # Save tab-specific settings
-        self.settings_manager.save_tab_settings(tab_name, settings)
+        # Save tab-specific settings with error handling
+        try:
+            success = self.settings_manager.save_tab_settings(tab_name, settings)
 
-        if self.on_settings_changed:
-            self.on_settings_changed(settings)
+            if success:
+                if self.on_settings_changed:
+                    self.on_settings_changed(settings)
 
-        if self.main_gui:
-            self.main_gui.log(f"Settings applied successfully for {tab_name.replace('_', ' ').title()}")
+                if self.main_gui:
+                    self.main_gui.log(f"Settings applied successfully for {tab_name.replace('_', ' ').title()}")
 
-        self.close()
+                self.close()
+            else:
+                # Settings save failed
+                if self.main_gui:
+                    self.main_gui.log(f"ERROR: Failed to save settings for {tab_name.replace('_', ' ').title()}")
+
+                # Show error dialog
+                from utils.error_helpers import show_error_with_log
+                show_error_with_log(
+                    self.main_gui,
+                    "Settings Save Error",
+                    "Failed to save settings. Please check file permissions and try again.",
+                    Exception("Settings save operation returned False")
+                )
+        except Exception as e:
+            # Exception during settings save
+            if self.main_gui:
+                self.main_gui.log(f"ERROR: Exception while saving settings for {tab_name.replace('_', ' ').title()}: {e}")
+
+            # Show error dialog
+            from utils.error_helpers import show_error_with_log
+            show_error_with_log(
+                self.main_gui,
+                "Settings Save Error",
+                "An error occurred while saving settings.",
+                e
+            )
     
     def _reset_settings(self):
         """Reset settings to defaults"""

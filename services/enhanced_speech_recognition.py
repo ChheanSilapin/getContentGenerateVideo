@@ -38,25 +38,18 @@ class EnhancedSpeechRecognitionService:
         # Initialize traditional Vosk service
         self.vosk_service = SpeechRecognitionService(model_path, temp_dir)
         
-        # Initialize whisper-timestamped service
-        self.whisper_service = None
+        # Use shared whisper-timestamped service
+        from services.whisper_service_manager import get_whisper_service
+        self.whisper_service = get_whisper_service()
         self.whisper_config = WHISPER_TIMESTAMPED_CONFIG
-        
-        if (WHISPER_SERVICE_AVAILABLE and 
-            self.whisper_config.get("enable_service", True)):
-            try:
-                self.whisper_service = WhisperTimestampedService(
-                    model_name=self.whisper_config.get("model_name", "tiny"),
-                    device=self.whisper_config.get("device", "auto")
-                )
-                if self.whisper_service.is_service_available():
-                    print("✅ Enhanced speech recognition with whisper-timestamped initialized")
-                else:
-                    self.whisper_service = None
-                    print("⚠️ Whisper-timestamped service not available, using Vosk only")
-            except Exception as e:
-                print(f"⚠️ Failed to initialize whisper-timestamped: {e}")
-                self.whisper_service = None
+
+        if self.whisper_service:
+            # Only print once during first initialization
+            if not hasattr(self.__class__, '_whisper_status_printed'):
+                print("✅ Enhanced speech recognition with whisper-timestamped initialized")
+                self.__class__._whisper_status_printed = True
+        else:
+            print("⚠️ Whisper-timestamped service not available, using Vosk only")
     
     def process_text_with_enhanced_validation(self, 
                                             text: str,

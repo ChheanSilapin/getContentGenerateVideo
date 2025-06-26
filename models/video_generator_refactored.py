@@ -128,16 +128,16 @@ class VideoGeneratorModel:
     
     def finalize_video(self, subtitle_path, video_path, output_dir, stop_event=None):
         """
-        Finalize video by merging with subtitles
-        
+        Finalize video by merging with subtitles and move to user's output directory
+
         Args:
             subtitle_path: Path to subtitle file
             video_path: Path to video file
-            output_dir: Output directory
+            output_dir: Temporary output directory
             stop_event: Threading event to stop the process
-            
+
         Returns:
-            str: Path to final video file
+            str: Path to final video file in user's output directory
         """
         try:
             if stop_event and stop_event.is_set():
@@ -147,23 +147,48 @@ class VideoGeneratorModel:
 
             from services.video_finalization import merge_video_subtitle
             from utils.filename_validator import get_final_output_filename
+            from utils.output_manager import get_output_manager
 
             # Use custom filename if provided, otherwise use default
             custom_filename = getattr(self, 'custom_filename', '')
-            final_filename = get_final_output_filename(custom_filename, "final_output")
-            final_output = os.path.join(output_dir, final_filename)
+            temp_filename = get_final_output_filename(custom_filename, "final_output")
+            temp_output = os.path.join(output_dir, temp_filename)
 
-            result = merge_video_subtitle(video_path, subtitle_path, final_output)
+            # Merge video with subtitles in temporary location
+            result = merge_video_subtitle(video_path, subtitle_path, temp_output)
 
             if result:
-                self.update_progress(100, f"Video generated successfully: {os.path.basename(result)}")
-                
-                # Auto-cleanup if enabled
-                cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
-                if cleanup_enabled:
-                    self.cleanup_manager.cleanup_after_video_complete(output_dir, keep_debug_files=False)
-                
-                return result
+                # Get output manager for user's directory
+                try:
+                    from utils.settings_manager import SettingsManager
+                    settings_manager = SettingsManager()
+                    user_settings = settings_manager.load_settings()
+                except Exception:
+                    user_settings = None
+
+                output_manager = get_output_manager(user_settings)
+
+                # Get source files for intelligent default naming
+                source_files = getattr(self, 'source_files', None)
+
+                # Move final video to user's output directory with conflict resolution
+                final_video_path = output_manager.move_final_video(
+                    temp_video_path=result,
+                    custom_filename=custom_filename,
+                    source_files=source_files,
+                    default_name="video"
+                )
+
+                if final_video_path:
+                    self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
+
+                    # Clean up temporary directory
+                    output_manager.cleanup_temp_directory(output_dir)
+
+                    return final_video_path
+                else:
+                    self.update_progress(0, "Failed to move video to output directory")
+                    return result  # Return temp path as fallback
             else:
                 self.update_progress(0, "Failed to finalize video")
                 return None
@@ -244,8 +269,9 @@ class VideoGeneratorModel:
     
     def _validate_inputs(self):
         """Validate input parameters"""
+        # Text input is required for image generation
         if not self.text_input.strip():
-            self.update_progress(0, "Error: No text input provided")
+            self.update_progress(0, "Error: Please provide a text prompt for image generation")
             return False
 
         if self.image_source == "selected" and not self.selected_images:

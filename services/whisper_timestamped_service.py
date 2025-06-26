@@ -72,12 +72,12 @@ class WhisperTimestampedService:
         if self.is_available:
             self._load_model()
         else:
-            log_speech_recognition("⚠️ Whisper-timestamped service unavailable")
+            log_speech_recognition(" Whisper-timestamped service unavailable")
     
     def _load_model(self):
         """Load the whisper model with enhanced error handling and fallbacks"""
         try:
-            log_speech_recognition(f"📥 Loading Whisper model ({self.model_name})...")
+            log_speech_recognition(f" Loading Whisper model ({self.model_name})...")
 
             # Try loading with different device configurations
             devices_to_try = []
@@ -90,29 +90,29 @@ class WhisperTimestampedService:
                 try:
                     self.model = whisper.load_model(self.model_name, device=device)
                     self.device = device  # Update device to what actually worked
-                    log_speech_recognition(f"✅ Whisper model loaded successfully on {device}")
+                    log_speech_recognition(f" Whisper model loaded successfully on {device}")
                     return
                 except Exception as device_error:
-                    log_speech_recognition(f"⚠️ Failed to load on {device}: {device_error}")
+                    log_speech_recognition(f" Failed to load on {device}: {device_error}")
                     continue
 
             # If all devices failed, try with minimal configuration
             try:
-                log_speech_recognition("🔄 Trying minimal configuration...")
+                log_speech_recognition(" Trying minimal configuration...")
                 self.model = whisper.load_model("tiny", device="cpu")
                 self.model_name = "tiny"
                 self.device = "cpu"
-                log_speech_recognition(f"✅ Whisper model loaded with minimal config (tiny/cpu)")
+                log_speech_recognition(f" Whisper model loaded with minimal config (tiny/cpu)")
                 return
             except Exception as minimal_error:
-                log_speech_recognition(f"❌ Minimal config also failed: {minimal_error}")
+                log_speech_recognition(f" Minimal config also failed: {minimal_error}")
 
             # Complete failure
             raise Exception("All loading attempts failed")
 
         except Exception as e:
-            log_speech_recognition(f"❌ Failed to load Whisper model: {e}")
-            log_speech_recognition("💡 Falling back to Vosk-only mode for speech recognition")
+            log_speech_recognition(f" Failed to load Whisper model: {e}")
+            log_speech_recognition(" Falling back to Vosk-only mode for speech recognition")
             self.model = None
             self.is_available = False
 
@@ -162,7 +162,7 @@ class WhisperTimestampedService:
             if cached_result:
                 return cached_result
 
-            log_speech_recognition(f"🎯 Analyzing audio with whisper-timestamped...")
+            log_speech_recognition(f" Analyzing audio with whisper-timestamped...")
 
             # Configure transcription options based on content type
             transcribe_options = self._get_transcription_options(language, use_vad, content_type)
@@ -176,14 +176,14 @@ class WhisperTimestampedService:
             # Cache the result for future use
             self._cache_result(cache_key, whisper_result)
 
-            log_speech_recognition(f"✅ Whisper analysis completed: {whisper_result.total_words} words, "
+            log_speech_recognition(f" Whisper analysis completed: {whisper_result.total_words} words, "
                                  f"{len(whisper_result.segments)} segments")
 
             return whisper_result
             
         except Exception as e:
             error_msg = f"Whisper-timestamped analysis failed: {e}"
-            log_speech_recognition(f"❌ {error_msg}")
+            log_speech_recognition(f" {error_msg}")
             return WhisperResult(
                 text="", language="", segments=[], processing_time=time.time() - start_time,
                 success=False, error_message=error_msg
@@ -365,7 +365,7 @@ class WhisperTimestampedService:
             group_timings.append((start_time, end_time))
             word_index += group_word_count
         
-        log_speech_recognition(f"🎯 Mapped {len(group_timings)} subtitle groups to whisper timestamps")
+        log_speech_recognition(f" Mapped {len(group_timings)} subtitle groups to whisper timestamps")
         return group_timings
     
     def get_confidence_score(self, whisper_result: WhisperResult) -> float:

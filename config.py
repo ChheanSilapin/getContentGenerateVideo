@@ -135,12 +135,26 @@ SUBTITLE_CONFIG = {
     "silence_threshold_db": 15,    # dB below average for silence detection (more sensitive for gTTS)
     "min_silence_length_ms": 100,  # Minimum silence length in milliseconds (detect natural pauses)
     
+    # Dynamic Background Effects
+    "enable_dynamic_backgrounds": True,     # Enable voice-synchronized background effects
+    "background_opacity": 0.7,              # Background transparency (0.0-1.0)
+    "background_padding": 10,               # Padding around text in pixels
+    "background_border_radius": 8,          # Rounded corners for background
+    "voice_sync_precision": "high",         # Background sync precision: "low", "medium", "high"
+
+    # Word-Level Highlighting (Karaoke Effect)
+    "enable_word_level_highlighting": True, # Enable word-by-word highlighting effect
+    "word_highlight_mode": "karaoke",       # Highlighting mode: "karaoke", "sentence", "disabled"
+    "word_spacing": 0.05,                   # Time gap between words in seconds
+    "word_min_duration": 0.3,              # Minimum display time per word in seconds
+    "word_max_duration": 2.0,              # Maximum display time per word in seconds
+
     # Style Presets
     "available_styles": {
         "modern_glow": {
             "name": "Modern Glow",
-            "description": "White text with blue glow effect",
-            "font": "Times New Roman",
+            "description": "White text with blue glow effect and dynamic background",
+            "font": "Rubik",
             "size": 48,
             "primary_color": "&H00FFFFFF",  # White
             "outline_color": "&H00FF8000",  # Blue glow
@@ -148,12 +162,16 @@ SUBTITLE_CONFIG = {
             "shadow": 2,
             "bold": True,
             "alignment": 2,  # Bottom center
-            "margin_v": 80
+            "margin_v": 80,
+            # Dynamic background settings
+            "background_color": "&H80000000",  # Semi-transparent black
+            "background_active_color": "&H80001040",  # Semi-transparent dark blue when voice active
+            "enable_voice_sync": True
         },
         "gradient_gold": {
-            "name": "Gradient Gold", 
-            "description": "Gold gradient with black shadow",
-            "font": "Times New Roman",
+            "name": "Gradient Gold",
+            "description": "Gold gradient with black shadow and dynamic background",
+            "font": "Rubik",
             "size": 46,
             "primary_color": "&H0000D7FF",  # Gold
             "secondary_color": "&H000080FF",  # Orange
@@ -162,12 +180,16 @@ SUBTITLE_CONFIG = {
             "shadow": 2,
             "bold": True,
             "alignment": 2,
-            "margin_v": 90
+            "margin_v": 90,
+            # Dynamic background settings
+            "background_color": "&H80000000",  # Semi-transparent black
+            "background_active_color": "&H80402000",  # Semi-transparent dark gold when voice active
+            "enable_voice_sync": True
         },
         "fire_red": {
             "name": "Fire Red",
-            "description": "Red to orange gradient with glow", 
-            "font": "Times New Roman",
+            "description": "Red to orange gradient with glow and dynamic background",
+            "font": "Rubik",
             "size": 50,
             "primary_color": "&H000000FF",  # Red
             "secondary_color": "&H000080FF",  # Orange
@@ -176,12 +198,16 @@ SUBTITLE_CONFIG = {
             "shadow": 2,
             "bold": True,
             "alignment": 2,
-            "margin_v": 85
+            "margin_v": 85,
+            # Dynamic background settings
+            "background_color": "&H80000000",  # Semi-transparent black
+            "background_active_color": "&H80000040",  # Semi-transparent dark red when voice active
+            "enable_voice_sync": True
         },
         "ice_blue": {
             "name": "Ice Blue",
-            "description": "Light blue with white glow",
-            "font": "Times New Roman", 
+            "description": "Light blue with white glow and dynamic background",
+            "font": "Rubik",
             "size": 45,
             "primary_color": "&H00FFFF80",  # Light blue
             "outline_color": "&H00FFFFFF",  # White glow
@@ -189,12 +215,36 @@ SUBTITLE_CONFIG = {
             "shadow": 1,
             "bold": True,
             "alignment": 2,
-            "margin_v": 75
+            "margin_v": 75,
+            # Dynamic background settings
+            "background_color": "&H80000000",  # Semi-transparent black
+            "background_active_color": "&H80804000",  # Semi-transparent dark blue when voice active
+            "enable_voice_sync": True
+        },
+
+        "bold_outline": {
+            "name": "Bold Outline",
+            "description": "Gold text with thick black outline for maximum visibility",
+            "font": "Rubik",
+            "size": 52,
+            "primary_color": "&H0000D7FF",  # Bright yellow/gold
+            "secondary_color": "&H0000B8FF",  # Slightly darker gold for gradient
+            "outline_color": "&H00000000",  # Black outline
+            "outline_width": 6,  # Thick outline for bold effect
+            "shadow": 0,
+            "bold": True,
+            "alignment": 2,  # Bottom center
+            "margin_v": 85,
+            # Dynamic background settings
+            "enable_voice_sync": True,
+            # Enhanced outline settings for bold effect
+            "background_padding": 15,  # Extra padding for bold style
+            "background_border_radius": 10  # Rounded corners
         }
     },
     
     # Default style to use
-    "default_style": "gradient_gold"
+    "default_style": "bold_outline"
 }
 
 AUTO_CLEANUP_AFTER_COMPLETION = True  
@@ -202,8 +252,44 @@ ENABLE_CONTENT_ANALYSIS_CACHE = True
 CONTENT_CACHE_MAX_SIZE = 100  
 CONTENT_CACHE_TTL_HOURS = 24  
 ENABLE_TTS_CACHE = True
-TTS_CACHE_MAX_SIZE = 50  
-TTS_CACHE_TTL_HOURS = 48  
+TTS_CACHE_MAX_SIZE = 50
+TTS_CACHE_TTL_HOURS = 48
+
+# Hybrid TTS System Configuration
+HYBRID_TTS_CONFIG = {
+    # Provider Settings
+    "enabled_providers": ["google_tts", "pyttsx3", "windows_sapi"],
+    "provider_priority": ["google_tts", "pyttsx3", "windows_sapi"],
+
+    # Quality and Performance Settings
+    "quality_threshold": 7,          # Minimum quality score (1-10)
+    "prefer_offline": False,         # Prefer offline providers when available
+    "fallback_enabled": True,        # Enable automatic fallbacks
+    "max_retry_attempts": 2,         # Max retries per provider
+
+    # pyttsx3 Specific Settings
+    "pyttsx3_settings": {
+        "base_rate": 200,            # Base words per minute
+        "voice_preferences": {       # Voice selection preferences
+            "british": ["british", "uk", "hazel", "george"],
+            "excited": ["female", "zira", "hazel"],
+            "dramatic": ["male", "david", "mark"]
+        }
+    },
+
+    # Language Support Matrix
+    "language_support": {
+        "google_tts": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+        "pyttsx3": ["en", "en-us"],
+        "windows_sapi": ["en", "en-us"]
+    },
+
+    # Backward Compatibility Settings
+    "maintain_gtts_compatibility": True,    # Preserve existing gTTS behavior
+    "preserve_voice_settings": True,       # Keep current voice actor preferences
+    "emotion_processing": True,            # Maintain emotional text processing
+    "speed_adjustment": True               # Keep speed adjustment features
+}
 
 FFMPEG_OPTIMIZATION = {
     "preset": "fast",           # Balance of speed/quality (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
@@ -255,7 +341,7 @@ PROCESSING_OPTIMIZATIONS = {
 # Logging Configuration - Cleaner, less verbose output
 LOGGING_CONFIG = {
     "verbose_mode": False,               # Enable/disable verbose logging
-    "show_emojis": True,                # Show emoji indicators in logs (helpful for status)
+    "show_emojis": False,               # Show emoji indicators in logs (helpful for status)
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
     "show_speech_recognition": True,     # Show speech recognition results (essential info)
@@ -309,7 +395,7 @@ def get_tab_visibility():
         return UI_MODE_PRESETS[UI_MODE].copy()
     else:
         # Fallback to standard mode if invalid mode specified
-        print(f"⚠️ Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
+        print(f" Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
         return UI_MODE_PRESETS["standard"].copy()
 
 PROGRESS_DISPLAY_MODE = "percentage"  
@@ -320,14 +406,14 @@ WHISPER_TIMESTAMPED_CONFIG = {
     "enable_service": True,         # Enable/disable whisper-timestamped service
 
     # Transcription Options
-    "use_vad": True,                # Enable Voice Activity Detection for better accuracy
-    "vad_method": "silero",         # VAD method: "silero", "auditok", or False
+    "use_vad": True,               # Disable VAD to avoid dependency issues
+    "vad_method": "silero",            # VAD method: "silero", "auditok", or False
     "compute_confidence": True,     # Compute word-level confidence scores
     "temperature": 0.0,             # Temperature for deterministic output
 
     # Language and Content Settings
     "default_language": "en",       # Default language code
-    "auto_detect_language": False,  # Auto-detect language (slower but more accurate)
+    "auto_detect_language": True,  # Auto-detect language (slower but more accurate)
     "content_aware_prompts": True,  # Use content-type specific prompts
 
     # Subtitle Integration

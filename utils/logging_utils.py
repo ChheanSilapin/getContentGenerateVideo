@@ -67,6 +67,14 @@ def clean_log_message(message: str, remove_emojis: bool = None) -> str:
                 '💾': '[CACHE]',
                 '🧹': '[CLEAN]',
                 '🔄': '[RETRY]',
+                '📋': '[LIST]',
+                '🔧': '[CONFIG]',
+                '📊': '[STATS]',
+                '🎤': '[AUDIO]',
+                '🗑️': '[DELETE]',
+                '📥': '[LOAD]',
+                '💡': '[TIP]',
+                '📖': '[INFO]',
             }
             
             for emoji, replacement in emoji_replacements.items():

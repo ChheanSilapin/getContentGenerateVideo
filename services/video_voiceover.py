@@ -30,6 +30,10 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
         bool: True if successful, False otherwise
     """
     try:
+        # Normalize video file path to fix mixed path separators
+        video_file = os.path.normpath(video_file)
+        output_file = os.path.normpath(output_file)
+
         print(f"Adding voice-over to video: {os.path.basename(video_file)}")
 
         # Configure FFmpeg and temp directory (centralized)
@@ -45,6 +49,7 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
             video = VideoFileClip(video_file)
             loading_success = True
         except Exception as e:
+            print(f"DEBUG: Strategy 1 failed: {type(e).__name__}: {str(e)[:100]}")
             pass  # Try next strategy
         
         # Strategy 2: MoviePy with specific codec parameters
@@ -54,6 +59,7 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                 video = VideoFileClip(video_file, audio=True, target_resolution=None)
                 loading_success = True
             except Exception as e:
+                print(f"DEBUG: Strategy 2 failed: {type(e).__name__}: {str(e)[:100]}")
                 pass  # Try next strategy
         
         # Strategy 3: MoviePy without audio first, then add audio separately
@@ -68,6 +74,7 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                     pass  # Continue without original audio
                 loading_success = True
             except Exception as e:
+                print(f"DEBUG: Strategy 3 failed: {type(e).__name__}: {str(e)[:100]}")
                 pass  # Try next strategy
         
         # Strategy 4: Convert video to compatible format as last resort
@@ -82,13 +89,30 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                     # Note: We'll use the converted video for processing
                     video_file = converted_video  # Update video_file path for the rest of the function
                 except Exception as e:
+                    print(f"DEBUG: Strategy 4 (converted video) failed: {type(e).__name__}: {str(e)[:100]}")
                     pass  # Final failure
             else:
+                print(f"DEBUG: Strategy 4 (conversion) failed: {error_msg}")
                 pass  # Conversion failed
         
         # Final check - if all strategies failed
         if not loading_success or video is None:
             print(f"ERROR: All video loading strategies failed for {video_file}")
+
+            # Additional debugging information
+            if os.path.exists(video_file):
+                file_size = os.path.getsize(video_file)
+                print(f"DEBUG: File exists, size: {file_size} bytes")
+
+                # Try basic validation
+                from .video_utils import validate_video_file
+                is_valid, message, suggestion = validate_video_file(video_file)
+                print(f"DEBUG: Validation result: {is_valid}, {message}")
+                if suggestion:
+                    print(f"DEBUG: Suggestion: {suggestion}")
+            else:
+                print(f"DEBUG: File does not exist at path: {video_file}")
+
             return False
 
         new_audio = AudioFileClip(audio_file)

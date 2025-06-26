@@ -296,51 +296,56 @@ class FolderProcessor:
         for video_key, video_info in video_files.items():
             if video_key in matched_videos:
                 continue
-                
+
             text_info = None
             match_type = None
-            
+            prompt_content = ""
+
             # PRIORITY 1: Exact name match (BEST)
             if video_key in text_files:
                 text_info = text_files[video_key]
                 match_type = "exact_name"
-            
+
             # PRIORITY 2: If only one video and one text in folder
             elif len(video_files) == 1 and len(text_files) == 1:
                 text_info = list(text_files.values())[0]
                 match_type = "single_pair"
-            
-            # PRIORITY 3: Common prompt file names (if no exact match)
+
+            # PRIORITY 3: Multiple videos with single text file (shared prompt)
+            elif len(text_files) == 1 and len(video_files) > 1:
+                text_info = list(text_files.values())[0]
+                match_type = "shared_prompt"
+
+            # PRIORITY 4: Common prompt file names (if no exact match)
             elif not text_info:
                 for common_name in ['prompt', 'script', 'text', 'content']:
                     if common_name in text_files:
                         text_info = text_files[common_name]
                         match_type = f"common_name_{common_name}"
                         break
-            
-            # If we found a text file, process and add the pair
+
+            # Try to read text file content if found
             if text_info:
                 try:
                     with open(text_info['path'], 'r', encoding='utf-8') as f:
                         prompt_content = f.read().strip()
-                    
-                    if prompt_content:  # Only add if text file has content
-                        pairs.append({
-                            'video_file': video_info['path'],
-                            'text_file': text_info['path'],
-                            'prompt': prompt_content,
-                            'video_name': video_info['name'],
-                            'text_name': text_info['name'],
-                            'order_key': video_info['base_name'].lower(),
-                            'match_type': match_type,
-                            'confidence': self._get_match_confidence(match_type)
-                        })
-                        
-                        matched_videos.add(video_key)
-                        
                 except Exception as e:
                     self.log(f"Error reading {text_info['path']}: {e}")
-                    continue
+                    prompt_content = ""
+
+            # Add the video (with or without text)
+            pairs.append({
+                'video_file': video_info['path'],
+                'text_file': text_info['path'] if text_info else None,
+                'prompt': prompt_content,
+                'video_name': video_info['name'],
+                'text_name': text_info['name'] if text_info else None,
+                'order_key': video_info['base_name'].lower(),
+                'match_type': match_type if text_info else "no_text",
+                'confidence': self._get_match_confidence(match_type if text_info else "no_text")
+            })
+
+            matched_videos.add(video_key)
         
         return pairs
     
@@ -349,49 +354,49 @@ class FolderProcessor:
         confidence_scores = {
             'exact_name': 100,           # video1.mp4 ↔ video1.txt
             'single_pair': 90,           # Only 1 video + 1 text in folder
+            'shared_prompt': 85,         # Multiple videos sharing 1 text file
             'common_name_prompt': 80,    # video.mp4 ↔ prompt.txt
-            'common_name_script': 80,    # video.mp4 ↔ script.txt  
+            'common_name_script': 80,    # video.mp4 ↔ script.txt
             'common_name_text': 70,      # video.mp4 ↔ text.txt
-            'common_name_content': 70    # video.mp4 ↔ content.txt
+            'common_name_content': 70,   # video.mp4 ↔ content.txt
+            'no_text': 60               # video.mp4 (no text file - user can add manually)
         }
         return confidence_scores.get(match_type, 50)
     
     def validate_groups(self, groups: Dict) -> Tuple[bool, List[str]]:
         """
         Validate that all groups have valid files
-        
+
         Args:
             groups: Groups dictionary from scan_folder_structure
-            
+
         Returns:
             tuple: (is_valid, list_of_errors)
         """
         errors = []
-        
+
         if not groups:
-            errors.append("No video+text pairs found in folder structure")
+            errors.append("No media files found in folder structure")
             return False, errors
-        
+
         for folder_name, group_info in groups.items():
             pairs = group_info.get('pairs', [])
-            
+
             if not pairs:
-                errors.append(f"No valid pairs in folder: {folder_name}")
+                errors.append(f"No valid media files in folder: {folder_name}")
                 continue
-            
+
             for pair in pairs:
-                # Check video file exists
+                # Check video file exists (required)
                 if not os.path.exists(pair['video_file']):
                     errors.append(f"Video file not found: {pair['video_name']}")
-                
-                # Check text file exists
-                if not os.path.exists(pair['text_file']):
+
+                # Check text file exists only if one was specified
+                if pair.get('text_file') and not os.path.exists(pair['text_file']):
                     errors.append(f"Text file not found: {pair['text_name']}")
-                
-                # Check prompt content
-                if not pair.get('prompt', '').strip():
-                    errors.append(f"Empty prompt in: {pair['text_name']}")
-        
+
+                # Note: We no longer require prompt content - users can add it manually
+
         return len(errors) == 0, errors
     
     def get_processing_summary(self, groups: Dict) -> Dict:

@@ -21,11 +21,11 @@ def validate_filename(filename):
     
     filename = filename.strip()
     
-    # Check for invalid characters (Windows and Unix)
-    invalid_chars = r'[<>:"/\\|?*]'
+    # Check for invalid characters (Windows and Unix, including hashtags for better compatibility)
+    invalid_chars = r'[<>:"/\\|?*#]'
     if re.search(invalid_chars, filename):
         cleaned = re.sub(invalid_chars, '_', filename)
-        return False, cleaned, "Filename contains invalid characters. They will be replaced with underscores."
+        return False, cleaned, "Filename contains invalid characters (including #). They will be replaced with underscores."
     
     # Check for reserved Windows names
     reserved_names = [
@@ -38,10 +38,10 @@ def validate_filename(filename):
         cleaned = f"{filename}_video"
         return False, cleaned, f"'{filename}' is a reserved system name. '_video' will be added."
     
-    # Check length (Windows has 255 char limit, but we'll be conservative)
-    if len(filename) > 200:
-        cleaned = filename[:200]
-        return False, cleaned, "Filename is too long. It will be truncated to 200 characters."
+    # Check length (Windows has 255 char limit, but we'll be conservative for better compatibility)
+    if len(filename) > 150:
+        cleaned = filename[:150]
+        return False, cleaned, "Filename is too long. It will be truncated to 150 characters."
     
     # Check for leading/trailing spaces or dots
     if filename != filename.strip(' .'):
@@ -68,8 +68,8 @@ def sanitize_filename(filename):
     
     filename = filename.strip()
     
-    # Replace invalid characters with underscores
-    invalid_chars = r'[<>:"/\\|?*]'
+    # Replace invalid characters with underscores (including hashtags for better compatibility)
+    invalid_chars = r'[<>:"/\\|?*#]'
     filename = re.sub(invalid_chars, '_', filename)
     
     # Handle reserved names
@@ -82,9 +82,9 @@ def sanitize_filename(filename):
     if filename.upper() in reserved_names:
         filename = f"{filename}_video"
     
-    # Truncate if too long
-    if len(filename) > 200:
-        filename = filename[:200]
+    # Truncate if too long (use shorter limit for better Windows compatibility)
+    if len(filename) > 150:
+        filename = filename[:150]
     
     # Remove leading/trailing spaces and dots
     filename = filename.strip(' .')

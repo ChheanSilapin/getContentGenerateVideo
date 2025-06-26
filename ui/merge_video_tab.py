@@ -2,13 +2,10 @@
 Merge Video Tab - Streamlined using factory components
 Now using ButtonFactory and LayoutFactory for maximum code reuse
 """
-from utils.common_imports import os, tk, ttk, messagebox, threading
+from utils.common_imports import tk, ttk, threading
 
 # Import our new components and factories
 from ui.components import VideoGrid, VideoLoader, ProgressManager, ButtonFactory, LayoutFactory
-
-# Import service layer
-from services.merge_service import VideoService
 
 class MergeVideoTab:
     """Ultra-streamlined merge video tab using factory architecture"""
@@ -266,24 +263,23 @@ class MergeVideoTab:
     def process_merge(self, selected_videos, output_path, progress_callback=None, stop_event=None):
         """Process video merge using service layer"""
         try:
-            # Use VideoService for actual merging
-            service = VideoService()
-            
-            # Use standardized progress callback
-            from utils.gui_helpers import create_progress_callback
-            service_progress = create_progress_callback(None, None) if not progress_callback else progress_callback
-            
-            # Perform merge
-            result = service.merge_videos(
-                selected_videos, 
+            from services.merge_service import VideoService
+
+            # Validate compatibility if requested
+            if self.validate_var.get():
+                is_compatible, error_msg = VideoService.validate_video_compatibility(selected_videos)
+                if not is_compatible:
+                    raise Exception(f"Video compatibility check failed: {error_msg}")
+
+            # Perform merge using optimized method
+            result = VideoService.merge_videos_optimized(
+                selected_videos,
                 output_path,
-                progress_callback=service_progress,
-                stop_event=stop_event,
-                validate_compatibility=self.validate_var.get()
+                progress_callback=progress_callback
             )
-            
+
             return result
-            
+
         except Exception as e:
             raise Exception(f"Merge failed: {str(e)}")
 
@@ -303,6 +299,7 @@ class MergeVideoTab:
         self.buttons['process'].config(state="normal")
         self.buttons['stop'].config(state="disabled")
         
+        from utils.error_helpers import show_error_with_log
         show_error_with_log(self.main_gui, "Merge Failed", f"Failed to merge videos:\n\n{error_message}")
         self.main_gui.log(f"Video merge failed: {error_message}")
 

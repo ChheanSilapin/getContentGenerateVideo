@@ -266,20 +266,76 @@ def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neut
     if _tts_cache.get_cached_audio(processed_text, voice_actor, speed, emotion, language, output_file):
         return True
 
-    # Try different TTS methods in order of preference
-    success = False
-    if GTTS_AVAILABLE:
-        success = generate_audio_gtts(processed_text, output_file, speed, emotion, language, voice_actor)
-
-    if not success:
-        # Fallback to system TTS
-        success = generate_audio_system_emotional(processed_text, output_file, emotion)
+    # Use hybrid TTS system with intelligent provider selection
+    success = generate_audio_hybrid(processed_text, output_file, voice_actor, speed, emotion, language)
 
     # Cache the generated audio if successful
     if success:
         _tts_cache.cache_audio(processed_text, voice_actor, speed, emotion, language, output_file)
 
     return success
+
+def generate_audio_hybrid(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en'):
+    """
+    Generate audio using hybrid TTS system with intelligent provider selection
+
+    This function maintains backward compatibility while adding advanced TTS capabilities:
+    1. gTTS (Google TTS, reliable, current default)
+    2. pyttsx3 (cross-platform offline TTS)
+    3. Windows SAPI (system fallback)
+
+    Args:
+        text: Text to convert to speech
+        output_file: Path to output audio file
+        voice_actor: Voice actor preference
+        speed: Speech speed (0.5 to 2.0)
+        emotion: Emotion to apply
+        language: Language code
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        # Import hybrid TTS manager
+        from services.tts_providers import get_hybrid_tts_manager
+
+        # Get hybrid TTS manager instance
+        tts_manager = get_hybrid_tts_manager()
+
+        # Prepare parameters for TTS generation
+        tts_params = {
+            'voice_actor': voice_actor,
+            'speed': speed,
+            'emotion': emotion,
+            'language': language
+        }
+
+        print(f"🎯 Hybrid TTS: Using parameters - voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
+
+        # Generate speech using hybrid system
+        success = tts_manager.generate_speech(text, output_file, **tts_params)
+
+        if success:
+            print(f"✅ Hybrid TTS successfully generated: {output_file}")
+        else:
+            print("❌ Hybrid TTS failed - all providers exhausted")
+
+        return success
+
+    except Exception as e:
+        print(f"❌ Hybrid TTS system error: {e}")
+        traceback.print_exc()
+
+        # Fallback to original gTTS method for maximum compatibility
+        print("🔄 Falling back to original gTTS method...")
+        try:
+            if GTTS_AVAILABLE:
+                return generate_audio_gtts(text, output_file, speed, emotion, language, voice_actor)
+            else:
+                return generate_audio_system_emotional(text, output_file, emotion)
+        except Exception as fallback_error:
+            print(f"❌ Fallback also failed: {fallback_error}")
+            return False
 
 def generate_audio_gtts(text, output_file, speed=0.8, emotion="neutral", language='en', voice_actor=None):
     """

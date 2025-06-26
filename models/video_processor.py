@@ -6,6 +6,9 @@ import os
 from datetime import datetime
 from utils.error_helpers import handle_operation_error
 
+# Import logging utilities for emoji handling
+from utils.logging_utils import clean_log_message
+
 
 class VideoProcessor:
     """Handles individual video processing operations"""
@@ -87,30 +90,46 @@ class VideoProcessor:
                 self.update_progress(0, "Process stopped by user")
                 return None
 
+            # Check if we have text input for voice-over
+            has_text_input = text_input and text_input.strip()
+
             # Store text input for processing
-            self.text_input = text_input
+            self.text_input = text_input if has_text_input else ""
 
             # Create output directory
             output_dir = self._create_output_directory(video_file, output_folder)
             self.current_output_dir = output_dir
 
-            # Step 1: Generate audio from text
-            audio_file = self._generate_audio(text_input, output_dir, stop_event)
-            if not audio_file:
-                return None
+            if has_text_input:
+                # Step 1: Generate audio from text
+                audio_file = self._generate_audio(text_input, output_dir, stop_event)
+                if not audio_file:
+                    return None
 
-            # Step 2: Add voice-over to original video
-            video_with_audio = self._add_voiceover(video_file, audio_file, output_dir, stop_event)
-            if not video_with_audio:
-                return None
+                # Step 2: Add voice-over to original video
+                video_with_audio = self._add_voiceover(video_file, audio_file, output_dir, stop_event)
+                if not video_with_audio:
+                    return None
+            else:
+                # No text input - just copy the original video
+                self.update_progress(30, "No text prompt provided - processing video without voice-over")
+                import shutil
+                video_with_audio = os.path.join(output_dir, "video_with_audio.mp4")
+                shutil.copy2(video_file, video_with_audio)
+                audio_file = None  # No audio file when no text input
 
-            # Step 3: Generate subtitles
-            subtitle_file = self._generate_subtitles(text_input, video_with_audio, audio_file, output_dir, stop_event)
-            if not subtitle_file:
-                return None
+            if has_text_input:
+                # Step 3: Generate subtitles
+                subtitle_file = self._generate_subtitles(text_input, video_with_audio, audio_file, output_dir, stop_event)
+                if not subtitle_file:
+                    return None
 
-            # Step 4: Finalize video with subtitles
-            final_video = self._finalize_video(subtitle_file, video_with_audio, output_dir, stop_event, skip_auto_cleanup)
+                # Step 4: Finalize video with subtitles
+                final_video = self._finalize_video(subtitle_file, video_with_audio, output_dir, stop_event, skip_auto_cleanup)
+            else:
+                # No text input - finalize video without subtitles
+                self.update_progress(80, "Finalizing video without subtitles")
+                final_video = self._finalize_video_without_subtitles(video_with_audio, output_dir, stop_event, skip_auto_cleanup)
 
             return final_video
 
@@ -127,11 +146,15 @@ class VideoProcessor:
         unique_timestamp = f"{timestamp}_{milliseconds:03d}"
         video_name = os.path.splitext(os.path.basename(video_file))[0]
 
+        # Sanitize video name for directory path to avoid filesystem issues
+        from utils.filename_validator import sanitize_filename
+        safe_video_name = sanitize_filename(video_name)
+
         if output_folder and os.path.isdir(output_folder):
-            output_dir = os.path.join(output_folder, f"video_{video_name}_{unique_timestamp}")
+            output_dir = os.path.join(output_folder, f"video_{safe_video_name}_{unique_timestamp}")
         else:
             base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
-            output_dir = os.path.join(base_output_dir, f"video_{video_name}_{unique_timestamp}")
+            output_dir = os.path.join(base_output_dir, f"video_{safe_video_name}_{unique_timestamp}")
 
         os.makedirs(output_dir, exist_ok=True)
         print(f"Created output directory: {output_dir}")
@@ -228,7 +251,7 @@ class VideoProcessor:
             speech_service = EnhancedSpeechRecognitionService()
 
             if not speech_service.is_available():
-                print("⚠️ Speech recognition service not available, skipping validation")
+                print(clean_log_message("⚠️ Speech recognition service not available, skipping validation"))
                 return None
 
             # Get voice settings for validation (use current TTS settings)
@@ -252,7 +275,7 @@ class VideoProcessor:
             )
 
             if not enhanced_result.success:
-                print("⚠️ Enhanced speech recognition failed")
+                print(clean_log_message("⚠️ Enhanced speech recognition failed"))
                 return False
 
             recognized_text = enhanced_result.final_text
@@ -264,14 +287,14 @@ class VideoProcessor:
             passes_validation = confidence_score >= threshold
 
             # Log validation results with method information
-            print(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
+            print(clean_log_message(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})"))
 
             # Log service status for transparency
             service_status = speech_service.get_service_status()
             if service_status['enhanced_mode']:
-                print(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}")
+                print(clean_log_message(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}"))
             else:
-                print(f"🔧 Standard mode: Vosk={service_status['vosk_available']}")
+                print(clean_log_message(f"🔧 Standard mode: Vosk={service_status['vosk_available']}"))
 
             # Store enhanced validation results
             self.last_speech_validation_result = {
@@ -288,20 +311,20 @@ class VideoProcessor:
 
             # Automatically apply recognized text if validation passes
             if passes_validation and confidence_score >= 0.8:  # High confidence threshold
-                print(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})")
+                print(clean_log_message(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})"))
                 self.validated_text = recognized_text
             else:
                 # Keep original text if validation fails or confidence is low
                 self.validated_text = self.text_input
                 if not passes_validation:
-                    print(f"⚠️ Using original text due to validation failure")
+                    print(clean_log_message(f"⚠️ Using original text due to validation failure"))
                 else:
-                    print(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})")
+                    print(clean_log_message(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})"))
 
             return passes_validation
 
         except Exception as e:
-            print(f"❌ Error during speech recognition validation: {e}")
+            print(clean_log_message(f"❌ Error during speech recognition validation: {e}"))
             return None
 
     def _get_content_aware_threshold(self, content_type):
@@ -381,7 +404,7 @@ class VideoProcessor:
 
         # Log which text was used for subtitles
         if hasattr(self, 'validated_text') and self.validated_text != text_input:
-            print("📝 Subtitles generated using validated text from speech recognition")
+            print(clean_log_message("📝 Subtitles generated using validated text from speech recognition"))
 
         self.update_progress(90, "Subtitles generated successfully")
         return subtitle_file
@@ -393,21 +416,110 @@ class VideoProcessor:
             
         # Reduced logging: print("\n--- Step 4: Finalizing Video ---")
         self.update_progress(95, "Finalizing video...")
-        
+
         from services.video_finalization import merge_video_subtitle
         from utils.filename_validator import get_final_output_filename
+        from utils.output_manager import get_output_manager
 
         # Use custom filename if provided, otherwise use default
         custom_filename = getattr(self, 'custom_filename', '')
-        final_filename = get_final_output_filename(custom_filename, "final_output")
-        final_output = os.path.join(output_dir, final_filename)
-        
-        result = merge_video_subtitle(video_file, subtitle_file, final_output)
-        
+        temp_filename = get_final_output_filename(custom_filename, "final_output")
+        temp_output = os.path.join(output_dir, temp_filename)
+
+        # Merge video with subtitles in temporary location
+        result = merge_video_subtitle(video_file, subtitle_file, temp_output)
+
         if result:
-            self.update_progress(100, f"Video generated successfully: {os.path.basename(result)}")
-            return result
+            # Get output manager for user's directory
+            try:
+                from utils.settings_manager import SettingsManager
+                settings_manager = SettingsManager()
+                user_settings = settings_manager.load_settings()
+            except Exception:
+                user_settings = None
+
+            output_manager = get_output_manager(user_settings)
+
+            # Get source files for intelligent default naming
+            source_files = getattr(self, 'source_files', None)
+
+            # Move final video to user's output directory with conflict resolution
+            final_video_path = output_manager.move_final_video(
+                temp_video_path=result,
+                custom_filename=custom_filename,
+                source_files=source_files,
+                default_name="video"
+            )
+
+            if final_video_path:
+                self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
+
+                # Clean up temporary directory if not skipping cleanup
+                if not skip_auto_cleanup:
+                    output_manager.cleanup_temp_directory(output_dir)
+
+                return final_video_path
+            else:
+                self.update_progress(0, "Failed to move video to output directory")
+                return result  # Return temp path as fallback
         else:
             print("Failed to finalize video")
             self.update_progress(0, "Failed to finalize video")
             return None
+
+    def _finalize_video_without_subtitles(self, video_file, output_dir, stop_event, skip_auto_cleanup=False):
+        """Finalize video without subtitles - just move to output directory"""
+        if stop_event and stop_event.is_set():
+            return None
+
+        self.update_progress(95, "Finalizing video without subtitles...")
+
+        from utils.filename_validator import get_final_output_filename
+        from utils.output_manager import get_output_manager
+
+        # Use custom filename if provided, otherwise use default
+        custom_filename = getattr(self, 'custom_filename', '')
+        temp_filename = get_final_output_filename(custom_filename, "final_output")
+        temp_output = os.path.join(output_dir, temp_filename)
+
+        # Copy video to final location in temp directory
+        import shutil
+        try:
+            shutil.copy2(video_file, temp_output)
+        except Exception as e:
+            print(f"Failed to copy video: {e}")
+            self.update_progress(0, "Failed to copy video")
+            return None
+
+        # Get output manager for user's directory
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            user_settings = settings_manager.load_settings()
+        except Exception:
+            user_settings = None
+
+        output_manager = get_output_manager(user_settings)
+
+        # Get source files for intelligent default naming
+        source_files = getattr(self, 'source_files', None)
+
+        # Move final video to user's output directory with conflict resolution
+        final_video_path = output_manager.move_final_video(
+            temp_video_path=temp_output,
+            custom_filename=custom_filename,
+            source_files=source_files,
+            default_name="video"
+        )
+
+        if final_video_path:
+            self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
+
+            # Clean up temporary directory if not skipping cleanup
+            if not skip_auto_cleanup:
+                output_manager.cleanup_temp_directory(output_dir)
+
+            return final_video_path
+        else:
+            self.update_progress(0, "Failed to move video to output directory")
+            return temp_output  # Return temp path as fallback

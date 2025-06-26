@@ -150,7 +150,7 @@ class VideoTab:
             "Step 2: Choose your content source:",
             "   • Add Folder - Import video folders",
             "   • Add Files - Pick individual video files",
-            "Step 3: Add text prompts for each entry",
+            "Step 3: Add text prompts (optional - can be added later)",
             "Step 4: Click 'Generate All Videos' to start"
         ]
 
@@ -297,7 +297,7 @@ class VideoTab:
 
         entries_title = ttk.Label(
             entries_header,
-            text="📹 Video Entries",
+            text="📹 Entries",
             font=GUI_FONTS["heading"]
         )
         entries_title.pack(side="left")
@@ -534,12 +534,13 @@ class VideoTab:
     def _show_no_videos_found(self):
         """Show user-friendly message when no videos are found"""
         messagebox.showwarning(
-            "No Video Pairs Found",
-            "No matching video and text file pairs found in the selected folder.\n\n"
-            "Expected patterns:\n"
-            "• video1.mp4 + video1.txt (exact match)\n" 
-            "• video.mp4 + prompt.txt or script.txt (common names)\n"
-            "• Single video + single text in same folder"
+            "No Videos Found",
+            "No video files found in the selected folder.\n\n"
+            "Supported video formats:\n"
+            "• .mp4, .avi, .mov, .mkv, .wmv, .flv\n\n"
+            "Text prompts are optional - you can:\n"
+            "• Include text files for automatic pairing\n"
+            "• Add prompts manually after loading videos"
         )
 
     def _load_as_groups(self, detection_result):
@@ -886,9 +887,9 @@ class VideoTab:
 
         if not valid_entries:
             if self.current_mode == "grouped":
-                messagebox.showwarning("No Valid Groups", "Please add at least one group with videos and prompts.")
+                messagebox.showwarning("No Valid Groups", "Please add at least one group with videos.")
             else:
-                messagebox.showwarning("No Valid Entries", "Please add at least one video with a prompt.")
+                messagebox.showwarning("No Valid Entries", "Please add at least one video file.")
             return
 
         # Confirm with user

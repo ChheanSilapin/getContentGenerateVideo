@@ -265,20 +265,10 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                 processed_clip = processed_clip.set_duration(duration_per_image)
                 processed_clip = processed_clip.set_fps(24)  # Set standard FPS
 
-                # Apply enhanced effects based on content analysis
+                # Apply enhanced effects
                 if use_effects and duration_per_image > 0:
-                    # Check for content analysis in enhancement options
-                    content_analysis = enhancement_options.get('content_analysis') if enhancement_options else None
-
-                    if content_analysis:
-                        # Apply emotion-aware effects
-                        from services.emotion_aware_effects import EmotionAwareEffects
-                        effects_processor = EmotionAwareEffects()
-                        processed_clip = effects_processor.apply_emotion_aware_effects(
-                            processed_clip, content_analysis, duration_per_image
-                        )
-                        # Reduced logging: print(f"Applied emotion-aware effects for {content_analysis.emotional_tone.value} content")
-                    elif use_slow_zoom or (zoom_effect and duration_per_image > 3.0):
+                    # Apply standard zoom effects (emotion-aware effects removed for simplicity)
+                    if use_slow_zoom or (zoom_effect and duration_per_image > 3.0):
                         # Slower, more subtle zoom for longer durations
                         zoom_factor = 0.05 if use_slow_zoom else 0.1
                         processed_clip = processed_clip.resize(lambda t: 1 + zoom_factor * t / duration_per_image)
@@ -322,17 +312,8 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                 if not hasattr(clip, 'fps') or clip.fps is None:
                     clip.fps = 24
 
-            # Apply emotion-aware transitions if content analysis is available
-            content_analysis = enhancement_options.get('content_analysis') if enhancement_options else None
-            if content_analysis and len(clips) > 1:
-                print(f"Applying emotion-aware transitions for {content_analysis.content_type.value} content...")
-                from services.emotion_aware_effects import EmotionAwareEffects
-                effects_processor = EmotionAwareEffects()
-                final_video = effects_processor.create_emotion_aware_transitions(
-                    clips, content_analysis, transition_duration=0.5
-                )
-            else:
-                final_video = concatenate_videoclips(clips, method="compose")
+            # Apply standard transitions (emotion-aware transitions removed for simplicity)
+            final_video = concatenate_videoclips(clips, method="compose")
 
             final_video = final_video.set_audio(audio_clip)
 
