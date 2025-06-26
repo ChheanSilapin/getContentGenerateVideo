@@ -351,52 +351,21 @@ LOGGING_CONFIG = {
     "show_subtitle_details": False,      # Show detailed subtitle timing logs
     "show_media_duration": False,        # Show media duration detection logs
 }
+# Simplified tab configuration - only active tabs
 TAB_VISIBILITY = {
-    'input': False,
     'images': True,
     'video': True,
-    'merge': False,
-    'options': False,
-    'batch': False,
-    'speech_recognition': False,  # Speech recognition tab disabled
     'log': True,
-}
-
-UI_MODE = "custom" 
-UI_MODE_PRESETS = {
-    "standard": {
-        'input': True,
-        'images': True,
-        'video': True,
-        'merge': False,
-        'options': True,
-        'batch': False,
-        'log': True,
-    },
-    "custom": {
-        'input': False,
-        'images': True,
-        'video': True,
-        'merge': False,
-        'options': False,
-        'batch': False,
-        'log': True,
-    }
 }
 
 def get_tab_visibility():
     """
-    Get the current tab visibility configuration based on UI_MODE
-    
+    Get the active tab visibility configuration
+
     Returns:
-        dict: Tab visibility settings for current UI mode
+        dict: Tab visibility settings for active tabs only
     """
-    if UI_MODE in UI_MODE_PRESETS:
-        return UI_MODE_PRESETS[UI_MODE].copy()
-    else:
-        # Fallback to standard mode if invalid mode specified
-        print(f" Invalid UI_MODE '{UI_MODE}', using 'standard' mode")
-        return UI_MODE_PRESETS["standard"].copy()
+    return TAB_VISIBILITY.copy()
 
 PROGRESS_DISPLAY_MODE = "percentage"  
 WHISPER_TIMESTAMPED_CONFIG = {

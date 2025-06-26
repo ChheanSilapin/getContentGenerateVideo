@@ -114,19 +114,15 @@ def safe_file_operation(operation_func, *args, operation_name="file operation", 
 
 def cleanup_temp_files(*file_paths):
     """
-    Centralized temp file cleanup
-    Eliminates duplicate cleanup code across services
+    Delegate to centralized OutputManager cleanup system
+    Maintains backward compatibility while using centralized cleanup
 
     Args:
         *file_paths: Variable number of file paths to clean up
     """
-    for file_path in file_paths:
-        if file_path and os.path.exists(file_path):
-            try:
-                os.remove(file_path)
-                print(f"Cleaned up temp file: {os.path.basename(file_path)}")
-            except Exception as e:
-                print(f"Warning: Could not remove temp file {file_path}: {e}")
+    from utils.output_manager import get_output_manager
+    output_manager = get_output_manager()
+    return output_manager.cleanup_temp_files(*file_paths)
 
 def force_moviepy_cleanup():
     """

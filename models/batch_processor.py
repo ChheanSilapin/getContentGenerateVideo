@@ -443,10 +443,10 @@ class BatchProcessor:
                     print(f"🧹 Cleanup enabled: {cleanup_enabled}")
                     if cleanup_enabled:
                         print(f"🗑️ Cleaning up {len(valid_videos)} individual video files...")
-                        # Use CleanupManager for consistent video file removal
-                        self._cleanup_individual_videos_consolidated(valid_videos, final_video_path)
+                        # Use centralized OutputManager cleanup system
+                        output_manager.cleanup_after_video_complete(temp_dir, keep_debug_files=False)
                         # Clean up individual video temporary directories
-                        self._cleanup_individual_temp_directories(valid_videos)
+                        output_manager.cleanup_individual_temp_directories(valid_videos)
                         # Also clean up the temporary directory
                         output_manager.cleanup_temp_directory(temp_dir)
                         print(f"✅ Cleanup completed successfully")
@@ -474,131 +474,4 @@ class BatchProcessor:
             print(f"ERROR: Video merge failed: {e}")
             return None
     
-    def _cleanup_individual_videos_consolidated(self, processed_videos, merged_video_path):
-        """Clean up individual video files after successful merge using CleanupManager"""
-        import os
-
-        print(f"🧹 Cleaning up {len(processed_videos)} individual video files after merge...")
-
-        # Get the merged video filename for safety check
-        merged_filename = os.path.basename(merged_video_path) if merged_video_path else ""
-        cleaned_files = 0
-
-        # Use CleanupManager for consistent video file removal
-        if hasattr(self, 'cleanup_manager') and self.cleanup_manager:
-            cleanup_manager = self.cleanup_manager
-        else:
-            # Fallback: create CleanupManager if not available
-            from .cleanup_manager import CleanupManager
-            cleanup_manager = CleanupManager()
-
-        for video_path in processed_videos:
-            # SAFETY CHECKS
-            if not video_path or not video_path.endswith('.mp4'):
-                print(f"⚠️ Skipping non-video file: {video_path}")
-                continue
-
-            # CRITICAL SAFETY: Don't delete the merged video file itself
-            video_filename = os.path.basename(video_path)
-            if video_filename == merged_filename:
-                print(f"🛡️ Protecting merged video from deletion: {video_filename}")
-                continue
-
-            # Additional safety: Only remove individual video outputs (start with underscore)
-            if not video_filename.startswith('_'):
-                print(f"⚠️ Skipping file that doesn't match individual video pattern: {video_filename}")
-                continue
-
-            # Use CleanupManager's robust video file removal method
-            if os.path.exists(video_path):
-                success = cleanup_manager._remove_video_file_with_retry(video_path)
-                if success:
-                    cleaned_files += 1
-
-        print(f"🧹 Cleanup complete: Removed {cleaned_files} individual video files")
-
-    def _cleanup_individual_temp_directories(self, processed_videos):
-        """Clean up temporary directories created during individual video processing"""
-        import os
-        import shutil
-        import time
-        cleaned_dirs = 0
-
-        print(f"🗂️ Cleaning up temporary directories for {len(processed_videos)} videos...")
-
-        # Force comprehensive cleanup to ensure all file handles are released
-        from utils.helpers import force_moviepy_cleanup
-        force_moviepy_cleanup()
-        time.sleep(1.0)
-
-        if not processed_videos:
-            print(f"🗂️ No videos to clean up")
-            return
-
-        # Get the output directory from the first video path
-        first_video = processed_videos[0]
-        output_dir = os.path.dirname(first_video)
-
-        print(f"🔍 Scanning output directory: {output_dir}")
-
-        try:
-            # Scan the output directory for temporary directories
-            for item in os.listdir(output_dir):
-                item_path = os.path.join(output_dir, item)
-
-                # Check if it's a directory and matches temp pattern
-                if os.path.isdir(item_path) and self._is_temp_video_directory(item_path):
-                    try:
-                        print(f"🗑️ Removing temp directory: {item}")
-                        shutil.rmtree(item_path)
-                        cleaned_dirs += 1
-                        print(f"✅ Removed temp directory: {item}")
-                    except Exception as e:
-                        print(f"⚠️ Could not remove temp directory {item}: {e}")
-
-        except Exception as e:
-            print(f"⚠️ Error scanning output directory: {e}")
-
-        print(f"🗂️ Temp directory cleanup complete: Removed {cleaned_dirs} directories")
-
-    def _is_temp_video_directory(self, dir_path):
-        """Check if a directory is a temporary video processing directory"""
-        try:
-            # Check if directory exists and is actually a directory
-            if not os.path.isdir(dir_path):
-                return False
-
-            dir_name = os.path.basename(dir_path)
-
-            # Primary check: directory name pattern
-            # Temp directories have names like: "video_filename_timestamp"
-            if not (dir_name.startswith('video_') and '_202' in dir_name):
-                return False
-
-            # Secondary check: directory contents
-            try:
-                dir_contents = os.listdir(dir_path)
-
-                # Temporary video directories typically contain files like:
-                temp_indicators = [
-                    'video_with_audio.mp4',
-                    'slideshow.mp4',
-                    'voice.mp3',
-                    'subtitles.ass',
-                    'final_output.mp4'
-                ]
-
-                # If it contains any of these files, it's definitely a temp directory
-                for indicator in temp_indicators:
-                    if indicator in dir_contents:
-                        return True
-
-                # If no specific files found, rely on naming pattern
-                return len(dir_name) > 50  # Long name typical of temp dirs
-
-            except Exception:
-                # If we can't read contents, rely on naming pattern only
-                return len(dir_name) > 50
-
-        except Exception:
-            return False
+    # Cleanup methods removed - now handled by centralized OutputManager

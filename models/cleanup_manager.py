@@ -1,218 +1,53 @@
 """
-Cleanup Manager Component - Handles file cleanup operations
-Extracted from VideoGeneratorModel to reduce complexity
+Cleanup Manager Component - Delegates to centralized OutputManager cleanup system
+Simplified to eliminate duplication with OutputManager
 """
 import os
-import time
-import gc
-import glob
-import shutil
-import config
-from utils.error_helpers import retry_operation
+from utils.output_manager import get_output_manager
 
 
 class CleanupManager:
-    """Handles file cleanup operations with retry mechanisms"""
-    
+    """Delegates file cleanup operations to centralized OutputManager"""
+
     def __init__(self):
-        pass
-    
+        self._output_manager = None
+
+    def _get_output_manager(self):
+        """Get or create OutputManager instance"""
+        if self._output_manager is None:
+            self._output_manager = get_output_manager()
+        return self._output_manager
+
     def cleanup_after_video_complete(self, output_dir, keep_debug_files=False):
         """
-        Consolidated cleanup function - single source of truth for all temporary file cleanup
-        
+        Delegate to centralized OutputManager cleanup system
+
         Args:
             output_dir: Directory to clean up
             keep_debug_files: Whether to keep debug files
-            
+
         Returns:
             int: Number of files cleaned up
         """
-        try:
-            if not keep_debug_files:
-                print("Starting consolidated post-completion cleanup...")
+        output_manager = self._get_output_manager()
+        return output_manager.cleanup_after_video_complete(output_dir, keep_debug_files)
 
-            # Enhanced cleanup to allow MoviePy and TTS processes to fully release file handles
-            from utils.helpers import force_moviepy_cleanup
-            force_moviepy_cleanup()
-            time.sleep(2.0)  # Additional delay for video processing to ensure file handles are released
+    def cleanup_on_stop(self, output_dir):
+        """Delegate to centralized OutputManager cleanup system"""
+        output_manager = self._get_output_manager()
+        return output_manager.cleanup_on_stop(output_dir)
 
-            # Handle images directory
-            self._cleanup_images_directory(output_dir)
+    def cleanup_extracted_frames(self, images_dir):
+        """Delegate to centralized OutputManager cleanup system"""
+        output_manager = self._get_output_manager()
+        return output_manager.cleanup_extracted_frames(images_dir)
 
-            # Get list of files to clean up
-            intermediate_files = self._get_intermediate_files(output_dir, keep_debug_files)
-
-            # Clean up files with enhanced retry for video files
-            cleaned_count = self._cleanup_files(intermediate_files)
-
-            # Clean up temporary files with patterns
-            cleaned_count += self._cleanup_temp_patterns(output_dir)
-
-            if not keep_debug_files and cleaned_count > 0:
-                print(f"✅ Consolidated cleanup: removed {cleaned_count} files, keeping only final_output.mp4")
-            return cleaned_count
-            
-        except Exception as e:
-            print(f"Error in consolidated cleanup: {e}")
-            return 0
-    
-    def _cleanup_images_directory(self, output_dir):
-        """Clean up images directory if not from URL download"""
-        images_dir = os.path.join(output_dir, "images")
-        if os.path.exists(images_dir):
-            # Note: This assumes the calling class has website_url attribute
-            # In a real refactor, this would be passed as a parameter
-            try:
-                shutil.rmtree(images_dir)
-                print(f"Cleaned up images directory: {images_dir}")
-            except Exception as e:
-                print(f"Warning: Could not clean up images directory: {e}")
-    
-    def _get_intermediate_files(self, output_dir, keep_debug_files):
-        """Get list of intermediate files to clean up"""
-        # Core intermediate files (always remove)
-        intermediate_files = [
-            os.path.join(output_dir, "slideshow.mp4"),
-            os.path.join(output_dir, "video_with_audio.mp4"),
-            os.path.join(output_dir, "original_video_backup.mp4"),  # Always remove backup
-        ]
-
-        # Add debug files if not keeping them
-        if not keep_debug_files:
-            intermediate_files.extend([
-                os.path.join(output_dir, "subtitles.ass"),
-                os.path.join(output_dir, "voice.mp3"),
-                os.path.join(output_dir, "voice.mp3.txt"),
-                os.path.join(output_dir, "temp_audio_voiceover.m4a"),
-                os.path.join(output_dir, "temp-audio.m4a"),
-                os.path.join(output_dir, "temp_subtitle_*.ass"),
-            ])
-
-        return intermediate_files
-    
-    def _cleanup_files(self, file_list):
-        """Clean up individual files with retry mechanism"""
-        cleaned_count = 0
-        
-        for file_path in file_list:
-            if "*" in file_path:
-                # Handle wildcard patterns
-                matching_files = glob.glob(file_path)
-                for match_file in matching_files:
-                    if os.path.exists(match_file):
-                        if match_file.endswith(('.mp4', '.avi', '.mov')):
-                            cleaned_count += self._remove_video_file_with_retry(match_file)
-                        else:
-                            cleaned_count += self._remove_file_with_retry(match_file)
-            else:
-                # Handle regular files
-                if os.path.exists(file_path):
-                    if file_path.endswith(('.mp4', '.avi', '.mov')):
-                        cleaned_count += self._remove_video_file_with_retry(file_path)
-                    else:
-                        cleaned_count += self._remove_file_with_retry(file_path)
-        
-        return cleaned_count
-    
-    def _cleanup_temp_patterns(self, output_dir):
-        """Clean up temporary files with common patterns"""
-        cleaned_count = 0
-        temp_patterns = [
-            os.path.join(output_dir, "*TEMP_MPY_wvf_snd.mp3"),  # MoviePy temp audio
-            os.path.join(output_dir, "*_temp*"),                # General temp files
-            os.path.join(output_dir, "temp_*"),                 # Temp prefixed files
-        ]
-        
-        for pattern in temp_patterns:
-            matching_files = glob.glob(pattern)
-            for temp_file in matching_files:
-                # Don't remove final_output.mp4 or other important files
-                if "final_output" not in os.path.basename(temp_file).lower():
-                    cleaned_count += self._remove_file_with_retry(temp_file)
-        
-        return cleaned_count
-    
-    def _remove_video_file_with_retry(self, file_path, max_retries=5):
-        """
-        Remove a video file with enhanced retry mechanism for MoviePy file locks
-
-        Args:
-            file_path: Path to video file to remove
-            max_retries: Maximum number of retry attempts
-
-        Returns:
-            int: 1 if removed successfully, 0 if failed
-        """
-        def _remove_file():
-            """Internal function to remove file"""
-            # Force garbage collection before removal
-            gc.collect()
-            os.remove(file_path)
-            if not file_path.endswith('original_video_backup.mp4'):  # Reduce logging for backup files
-                print(f"🗑️ Cleaned: {os.path.basename(file_path)}")
-
-        # Use the enhanced retry mechanism with exponential backoff
-        success, result, error = retry_operation(
-            _remove_file,
-            max_retries=max_retries,
-            delay=1.0,
-            backoff_factor=1.5,
-            operation_name=f"Remove {os.path.basename(file_path)}"
-        )
-
-        if not success and isinstance(error, PermissionError):
-            # Special handling for permission errors - try MoviePy cleanup
-            try:
-                print(f"🔧 Attempting MoviePy cleanup for locked file: {os.path.basename(file_path)}")
-                from utils.helpers import force_moviepy_cleanup
-                force_moviepy_cleanup()
-                time.sleep(3.0)  # Give more time for cleanup
-
-                # One final attempt
-                os.remove(file_path)
-                print(f"✅ Successfully removed after MoviePy cleanup: {os.path.basename(file_path)}")
-                return 1
-            except Exception as final_e:
-                print(f"❌ Final cleanup attempt failed for {os.path.basename(file_path)}: {final_e}")
-                return 0
-
-        return 1 if success else 0
-    
-    def _remove_file_with_retry(self, file_path, max_retries=3):
-        """
-        Remove a file with retry mechanism for locked files
-        
-        Args:
-            file_path: Path to file to remove
-            max_retries: Maximum number of retry attempts
-            
-        Returns:
-            int: 1 if removed successfully, 0 if failed
-        """
-        for attempt in range(max_retries):
-            try:
-                os.remove(file_path)
-                print(f"Consolidated cleanup: {os.path.basename(file_path)}")
-                return 1
-            except PermissionError:
-                if attempt < max_retries - 1:
-                    print(f"File locked, retrying in 0.5s: {os.path.basename(file_path)} (attempt {attempt + 1}/{max_retries})")
-                    time.sleep(0.5)
-                else:
-                    print(f"Warning: Could not remove {os.path.basename(file_path)} after {max_retries} attempts: File still locked")
-                    return 0
-            except Exception as e:
-                print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
-                return 0
-        
-        return 0
-    
     def organize_output_folder_during_generation(self, output_dir):
         """
         Organize the output folder DURING generation - keep all important files
         Only remove truly temporary files that are no longer needed
         """
+        # This method can remain as it's specific to during-generation cleanup
         try:
             # Only clean up intermediate files that are definitely not needed anymore
             truly_temp_files = [
@@ -223,41 +58,13 @@ class CleanupManager:
                 os.path.join(output_dir, "temp_video.mp4"),
             ]
 
-            cleaned_count = 0
-            for file_path in truly_temp_files:
-                if os.path.exists(file_path):
-                    try:
-                        os.remove(file_path)
-                        print(f"Cleaned up temp file during generation: {os.path.basename(file_path)}")
-                        cleaned_count += 1
-                    except Exception as e:
-                        print(f"Warning: Could not remove {os.path.basename(file_path)}: {e}")
+            # Use OutputManager for consistent cleanup
+            output_manager = self._get_output_manager()
+            cleaned_count = output_manager.cleanup_temp_files(*truly_temp_files)
 
-            print(f"✅ Cleaned {cleaned_count} temporary files during generation")
-            
+            if cleaned_count > 0:
+                print(f" Cleaned {cleaned_count} temporary files during generation")
+
         except Exception as e:
-            print(f"Error organizing during generation: {e}")
-    
-    def cleanup_on_stop(self, output_dir):
-        """Clean up files when process is stopped by user"""
-        if output_dir and os.path.exists(output_dir):
-            try:
-                print(f"Cleaning up output directory: {output_dir}")
-                shutil.rmtree(output_dir)
-                print(f"Removed output directory after stop: {output_dir}")
-            except Exception as e:
-                print(f"Warning: Could not clean up output directory: {e}")
-    
-    def cleanup_extracted_frames(self, images_dir):
-        """
-        Clean up extracted frames from video processing to keep output folder clean
-        
-        Args:
-            images_dir: Directory containing extracted frames
-        """
-        try:
-            if os.path.exists(images_dir):
-                shutil.rmtree(images_dir)
-                print(f"Cleaned up extracted frames directory: {images_dir}")
-        except Exception as e:
-            print(f"Warning: Could not clean up extracted frames directory: {e}")
+            print(f" Error organizing during generation: {e}")
+

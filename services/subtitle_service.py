@@ -13,14 +13,7 @@ from config import DEFAULT_MAX_CHARS_PER_LINE, SUBTITLE_CONFIG, WHISPER_TIMESTAM
 from utils.helpers import ensure_directory_exists, get_media_duration_safe
 from utils.text_processing import process_text_for_subtitles
 
-# Try to import pydub for speech analysis
-try:
-    from pydub import AudioSegment
-    from pydub.silence import detect_nonsilent
-    PYDUB_AVAILABLE = True
-except ImportError:
-    PYDUB_AVAILABLE = False
-    print("pydub not available. Using basic timing for subtitles.")
+# pydub no longer needed for timing calculations
 
 # Import whisper-timestamped service for enhanced timing
 try:
@@ -203,9 +196,8 @@ class SubtitleGenerator:
             else:
                 print(f"⚠️ Whisper-timestamped returned {len(timings) if timings else 0} timings for {len(word_groups)} groups")
 
-        # Fallback to traditional speech analysis
-        if (PYDUB_AVAILABLE and
-            self.config.get("use_speech_analysis", True) and
+        # Fallback to Vosk speech analysis
+        if (self.config.get("use_speech_analysis", True) and
             duration <= self.config.get("speech_analysis_max_duration", 60.0)):
 
             timings = self._analyze_speech_timing(audio_file, word_groups, duration)
@@ -338,345 +330,48 @@ class SubtitleGenerator:
         return True
 
     def _analyze_speech_timing(self, audio_file, word_groups, duration):
-        """Analyze speech patterns for precise timing"""
+        """Simplified speech timing using Vosk recognition"""
         try:
-            audio = AudioSegment.from_file(audio_file)
-            
-            # Detect speech segments
-            silence_thresh = audio.dBFS - self.config.get("silence_threshold_db", 18)
-            min_silence = self.config.get("min_silence_length_ms", 200)
-            
-            speech_segments = detect_nonsilent(audio, min_silence_len=min_silence, silence_thresh=silence_thresh)
-
-            if not speech_segments:
-                return None
-
-            # Convert to seconds and filter short segments
-            segments = []
-            filtered_count = 0
-            for start_ms, end_ms in speech_segments:
-                start_sec = start_ms / 1000.0
-                end_sec = end_ms / 1000.0
-                segment_duration = end_sec - start_sec  # Fixed: renamed to avoid collision with duration parameter
-                if segment_duration > 0.4:  # At least 400ms (balanced reliability and sensitivity)
-                    segments.append((start_sec, end_sec))
-                else:
-                    filtered_count += 1
-
-            if not segments:
-                # Fallback: try with shorter minimum duration
-                for start_ms, end_ms in speech_segments:
-                    start_sec = start_ms / 1000.0
-                    end_sec = end_ms / 1000.0
-                    fallback_segment_duration = end_sec - start_sec  # Fixed: use descriptive variable name
-                    if fallback_segment_duration > 0.2:  # Fallback to 200ms minimum
-                        segments.append((start_sec, end_sec))
-
-                if not segments:
-                    return None
-            
-            # Map word groups to speech segments
-            return self._map_groups_to_segments(word_groups, segments, duration)
-            
+            # Use Vosk for speech recognition timing if available
+            if hasattr(self, 'vosk_model') and self.vosk_model:
+                from services.audio_service import recognize_speech_from_file
+                recognized_text = recognize_speech_from_file(audio_file, self.vosk_model, self.vosk_recognizer)
+                if recognized_text:
+                    # Simple timing based on recognized speech length
+                    return self._calculate_basic_timing(word_groups, duration)
+            return None
         except Exception as e:
             print(f"Speech analysis failed: {e}")
             return None
     
-    def _map_groups_to_segments(self, word_groups, segments, duration):
-        """Map word groups to detected speech segments with improved synchronization"""
-        timings = []
-        early_offset = 0.0   # Zero offset: subtitles appear EXACTLY with speech starts (perfect synchronization)
-        min_subtitle_duration = 0.8  # Reduced minimum for better speech analysis compatibility
-        min_gap = 0.05  # Smaller gap for smoother flow
 
-        # Map word groups to speech segments
-
-        if len(segments) >= len(word_groups):
-            # One-to-one mapping (preferred when we have enough segments)
-            for i, group in enumerate(word_groups):
-                if i < len(segments):
-                    start, end = segments[i]
-                    start = max(0, start - early_offset)  # Zero offset = exact synchronization with speech
-
-                    # Check for overlap with previous subtitle
-                    if i > 0 and timings:
-                        prev_end = timings[-1][1]
-                        if start < prev_end + min_gap:
-                            start = prev_end + min_gap
-
-                    # Calculate duration based on text length and speech segment
-                    text_based_duration = max(0.8, group['char_count'] / 15)  # 15 chars per second reading speed
-                    segment_duration = end - start
-                    duration_needed = max(min_subtitle_duration, text_based_duration)
-
-                    # Use the longer of text-based duration or segment duration, but ensure minimum
-                    if segment_duration >= duration_needed:
-                        # Speech segment is long enough, use it
-                        end = start + segment_duration
-                    else:
-                        # Speech segment too short, extend to meet text requirements
-                        end = start + duration_needed
-
-                    timings.append((start, min(end, duration)))
-                else:
-                    # Fallback for remaining groups
-                    last_end = timings[-1][1] if timings else 0
-                    fallback_start = last_end + min_gap
-                    fallback_duration = max(min_subtitle_duration, group['char_count'] / 15)
-                    timings.append((fallback_start, min(fallback_start + fallback_duration, duration)))
-        else:
-            # Distribute groups across segments - FIXED ALGORITHM
-
-            # Create a more robust distribution that ensures all groups are processed
-            segment_assignments = []
-            remaining_groups = len(word_groups)
-
-            for i, (start, end) in enumerate(segments):
-                remaining_segments = len(segments) - i
-                # Calculate how many groups this segment should handle
-                groups_for_this_segment = max(1, remaining_groups // remaining_segments)
-                if i < remaining_groups % remaining_segments:
-                    groups_for_this_segment += 1
-
-                segment_assignments.append(groups_for_this_segment)
-                remaining_groups -= groups_for_this_segment
-
-            # Distribute groups across segments
-
-            group_idx = 0
-            for segment_idx, (start, end) in enumerate(segments):
-                segment_groups = segment_assignments[segment_idx]
-                segment_duration = end - start
-
-                for i in range(segment_groups):
-                    if group_idx >= len(word_groups):
-                        break
-
-                    # Distribute groups evenly within this segment
-                    group_start = start - early_offset + (i * segment_duration / segment_groups)
-                    group_end = start + ((i + 1) * segment_duration / segment_groups)
-
-                    # Ensure minimum subtitle duration based on text length
-                    group = word_groups[group_idx]
-                    text_based_duration = max(0.8, group['char_count'] / 15)  # 15 chars per second reading speed
-                    required_duration = max(min_subtitle_duration, text_based_duration)
-
-                    # Adjust end time to meet minimum duration
-                    if group_end - group_start < required_duration:
-                        group_end = group_start + required_duration
-
-                    # Check for overlap with previous subtitle
-                    if timings:
-                        prev_end = timings[-1][1]
-                        if group_start < prev_end + min_gap:
-                            group_start = prev_end + min_gap
-                            # Adjust end time accordingly to maintain minimum duration
-                            group_end = max(group_end, group_start + required_duration)
-
-                    timings.append((max(0, group_start), min(group_end, duration)))
-                    group_idx += 1
-
-            # Ensure we have timings for all groups
-            while len(timings) < len(word_groups):
-                last_end = timings[-1][1] if timings else 0
-                fallback_start = last_end + min_gap
-                fallback_duration = min_subtitle_duration
-                timings.append((fallback_start, min(fallback_start + fallback_duration, duration)))
-                pass  # Silent fallback timing
-
-        return timings
-
-    def _validate_timing_quality(self, timings, duration):
-        """Validate the quality of speech analysis timing - more lenient for better speech sync"""
-        if not timings:
-            return {'is_valid': False, 'reason': 'No timings generated'}
-
-        # Check for reasonable timing intervals
-        durations = [end - start for start, end in timings]
-
-        # Very lenient validation to strongly prefer speech analysis timing
-        very_short = sum(1 for d in durations if d < 0.2)  # Less than 200ms (very short)
-        very_long = sum(1 for d in durations if d > 10.0)   # More than 10s (very long)
-
-        if very_short > len(timings) * 0.8:  # More than 80% very short (very lenient)
-            return {'is_valid': False, 'reason': f'{very_short} subtitles too short (<0.2s)'}
-
-        if very_long > len(timings) * 0.3:   # More than 30% very long (very lenient)
-            return {'is_valid': False, 'reason': f'{very_long} subtitles too long (>10s)'}
-
-        # More lenient gap checking
-        large_gaps = 0
-        for i in range(1, len(timings)):
-            gap = timings[i][0] - timings[i-1][1]
-            if gap > 3.0:  # Gap longer than 3 seconds (increased from 2s)
-                large_gaps += 1
-
-        if large_gaps > len(timings) * 0.3:  # More than 30% have large gaps
-            return {'is_valid': False, 'reason': f'{large_gaps} large gaps (>3s) between subtitles'}
-
-        return {'is_valid': True, 'reason': 'Speech analysis timing quality acceptable'}
 
     def _calculate_basic_timing(self, word_groups, duration):
-        """Calculate basic timing based on natural speech patterns"""
+        """Simple fallback timing when advanced analysis is unavailable"""
         timings = []
         num_groups = len(word_groups)
         if num_groups == 0:
             return []
 
-        # Content-aware timing calculation for better synchronization
-        min_display = 1.2  # Reduced minimum display time for better flow
-        max_display = 4.5  # Slightly increased maximum display time
-        gap_time = 0.05   # Smaller gap for smoother transitions
+        # Simple equal distribution with minimum constraints
+        min_display = 1.0
+        gap_time = 0.1
 
-        # Calculate reading speed based on content
-        total_chars = sum(len(group['text']) for group in word_groups)
-        chars_per_second = total_chars / duration if duration > 0 else 10
+        # Calculate equal time per group
+        available_time = duration - (gap_time * (num_groups - 1))
+        time_per_group = max(min_display, available_time / num_groups)
 
-        # Adjust timing based on speech speed and content type
-        content_analysis = getattr(self, 'content_analysis', None)
-        if content_analysis and hasattr(content_analysis, 'content_type'):
-            content_type = content_analysis.content_type.value
-
-            # Comprehensive content-type specific timing
-            if content_type == 'quote_reflection':
-                base_display_time = 2.8  # Balanced timing for reflection
-                min_display = 1.5
-                gap_time = 0.1
-            elif content_type == 'historical':
-                base_display_time = 3.2  # Slower for historical content
-                min_display = 1.8
-                gap_time = 0.15
-            elif content_type == 'story_review':
-                base_display_time = 2.4  # Faster for story content
-                min_display = 1.2
-                gap_time = 0.05
-            elif content_type == 'educational':
-                base_display_time = 3.0  # Moderate pace for learning
-                min_display = 1.6
-                gap_time = 0.1
-            elif content_type == 'entertainment':
-                base_display_time = 2.2  # Fast pace for entertainment
-                min_display = 1.0
-                gap_time = 0.05
-            elif content_type == 'documentary':
-                base_display_time = 3.5  # Slower for documentary content
-                min_display = 2.0
-                gap_time = 0.2
-            elif content_type == 'personal':
-                base_display_time = 2.6  # Personal pace
-                min_display = 1.4
-                gap_time = 0.08
-            else:  # unknown or other types
-                base_display_time = 2.5  # Default timing
-                min_display = 1.3
-                gap_time = 0.08
-        else:
-            # Default timing based on speech speed
-            if chars_per_second > 15:  # Fast speech
-                base_display_time = 2.2  # Faster subtitles for fast speech
-            elif chars_per_second > 10:  # Normal speech
-                base_display_time = 2.5  # Balanced timing
-            else:  # Slow speech
-                base_display_time = 3.0  # Slower for slow speech
-
-        # Calculate optimal timing distribution to match speech pace
-        total_estimated_time = sum(max(min_display, min(max_display,
-                                      base_display_time + (len(group['text']) * 0.05)))
-                                  for group in word_groups)
-
-        # If estimated time exceeds audio duration, compress timing
-        compression_factor = 1.0
-        if total_estimated_time > duration * 0.95:  # Leave 10% buffer
-            compression_factor = (duration * 0.95) / total_estimated_time
-
-        # Add delay so subtitles appear with voice, not ahead
-        # Make delay configurable and content-type aware
-        if content_analysis and hasattr(content_analysis, 'content_type'):
-            content_type = content_analysis.content_type.value
-            # Content-specific delays for better synchronization
-            if content_type == 'quote_reflection':
-                subtitle_delay = 0.7  # Slightly longer delay for reflective content
-            elif content_type == 'historical':
-                subtitle_delay = 0.8  # Longer delay for historical content
-            elif content_type == 'story_review':
-                subtitle_delay = 0.5  # Shorter delay for story content
-            else:
-                subtitle_delay = 0.6  # Default delay
-        else:
-            subtitle_delay = 0.6  # 600ms delay to sync with voice (increased from 300ms)
-
-        current_start = subtitle_delay
-
+        current_start = 0.0
         for i, group in enumerate(word_groups):
-            # Calculate display time based on text length and speech speed
-            char_count = len(group['text'])
-            word_count = len(group['text'].split())
-
-            # Base time on character count with minimum/maximum bounds
-            display_time = max(min_display, min(max_display,
-                              base_display_time + (char_count * 0.03)))  # Reduced multiplier
-
-            # Apply compression factor to fit within audio duration
-            display_time *= compression_factor
-
-            # Adjust for word density (more words = slightly longer display)
-            if word_count > 7:
-                display_time += 0.2  # Reduced from 0.3
-
             start_time = current_start
-            end_time = min(start_time + display_time, duration)
-
-            # Ensure we don't exceed audio duration
-            if start_time >= duration:
-                start_time = max(0, duration - 1.0)
-                end_time = duration
-
-            # Ensure minimum duration
-            if end_time - start_time < min_display:
-                end_time = min(start_time + min_display, duration)
+            end_time = min(start_time + time_per_group, duration)
 
             timings.append((start_time, end_time))
-
-            # Move to next subtitle with small gap
             current_start = end_time + gap_time
-
-        # Ensure no overlaps and fit within duration
-        timings = self._ensure_no_overlaps(timings, duration)
 
         return timings
 
-    def _ensure_no_overlaps(self, timings, duration):
-        """Ensure no subtitle timings overlap with improved gap handling - FIXED for speech analysis"""
-        if not timings:
-            return timings
 
-        corrected_timings = []
-        min_gap = 0.05  # Smaller gap for speech analysis timing
-        min_duration = 0.5  # Minimum subtitle duration
-
-        for i, (start, end) in enumerate(timings):
-            # Check for overlap with previous subtitle
-            if i > 0:
-                prev_end = corrected_timings[i-1][1]
-                if start < prev_end + min_gap:
-                    # Adjust start time to prevent overlap
-                    start = prev_end + min_gap
-
-            # Ensure end doesn't exceed duration
-            end = min(end, duration)
-
-            # Ensure minimum duration
-            if end - start < min_duration:
-                end = min(start + min_duration, duration)
-
-            # Ensure we don't go past duration
-            if start >= duration:
-                start = max(0, duration - min_duration)
-                end = duration
-
-            corrected_timings.append((start, end))
-
-        return corrected_timings
     
     def _create_subtitle_events(self, word_groups, timings):
         """Create subtitle events with word-level highlighting support"""

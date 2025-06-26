@@ -1,10 +1,8 @@
 """
 Content Synchronization Utilities for Video Generator
-Handles intelligent timing and synchronization between text content and images
+Simplified timing based on gTTS audio duration
 """
-import os
-import math
-from typing import List, Tuple, Dict, Optional
+from typing import Dict, List
 
 
 class ContentSyncManager:
@@ -117,172 +115,34 @@ class ContentSyncManager:
         
         return recommendations
     
-    def calculate_optimized_timing(self, text: str, image_count: int, audio_duration: float, 
+    def calculate_optimized_timing(self, text: str, image_count: int, audio_duration: float,
                                  timing_mode: str = "balanced") -> Dict:
         """
-        Calculate optimized timing for images based on content analysis
-        
+        Simple timing calculation - relies on gTTS duration for accuracy
+
         Args:
             text: The text content
             image_count: Number of available images
-            audio_duration: Duration of generated audio
-            timing_mode: Timing preference ("fast", "balanced", "slow", "custom")
-            
+            audio_duration: Duration of generated audio (from gTTS)
+            timing_mode: Timing preference (ignored - uses gTTS duration)
+
         Returns:
-            Dict with optimized timing information
+            Dict with basic timing information
         """
-        analysis = self.analyze_content_mismatch(text, image_count, audio_duration)
-        
-        timing_result = {
-            'strategy': 'basic',
+        return {
+            'strategy': 'gTTS_based',
             'duration_per_image': audio_duration / image_count if image_count > 0 else 0,
             'image_sequence': list(range(image_count)),
             'total_images_used': image_count,
             'effects_recommended': [],
-            'analysis': analysis
-        }
-        
-        # Apply timing mode adjustments
-        mode_multipliers = {
-            'fast': 0.8,
-            'balanced': 1.0,
-            'slow': 1.3
-        }
-        
-        base_multiplier = mode_multipliers.get(timing_mode, 1.0)
-        
-        if analysis['mismatch_type'] == 'too_many_images':
-            timing_result = self._handle_too_many_images(analysis, audio_duration, image_count, base_multiplier)
-        elif analysis['mismatch_type'] == 'too_few_images':
-            timing_result = self._handle_too_few_images(analysis, audio_duration, image_count, base_multiplier)
-        else:
-            # Balanced case - ensure we fill the entire audio duration
-            calculated_duration = audio_duration / image_count
-
-            # Use calculated duration to fill audio, but respect maximum limits
-            if calculated_duration <= self.MAX_IMAGE_DURATION:
-                timing_result['duration_per_image'] = calculated_duration
-                timing_result['strategy'] = 'balanced_fill_audio'
-            else:
-                # If calculated duration exceeds max, handle as too_few_images
-                timing_result = self._handle_too_few_images(analysis, audio_duration, image_count, base_multiplier)
-                timing_result['strategy'] = 'balanced_with_repetition'
-        
-        return timing_result
-    
-    def _handle_too_many_images(self, analysis: Dict, audio_duration: float, 
-                              image_count: int, base_multiplier: float) -> Dict:
-        """Handle case where there are too many images for the audio duration"""
-        
-        # Calculate how many images we can reasonably show
-        min_duration = self.MIN_IMAGE_DURATION * base_multiplier
-        max_images_to_show = int(audio_duration / min_duration)
-        
-        if max_images_to_show < image_count:
-            # Use image selection strategy
-            strategy = 'image_selection'
-            selected_images = self._select_representative_images(image_count, max_images_to_show)
-            duration_per_image = audio_duration / len(selected_images)
-        else:
-            # Use all images but with minimum duration
-            strategy = 'minimum_duration'
-            selected_images = list(range(image_count))
-            duration_per_image = min_duration
-        
-        return {
-            'strategy': strategy,
-            'duration_per_image': duration_per_image,
-            'image_sequence': selected_images,
-            'total_images_used': len(selected_images),
-            'effects_recommended': ['fade_transition', 'subtle_zoom'],
-            'analysis': analysis
+            'analysis': {'audio_duration': audio_duration, 'image_count': image_count}
         }
     
-    def _handle_too_few_images(self, analysis: Dict, audio_duration: float, 
-                             image_count: int, base_multiplier: float) -> Dict:
-        """Handle case where there are too few images for the audio duration"""
-        
-        max_duration = self.MAX_IMAGE_DURATION * base_multiplier
-        basic_duration = audio_duration / image_count
-        
-        if basic_duration > max_duration:
-            # Need to repeat images to fill the entire audio duration
-            slots_needed = math.ceil(audio_duration / max_duration)
-            image_sequence = []
 
-            # Create sequence that fills the entire audio duration
-            for i in range(slots_needed):
-                image_index = i % image_count
-                image_sequence.append(image_index)
-
-            # Calculate duration per slot to exactly fill audio duration
-            duration_per_slot = audio_duration / len(image_sequence)
-
-            strategy = 'image_repetition'
-        else:
-            # Can use each image once with extended duration
-            image_sequence = list(range(image_count))
-            duration_per_slot = basic_duration
-            strategy = 'extended_duration'
-        
-        return {
-            'strategy': strategy,
-            'duration_per_image': duration_per_slot,
-            'image_sequence': image_sequence,
-            'total_images_used': len(image_sequence),
-            'effects_recommended': ['slow_zoom', 'pan_effect', 'fade_transition'],
-            'analysis': analysis
-        }
-    
-    def _select_representative_images(self, total_images: int, target_count: int) -> List[int]:
-        """Select representative images when we have too many"""
-        if target_count >= total_images:
-            return list(range(total_images))
-        
-        # Use evenly spaced selection
-        step = total_images / target_count
-        selected = []
-        
-        for i in range(target_count):
-            index = int(i * step)
-            selected.append(min(index, total_images - 1))
-        
-        return selected
     
     def get_timing_summary(self, timing_result: Dict) -> str:
-        """Generate a human-readable summary of the timing strategy"""
-        analysis = timing_result['analysis']
-        strategy = timing_result['strategy']
-        
-        summary_parts = []
-        
-        # Basic info
-        summary_parts.append(f"Strategy: {strategy.replace('_', ' ').title()}")
-        summary_parts.append(f"Duration per image: {timing_result['duration_per_image']:.2f}s")
-        summary_parts.append(f"Total images used: {timing_result['total_images_used']}")
-
-        # Calculate and show total video duration vs audio duration
-        image_sequence = timing_result.get('image_sequence', [])
-        total_video_duration = timing_result['duration_per_image'] * len(image_sequence)
-        audio_duration = analysis.get('audio_duration', 0)
-        summary_parts.append(f"Video duration: {total_video_duration:.2f}s (Audio: {audio_duration:.2f}s)")
-
-        # Add warning if video duration doesn't match audio
-        if abs(total_video_duration - audio_duration) > 0.5:
-            summary_parts.append("⚠️  Duration mismatch detected!")
-
-        # Mismatch info
-        if analysis['mismatch_type'] != 'balanced':
-            mismatch_desc = analysis['mismatch_type'].replace('_', ' ').title()
-            summary_parts.append(f"Content mismatch: {mismatch_desc} ({analysis['severity']})")
-        
-        # Recommendations
-        if analysis['recommendations']:
-            summary_parts.append("Recommendations:")
-            for rec in analysis['recommendations']:
-                summary_parts.append(f"  • {rec}")
-        
-        return "\n".join(summary_parts)
+        """Generate a simple timing summary"""
+        return f"Using gTTS-based timing: {timing_result['duration_per_image']:.2f}s per image"
 
 
 # Global instance for easy access

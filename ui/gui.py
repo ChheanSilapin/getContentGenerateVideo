@@ -179,7 +179,6 @@ try:
     # Import config
     from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS, get_tab_visibility
     from models.video_generator_refactored import VideoGeneratorModel
-    from ui.image_selector import ImageSelector
     from ui.text_redirector import TextRedirector
 except ImportError as e:
     print(f"Error importing required modules: {e}")
@@ -192,34 +191,12 @@ except ImportError as e:
         # Exit gracefully rather than using hardcoded duplicates
         sys.exit(1)
 
-# Import services
-try:
-    from services.image_service import download_images, download_images_for_preview, copy_selected_images
-except ImportError as e:
-    print(f"Error importing image service functions: {e}")
-    # Create fallback functions
-    def download_images(url, output_folder, max_images=10):
-        """Fallback download_images function"""
-        print(f"Fallback: download_images({url}, {output_folder}, {max_images})")
-        return []
-
-    def download_images_for_preview(url, output_folder, max_images=5):
-        """Fallback download_images_for_preview function"""
-        print(f"Fallback: download_images_for_preview({url}, {output_folder}, {max_images})")
-        return []
-
-    def copy_selected_images(image_paths, output_folder):
-        """Fallback copy_selected_images function"""
-        print(f"Fallback: copy_selected_images({image_paths}, {output_folder})")
+# Note: Image service functions are now handled directly by the image and video tabs
 
 # Import UI components - if they fail, the application should exit gracefully
 try:
-    from ui.input_tab import InputTab
     from ui.image_tab import ImageTab
     from ui.video_tab import VideoTab
-    from ui.merge_video_tab import MergeVideoTab
-    from ui.option_tab import OptionTab
-    from ui.batch_tab import BatchTab
 except ImportError as ui_error:
     print(f"CRITICAL: Could not import UI components: {ui_error}")
     print("Please ensure all UI modules are present and accessible.")
@@ -238,13 +215,9 @@ class VideoGeneratorGUI:
         self.ui_factory = UIComponentFactory(self.colors)
 
         # Initialize all instance attributes that will be set in setup methods
-        # Tab components
-        self.input_tab_component = None
+        # Tab components (only active tabs)
         self.image_tab_component = None
         self.video_tab_component = None
-        self.merge_video_tab_component = None
-        self.option_tab_component = None
-        self.batch_tab_component = None
 
         # Log tab components
         self.log_text = None
@@ -272,51 +245,30 @@ class VideoGeneratorGUI:
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True, padx=2, pady=2)  # Minimal padding for 800x800 window
 
-        # Create tabs
-        self.input_tab = ttk.Frame(self.notebook)
+        # Create tabs (only active tabs)
         self.image_tab = ttk.Frame(self.notebook)
         self.video_tab = ttk.Frame(self.notebook)
-        self.merge_video_tab = ttk.Frame(self.notebook)
-        self.option_tab = ttk.Frame(self.notebook)
         self.log_tab = ttk.Frame(self.notebook)
-        self.batch_tab = ttk.Frame(self.notebook)
 
 
         # Get tab visibility configuration
         self.tabs_to_show = get_tab_visibility()
         
-        # Conditionally add tabs to notebook based on configuration
-        if self.tabs_to_show['input']:
-            self.notebook.add(self.input_tab, text="Input")
+        # Add active tabs to notebook based on configuration
         if self.tabs_to_show['images']:
             self.notebook.add(self.image_tab, text="Images")
         if self.tabs_to_show['video']:
             self.notebook.add(self.video_tab, text="Video")
-        if self.tabs_to_show['merge']:
-            self.notebook.add(self.merge_video_tab, text="Merge Video")
-        if self.tabs_to_show['options']:
-            self.notebook.add(self.option_tab, text="Options")
-        if self.tabs_to_show['batch']:
-            self.notebook.add(self.batch_tab, text="Batch")
-
         if self.tabs_to_show['log']:
             self.notebook.add(self.log_tab, text="Log")
 
-        # Set up tabs (log tab first since other tabs may need to log messages)
+        # Set up active tabs (log tab first since other tabs may need to log messages)
         if self.tabs_to_show['log']:
             self.setup_log_tab()
-        if self.tabs_to_show['input']:
-            self.setup_input_tab()
         if self.tabs_to_show['images']:
             self.setup_image_tab()
         if self.tabs_to_show['video']:
             self.setup_video_tab()
-        if self.tabs_to_show['merge']:
-            self.setup_merge_tab()
-        if self.tabs_to_show['options']:
-            self.setup_option_tab()
-        if self.tabs_to_show['batch']:
-            self.setup_batch_tab()
 
 
     def _configure_styles(self):
@@ -339,10 +291,7 @@ class VideoGeneratorGUI:
         # Configure notebook tabs to be very compact for 800x800
         style.configure("TNotebook.Tab", padding=[4, 1], font=GUI_FONTS["tab"])  # Tab padding and font
 
-    def setup_input_tab(self):
-        """Set up the input tab using the InputTab component"""
-        # Create the InputTab component
-        self.input_tab_component = InputTab(self.input_tab, self)
+    
 
     def setup_image_tab(self):
         """Set up the image tab using the ImageTab component"""
@@ -353,19 +302,6 @@ class VideoGeneratorGUI:
         """Set up the video tab using the VideoTab component"""
         # Create the VideoTab component
         self.video_tab_component = VideoTab(self.video_tab, self)
-    def setup_merge_tab(self):
-        """Set up the merge video tab using the MergeVideoTab component"""
-        self.merge_video_tab_component = MergeVideoTab(self.merge_video_tab, self)
-
-    def setup_option_tab(self):
-        """Set up the option tab using the OptionTab component"""
-        # Create the OptionTab component
-        self.option_tab_component = OptionTab(self.option_tab, self)
-
-    def setup_batch_tab(self):
-        """Set up the batch tab using the BatchTab component"""
-        # Create the BatchTab component
-        self.batch_tab_component = BatchTab(self.batch_tab, self)
 
     def setup_log_tab(self):
         self.log_text = tk.Text(
@@ -496,43 +432,26 @@ class VideoGeneratorGUI:
         self.log("Use the 'Generate All Videos' button in the Image tab for folder-based processing")
 
     def update_enhancement_options(self):
-        """Update the model with current enhancement options"""
-        if self.option_tab_component:
-            self.option_tab_component.update_enhancement_options()
-        else:
-            self.log("Option tab component not available")
+        """Update the model with current enhancement options - now handled by individual tabs"""
+        # Enhancement options are now managed by individual tabs through their settings
+        pass
 
     def reset_enhancement_options(self):
-        """Reset enhancement options to defaults"""
-        if self.option_tab_component:
-            self.option_tab_component.reset_enhancement_options()
-        else:
-            self.log("Option tab component not available")
+        """Reset enhancement options to defaults - now handled by individual tabs"""
+        # Enhancement options are now managed by individual tabs through their settings
+        pass
 
     def reset_ui(self):
         """Reset UI components to default state"""
-        # Reset input tab UI through a component
-        if self.input_tab_component:
-            self.input_tab_component.reset_ui()
-
-        # Reset batch progress through the batch tab component
-        if self.batch_tab_component:
-            self.batch_tab_component.reset_batch_ui()
+        # UI reset is now handled by individual active tabs
+        pass
 
     def update_progress_ui(self, value, message=None):
         """Update the progress bar and log message"""
         # Ensure progress value is within valid range (0-100)
         value = max(0, min(100, int(value)))
-        
-        # Update input tab progress bar through a component
-        if self.input_tab_component:
-            self.input_tab_component.progress_bar["value"] = value
-            self.input_tab_component.progress_label.config(text=f"{value}%")
 
-        # Always update batch progress bar during batch processing
-        if self.batch_tab_component:
-            self.batch_tab_component.update_batch_progress(value, None)  # Don't pass a message to avoid duplicate logging
-
+        # Progress updates are now handled by individual tabs
         if message:
             self.log(message)
 
