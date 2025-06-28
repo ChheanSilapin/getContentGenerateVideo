@@ -390,7 +390,41 @@ class VideoProcessor:
             self.update_progress(0, "Failed to generate subtitles - no timing data")
             return None
 
-        if not generate_subtitles_with_timing_sync(text_input, audio_timing_result, subtitle_file, subtitle_style):
+        # Use the same preprocessed text that was used for TTS generation
+        try:
+            from utils.text_processing import process_text_for_speech_recognition
+            print(f"[DEBUG] Successfully imported process_text_for_speech_recognition")
+
+            # Test the function with a simple contraction
+            test_result = process_text_for_speech_recognition("It's a test")
+            print(f"[DEBUG] Function test: 'It's a test' → '{test_result}'")
+
+            processed_text = process_text_for_speech_recognition(text_input)
+            print(f"[DEBUG] Function returned: {type(processed_text)}, length: {len(processed_text) if processed_text else 'None'}")
+
+        except Exception as e:
+            print(f"[DEBUG] ❌ Error importing or calling preprocessing function: {e}")
+            processed_text = text_input
+
+        # Debug: Log the text being passed to subtitle generation
+        print(f"[DEBUG] Original text: '{text_input[:100]}...'")
+        print(f"[DEBUG] Processed text for subtitles: '{processed_text[:100]}...'")
+
+        # Check for contractions - we want to preserve them, not expand them
+        preserved_contractions = ["It's", "That's", "Let's", "I'll", "I'm", "You're", "We're", "They're"]
+        broken_contractions = ["It s", "That s", "Let s", "I ll", "I m", "You re", "We re", "They re"]
+
+        print(f"[DEBUG] Original contains: {[c for c in preserved_contractions + broken_contractions if c in text_input]}")
+        print(f"[DEBUG] Processed contains: {[c for c in preserved_contractions + broken_contractions if c in processed_text]}")
+
+        if any(good in processed_text for good in preserved_contractions) and not any(bad in processed_text for bad in broken_contractions):
+            print("[DEBUG] ✅ Contractions properly preserved in subtitle text")
+        elif any(bad in processed_text for bad in broken_contractions):
+            print("[DEBUG] ❌ Broken contractions found in subtitle text")
+        else:
+            print("[DEBUG] ℹ️ No contractions found in text")
+
+        if not generate_subtitles_with_timing_sync(processed_text, audio_timing_result, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate synchronized subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None

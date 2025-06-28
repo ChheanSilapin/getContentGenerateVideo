@@ -39,12 +39,12 @@ class AudioTimingResult:
         self.processing_time = timing_data.get('processing_time', 0.0) if timing_data else 0.0
 
 
-def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor: str = "American", 
-                                       speed: float = 1.0, emotion: str = "neutral", 
+def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor: str = "American",
+                                       speed: float = 1.0, emotion: str = "neutral",
                                        language: str = 'en-us', content_analysis=None) -> AudioTimingResult:
     """
     Generate audio with gTTS and analyze timing for subtitle synchronization
-    
+
     Args:
         text: Text to convert to speech
         output_file: Path for output audio file
@@ -53,20 +53,28 @@ def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor
         emotion: Emotional tone
         language: Language code
         content_analysis: Content analysis for optimization
-        
+
     Returns:
         AudioTimingResult with timing data for subtitle synchronization
     """
     start_time = time.time()
-    
+
     try:
-        # Step 1: Generate audio with gTTS
+        # Step 1: Preprocess text for better TTS and speech recognition
+        from utils.text_processing import process_text_for_speech_recognition
+        processed_text = process_text_for_speech_recognition(text)
+
+        # Log preprocessing if significant changes were made
+        if len(processed_text) != len(text) or processed_text != text:
+            print(clean_log_message(f"📝 Text preprocessed for TTS (length: {len(text)} → {len(processed_text)})"))
+
+        # Step 2: Generate audio with gTTS
         # Get TTS manager
         tts_manager = get_tts_manager()
         if not tts_manager:
             return AudioTimingResult(False, "", error="TTS manager not available")
 
-        # Generate audio
+        # Generate audio using processed text
         tts_params = {
             'language': language,
             'emotion': emotion,
@@ -74,11 +82,11 @@ def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor
             'voice_actor': voice_actor
         }
 
-        success = tts_manager.generate_speech(text, output_file, **tts_params)
+        success = tts_manager.generate_speech(processed_text, output_file, **tts_params)
         if not success:
             return AudioTimingResult(False, output_file, error="gTTS generation failed")
 
-        # Step 2: Analyze generated audio for timing synchronization
+        # Step 3: Analyze generated audio for timing synchronization (use original text for comparison)
         timing_data = _analyze_audio_timing(output_file, text, content_analysis)
 
         processing_time = time.time() - start_time

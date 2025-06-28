@@ -582,10 +582,12 @@ class VideoGeneratorModel:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # Use validated text if available, otherwise use original text
+        # Use the same preprocessed text that was used for TTS generation
+        from utils.text_processing import process_text_for_speech_recognition
         text_for_subtitles = getattr(self, 'validated_text', self.text_input)
+        processed_text = process_text_for_speech_recognition(text_for_subtitles)
 
-        if generate_subtitles_with_timing_sync(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
+        if generate_subtitles_with_timing_sync(processed_text, audio_timing_result, subtitle_file, subtitle_style):
             self.update_progress(90, "Subtitles generated successfully with TTS-to-Text timing synchronization")
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
                 from utils.logging_utils import log_speech_recognition

@@ -243,7 +243,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Warning: Subtitle directory not found, staying in: {original_cwd}")
 
         try:
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)
 
             # Verify the output file exists and has content
             if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
@@ -279,7 +279,7 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                     '-avoid_negative_ts', 'make_zero',
                     output_file
                 ]
-                subprocess.run(alt_cmd, check=True, capture_output=True, text=True, timeout=90)
+                subprocess.run(alt_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=90)
 
                 if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
                     return output_file
@@ -292,12 +292,12 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 print("🔧 Converting video to compatible format...")
                 compatible_video = create_temp_file_with_cleanup(suffix='.mp4', prefix='compatible_video_')
                 cmd = build_ffmpeg_command(ffmpeg_cmd, video_path, compatible_video, "compatibility")
-                subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+                subprocess.run(cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=120)
 
                 # Retry subtitle embedding with compatible video
                 print("🔄 Retrying subtitle embedding with compatible video...")
                 retry_cmd = build_ffmpeg_command(ffmpeg_cmd, compatible_video, output_file, "subtitle", subtitle_file=temp_subtitle_path)
-                subprocess.run(retry_cmd, check=True, capture_output=True, text=True, timeout=90)
+                subprocess.run(retry_cmd, check=True, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=90)
 
                 if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
                     cleanup_temp_files(compatible_video)

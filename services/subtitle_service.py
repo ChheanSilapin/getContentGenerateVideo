@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 # Import centralized config
 from config import SUBTITLE_CONFIG
 from utils.helpers import ensure_directory_exists, get_media_duration_safe
-from utils.text_processing import process_text_for_subtitles
+
 
 
 class SubtitleTimingResult:
@@ -48,8 +48,17 @@ class SynchronizedSubtitleGenerator:
             # Create output directory
             ensure_directory_exists(os.path.dirname(output_file))
 
-            # Clean text for subtitles
-            cleaned_text = process_text_for_subtitles(text)
+            # Text is already preprocessed when passed from video generation
+            cleaned_text = text
+
+            # Debug: Log what text the subtitle service receives
+            print(f"[SUBTITLE DEBUG] Received text: '{text[:50]}...'")
+            if "It's" in text or "Let's" in text or "I'll" in text:
+                print("[SUBTITLE DEBUG] ✅ Received properly preserved contractions")
+            elif "It s" in text or "Let s" in text or "I ll" in text:
+                print("[SUBTITLE DEBUG] ❌ Received text with broken contractions")
+            else:
+                print("[SUBTITLE DEBUG] ℹ️ No contractions found in received text")
 
             # Create natural speech groups for subtitle timing
             word_groups = self._create_word_groups(cleaned_text)

@@ -255,7 +255,7 @@ TTS_CACHE_TTL_HOURS = 48
 # Optimized TTS Configuration (gTTS only)
 GTTS_CONFIG = {
     # gTTS Settings
-    "language_support": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+    "language_support": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "hi", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
     "emotion_processing": True,            # Maintain emotional text processing
     "speed_adjustment": True               # Keep speed adjustment features
 }

@@ -238,7 +238,7 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         mix_cmd = build_ffmpeg_command(ffmpeg_path, video_for_mixing, output_file, "audio_mix",
                                       audio_file=audio_file, target_duration=target_duration)
 
-        result = subprocess.run(mix_cmd, capture_output=True, text=True, timeout=180)
+        result = subprocess.run(mix_cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=180)
 
         if result.returncode == 0:
             # Validate output duration and file integrity

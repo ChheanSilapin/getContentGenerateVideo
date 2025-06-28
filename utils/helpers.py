@@ -191,7 +191,7 @@ def get_media_duration_safe(media_file):
                 '-of', 'csv=p=0',
                 media_file
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=10)
             if result.returncode == 0:
                 duration = float(result.stdout.strip())
                 return duration
@@ -345,7 +345,7 @@ def check_ffmpeg_availability():
     try:
         # Try to run ffmpeg -version to check if it's working
         result = subprocess.run([ffmpeg_path, '-version'],
-                              capture_output=True, text=True, timeout=10)
+                              capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=10)
         if result.returncode == 0:
             return True, ffmpeg_path, None
         else:
@@ -610,7 +610,7 @@ def execute_ffmpeg_command(cmd, operation_name="FFmpeg operation", timeout=None,
         elif timeout is None:
             timeout = 300  # Default 5 minutes
 
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=timeout)
 
         if result.returncode == 0:
             return True, result, None

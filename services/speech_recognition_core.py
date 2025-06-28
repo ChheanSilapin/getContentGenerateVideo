@@ -138,11 +138,14 @@ def generate_audio(text: str, output_file: str, voice_actor: str = "American",
         if not GTTS_AVAILABLE:
             return False
 
-        # Map language codes
+        # Map language codes - preserve specific English variants for gTTS
         lang_map = {
             'en': 'en',
-            'en-us': 'en',
-            'en-uk': 'en',
+            'en-us': 'en-us',    # Keep specific variants
+            'en-uk': 'en-uk',    # Keep specific variants
+            'en-au': 'en-au',    # Keep specific variants
+            'en-ca': 'en-ca',    # Keep specific variants
+            'en-in': 'en-in',    # Keep specific variants
             'es': 'es',
             'fr': 'fr',
             'de': 'de',
@@ -322,33 +325,47 @@ class SpeechRecognitionService:
                 success=False
             )
     
-    def process_text_to_speech_to_text(self, 
-                                     text: str, 
+    def process_text_to_speech_to_text(self,
+                                     text: str,
                                      voice_settings: Dict = None,
                                      cleanup_audio: bool = True) -> SpeechRecognitionResult:
         """Complete text-to-speech-to-text recognition workflow"""
         start_time = time.time()
-        
+
         # Validate inputs
         if not text or not text.strip():
             return self._create_error_result("", "Empty text provided", start_time)
-        
+
         if not GTTS_AVAILABLE:
             return self._create_error_result(text, "gTTS not available", start_time)
-        
+
         if not self.vosk_model or not self.vosk_recognizer:
             return self._create_error_result(text, "Vosk speech recognition not available", start_time)
+
+        # Preprocess text for better speech recognition
+        from utils.text_processing import process_text_for_speech_recognition
+        processed_text = process_text_for_speech_recognition(text)
+
+        # Log preprocessing if significant changes were made
+        if len(processed_text) != len(text) or processed_text != text:
+            print(clean_log_message(f"📝 Text preprocessed for speech recognition (length: {len(text)} → {len(processed_text)})"))
+            if len(text) > 100:  # Only show preview for longer texts
+                print(clean_log_message(f"   Original: '{text[:50]}...'"))
+                print(clean_log_message(f"   Processed: '{processed_text[:50]}...'"))
+            else:
+                print(clean_log_message(f"   Original: '{text}'"))
+                print(clean_log_message(f"   Processed: '{processed_text}'"))
         
         try:
-            # Step 1: Generate audio from text using gTTS
-            audio_file = self._generate_audio_file(text, voice_settings)
+            # Step 1: Generate audio from processed text using gTTS
+            audio_file = self._generate_audio_file(processed_text, voice_settings)
             if not audio_file:
                 return self._create_error_result(text, "Failed to generate audio", start_time)
-            
+
             # Step 2: Recognize speech from audio using Vosk
             recognized_text = self._recognize_speech_from_audio(audio_file)
-            
-            # Step 3: Compare original and recognized text
+
+            # Step 3: Compare original and recognized text (use original for comparison)
             comparison_metrics = self._compare_texts(text, recognized_text)
             
             # Step 4: Create result

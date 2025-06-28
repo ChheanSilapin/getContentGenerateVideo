@@ -60,7 +60,7 @@ def validate_video_file(video_file):
                 video_file
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
             
             if result.returncode == 0:
                 print(f"Video file validation successful")
@@ -121,6 +121,8 @@ def convert_video_to_compatible_format(input_video, output_video=None):
             cmd,
             capture_output=True,
             text=True,
+            encoding='utf-8',
+            errors='ignore',
             timeout=120,  # 2 minute timeout
             cwd=os.path.dirname(ffmpeg_path) if os.path.dirname(ffmpeg_path) else None
         )

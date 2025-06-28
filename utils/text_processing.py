@@ -174,23 +174,152 @@ def get_title_content(text):
 def clean_text_basic(text):
     """
     Basic text cleaning for general purposes
-    
+
     Args:
         text: Text to clean
-        
+
     Returns:
         str: Cleaned text
     """
     if not text:
         return ""
-    
+
     # Remove emojis
     text = emoji.replace_emoji(text, replace='')
-    
+
     # Remove non-ASCII characters
     text = re.sub(r'[^\x00-\x7F]+', ' ', text)
-    
+
     # Clean up whitespace
     text = re.sub(r'\s+', ' ', text).strip()
-    
-    return text 
+
+    return text
+
+
+def process_text_for_speech_recognition(text):
+    """
+    Enhanced text preprocessing specifically for better speech recognition results.
+    Handles formatted text with paragraphs, varied sentence structures, and natural speech patterns.
+
+    Args:
+        text: Raw text input (may contain paragraphs, varied formatting)
+
+    Returns:
+        str: Processed text optimized for TTS and speech recognition
+    """
+    if not text:
+        return ""
+
+    # Step 1: Start processing
+
+    # Step 2: Handle paragraph breaks and line endings
+    # Convert multiple line breaks to natural speech pauses
+    text = re.sub(r'\n\s*\n+', '. ', text)  # Double line breaks become sentence breaks
+    text = re.sub(r'\n+', ' ', text)  # Single line breaks become spaces
+
+    # Step 3: Remove emojis but preserve emotional context
+    text = emoji.replace_emoji(text, replace='')
+
+    # Step 4: Fix apostrophe encoding issues while preserving contractions
+    # Replace various apostrophe characters with standard ASCII apostrophe
+    text = re.sub(r'[''`´]', "'", text)  # Replace smart quotes and other apostrophe variants
+
+    # Step 5: Normalize quotation marks for speech
+    text = re.sub(r'["""]', '"', text)
+
+    # Step 6: Remove non-ASCII characters EXCEPT standard apostrophes and quotes
+    # This preserves contractions while removing problematic characters
+    text = re.sub(r'[^\x00-\x7F\'\"]+', ' ', text)
+
+    # Step 7: Fix broken contractions that may have been created by encoding issues
+    # This repairs cases where apostrophes were lost, creating "It s" instead of "It's"
+    broken_contractions = {
+        r'\bIt s\b': "It's",
+        r'\bit s\b': "it's",
+        r'\bThat s\b': "That's",
+        r'\bthat s\b': "that's",
+        r'\bLet s\b': "Let's",
+        r'\blet s\b': "let's",
+        r'\bI ll\b': "I'll",
+        r'\bI m\b': "I'm",
+        r'\bI ve\b': "I've",
+        r'\bI d\b': "I'd",
+        r'\bWe re\b': "We're",
+        r'\bwe re\b': "we're",
+        r'\bThey re\b': "They're",
+        r'\bthey re\b': "they're",
+        r'\bYou re\b': "You're",
+        r'\byou re\b': "you're",
+        r'\bHe s\b': "He's",
+        r'\bhe s\b': "he's",
+        r'\bShe s\b': "She's",
+        r'\bshe s\b': "she's",
+        r'\bThere s\b': "There's",
+        r'\bthere s\b': "there's",
+        r'\bHere s\b': "Here's",
+        r'\bhere s\b': "here's",
+        r'\bWhat s\b': "What's",
+        r'\bwhat s\b': "what's",
+        r'\bWhere s\b': "Where's",
+        r'\bwhere s\b': "where's",
+        r'\bHow s\b': "How's",
+        r'\bhow s\b': "how's",
+        r'\bWho s\b': "Who's",
+        r'\bwho s\b': "who's",
+        r'\bWhen s\b': "When's",
+        r'\bwhen s\b': "when's"
+    }
+
+    for pattern, fixed_contraction in broken_contractions.items():
+        text = re.sub(pattern, fixed_contraction, text)
+
+    # Step 7: Improve sentence flow for speech
+    # The text already has good natural pauses, so we'll skip aggressive comma insertion
+
+    # Step 8: Handle punctuation for better speech flow
+    # Ensure proper spacing around punctuation
+    text = re.sub(r'\s*([.!?])\s*', r'\1 ', text)
+    text = re.sub(r'\s*([,;:])\s*', r'\1 ', text)
+
+    # Step 9: Handle special cases for better pronunciation
+    # Convert em dashes to commas for better speech flow
+    text = re.sub(r'\s*—\s*', ', ', text)
+    text = re.sub(r'\s*–\s*', ', ', text)
+
+    # Step 10: Clean up excessive punctuation
+    # Remove multiple consecutive punctuation marks
+    text = re.sub(r'([.!?]){2,}', r'\1', text)
+    text = re.sub(r'([,;:]){2,}', r'\1', text)
+
+    # Step 11: Ensure proper sentence endings
+    # Make sure sentences end with proper punctuation
+    sentences = re.split(r'([.!?])', text)
+    processed_sentences = []
+
+    for i in range(0, len(sentences), 2):
+        if i < len(sentences):
+            sentence = sentences[i].strip()
+            if sentence:
+                # Add punctuation if missing
+                if i + 1 < len(sentences):
+                    punct = sentences[i + 1]
+                else:
+                    punct = '.' if not re.search(r'[.!?]$', sentence) else ''
+
+                processed_sentences.append(sentence + punct)
+
+    text = ' '.join(processed_sentences)
+
+    # Step 12: Final cleanup
+    # Remove extra whitespace
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # Remove leading/trailing punctuation artifacts
+    text = re.sub(r'^[,;:\-\s]+', '', text)
+    text = re.sub(r'[,;:\-\s]+$', '', text)
+
+    # Ensure text ends with proper punctuation
+    if text and not re.search(r'[.!?]$', text):
+        text += '.'
+
+    return text

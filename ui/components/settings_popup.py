@@ -295,7 +295,7 @@ class SettingsPopup:
         language_combo = ttk.Combobox(
             lang_row,
             textvariable=self.tts_language,
-            values=["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+            values=["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "hi", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
             state="readonly",
             width=15
         )
