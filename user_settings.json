@@ -2,8 +2,8 @@
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
   "_migration_completed": true,
   "shared_settings": {
-    "tts_language": "en-au",
-    "tts_voice_actor": "Australian",
+    "tts_language": "en-uk",
+    "tts_voice_actor": "British",
     "tts_speed": 0.8352941176470589,
     "tts_emotion": "neutral",
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",

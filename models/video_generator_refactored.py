@@ -410,7 +410,7 @@ class VideoGeneratorModel:
               f"Emotion={content_analysis.emotional_tone.value}, "
               f"Confidence={content_analysis.confidence:.2f}")
 
-        from services.audio_service import generate_audio
+        from services.audio_service import generate_audio_with_timing_analysis
         audio_file = os.path.join(output_dir, "voice.mp3")
 
         # Get TTS settings from enhancement options or use defaults
@@ -425,23 +425,31 @@ class VideoGeneratorModel:
         # Store content analysis for later use
         self.content_analysis = content_analysis
 
-        if generate_audio(self.text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion,
-                         language=language, content_analysis=content_analysis):
-            self.update_progress(50, "Audio generated successfully with emotion-aware settings")
+        # Generate audio with timing analysis for subtitle synchronization
+        audio_timing_result = generate_audio_with_timing_analysis(
+            self.text_input, audio_file, voice_actor=voice_actor, speed=speed,
+            emotion=emotion, language=language, content_analysis=content_analysis
+        )
 
-            # Optional speech recognition validation
-            if self.enable_speech_validation:
-                validation_result = self._validate_speech_recognition(audio_file, stop_event)
-                if validation_result is not None and not validation_result:
-                    # Validation failed, but continue with warning
-                    self.update_progress(55, "⚠️ Speech recognition validation failed, but continuing...")
-                elif validation_result:
-                    self.update_progress(55, "✅ Speech recognition validation passed")
-
-            return audio_file
-        else:
+        if not audio_timing_result.success:
+            print("ERROR: Failed to generate audio with timing analysis.")
             self.update_progress(0, "Failed to generate audio")
             return None
+
+        # Store timing result for subtitle generation
+        self.audio_timing_result = audio_timing_result
+        self.update_progress(40, "Audio generated with timing analysis for subtitle synchronization")
+
+        # Speech recognition validation disabled for speed optimization
+        # enable_speech_validation = getattr(self, 'enable_speech_validation', False)
+        # if enable_speech_validation:
+        #     validation_result = self._validate_speech_recognition(audio_file, stop_event)
+        #     if validation_result is not None and not validation_result:
+        #         self.update_progress(45, "⚠️ Speech recognition validation failed, but continuing...")
+        #     elif validation_result:
+        #         self.update_progress(45, "✅ Speech recognition validation passed")
+
+        return audio_file
 
     def _create_video_slideshow(self, images_dir, audio_file, output_dir, stop_event):
         """Create video slideshow from images"""
@@ -553,13 +561,20 @@ class VideoGeneratorModel:
             return None
 
     def _generate_subtitles(self, video_file, audio_file, output_dir, stop_event):
-        """Generate subtitles for the video"""
+        """Generate subtitles for the video using TTS-to-Text timing synchronization"""
         if stop_event and stop_event.is_set():
             return None
 
         self.update_progress(85, "Generating subtitles...")
 
-        from services.subtitle_service import generate_subtitles
+        # Use audio timing result for synchronized subtitle generation
+        audio_timing_result = getattr(self, 'audio_timing_result', None)
+        if not audio_timing_result:
+            print("ERROR: No audio timing result available for subtitle synchronization.")
+            self.update_progress(0, "Failed to generate subtitles - no timing data")
+            return None
+
+        from services.subtitle_service import generate_subtitles_with_timing_sync
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
         # Get subtitle style from enhancement options or config default
@@ -567,21 +582,18 @@ class VideoGeneratorModel:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # Use content analysis for enhanced subtitle generation if available
-        content_analysis = getattr(self, 'content_analysis', None)
-        sync_precision = "high"  # Default to high precision for emotion-aware sync
-
         # Use validated text if available, otherwise use original text
         text_for_subtitles = getattr(self, 'validated_text', self.text_input)
 
-        if generate_subtitles(text_for_subtitles, video_file, audio_file, subtitle_file, subtitle_style,
-                             content_analysis=content_analysis, sync_precision=sync_precision):
-            self.update_progress(90, "Subtitles generated successfully with emotion-aware sync")
+        if generate_subtitles_with_timing_sync(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
+            self.update_progress(90, "Subtitles generated successfully with TTS-to-Text timing synchronization")
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
                 from utils.logging_utils import log_speech_recognition
                 log_speech_recognition(f"📝 Subtitles generated using validated text")
+            print("✅ Subtitles generated with TTS-to-Text timing synchronization")
             return subtitle_file
         else:
+            print("ERROR: Failed to generate synchronized subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None
 

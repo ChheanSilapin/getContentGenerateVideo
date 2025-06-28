@@ -36,10 +36,10 @@ class VideoEntry:
         header_frame = ttk.Frame(self.entry_frame)
         header_frame.pack(fill="x", pady=(0, 8))
 
-        # Entry label on the left
+        # Entry label on the left - cleaner, more concise
         entry_label = ttk.Label(
             header_frame,
-            text=f"🎥 {self.entry_id}",
+            text=f"{self.entry_id}",
             font=("Cascadia Code", 10, "bold")
         )
         entry_label.pack(side="left")
@@ -102,17 +102,20 @@ class VideoEntry:
         file_input_frame = ttk.Frame(file_section)
         file_input_frame.pack(fill="x")
 
+        # Create a display variable that shows only the filename
+        self.display_filename = tk.StringVar()
+
         file_entry = ttk.Entry(
             file_input_frame,
-            textvariable=self.video_file_path,
+            textvariable=self.display_filename,
             state="readonly",
             font=("Cascadia Code", 10),
             width=50
         )
         file_entry.pack(fill="x", expand=True)
 
-        # Clean text frame - remove redundant label
-        text_frame = ttk.LabelFrame(self.entry_frame, text="💬 Prompt", padding=8)
+        # Clean text frame - simple label
+        text_frame = ttk.LabelFrame(self.entry_frame, text="Prompt", padding=8)
         text_frame.pack(fill="x", pady=(0, 8))
 
         # Text input row
@@ -195,6 +198,13 @@ class VideoEntry:
             video_file = os.path.normpath(video_file)
 
         self.video_file_path.set(video_file)
+
+        # Update display filename to show only the basename for cleaner UI
+        if video_file:
+            self.display_filename.set(os.path.basename(video_file))
+        else:
+            self.display_filename.set("")
+
         self.prompt_widget.delete("1.0", tk.END)
         self.prompt_widget.insert("1.0", prompt)
         self.prompt_text.set(prompt)

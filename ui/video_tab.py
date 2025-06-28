@@ -377,7 +377,7 @@ class VideoTab:
         if video_file:
             existing_files = self._get_existing_video_files()
             if video_file in existing_files:
-                self.main_gui.log(f"Duplicate video file detected, skipping: {os.path.basename(video_file)}")
+                # Skip logging for individual duplicates to reduce clutter
                 return None
 
         entry_id = self.next_entry_id
@@ -497,8 +497,8 @@ class VideoTab:
             return
             
         try:
-            self.main_gui.log(f"Smart-analyzing folder: {os.path.basename(folder_path)}")
-            
+            self.main_gui.log(f"Loading videos from: {os.path.basename(folder_path)}")
+
             # Use smart auto-detection logic
             detection_result = self.folder_processor.smart_analyze_folder(folder_path)
             
@@ -544,20 +544,43 @@ class VideoTab:
         )
 
     def _load_as_groups(self, detection_result):
-        """Load videos as grouped entries"""
+        """Load videos as grouped entries with duplicate prevention"""
         groups = detection_result['groups']
-        
-        # Clear existing entries first
-        self.clear_all_entries()
-        
-        # Set to grouped mode AFTER clearing (since clear resets to individual)
-        self.current_mode = "grouped"
-        
-        # Create group entries
+
+        # Check for duplicate folder paths if we're not clearing all entries
+        existing_folder_paths = self._get_existing_folder_paths()
+        new_groups = {}
+        duplicate_count = 0
+
         for group_name, group_info in groups.items():
-            self.add_group_entry(group_info)
-        
-        self.main_gui.log(f"Loaded {len(groups)} groups in grouped mode")
+            folder_path = group_info.get('folder_path', '')
+            if folder_path and folder_path in existing_folder_paths:
+                duplicate_count += 1
+                continue
+            new_groups[group_name] = group_info
+
+        # Only clear if we have new groups to add
+        if new_groups:
+            # If this is the first load or user wants to replace, clear existing entries
+            if not self.group_entries:
+                self.clear_all_entries()
+
+            # Set to grouped mode AFTER clearing (since clear resets to individual)
+            self.current_mode = "grouped"
+
+            # Create group entries for new groups only
+            for group_name, group_info in new_groups.items():
+                self.add_group_entry(group_info)
+
+            if duplicate_count > 0:
+                self.main_gui.log(f"Loaded {len(new_groups)} new groups, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log(f"Loaded {len(new_groups)} groups")
+        else:
+            if duplicate_count > 0:
+                self.main_gui.log(f"No new groups loaded, skipped {duplicate_count} duplicates")
+            else:
+                self.main_gui.log("No groups found to load")
 
     def _load_as_individual(self, detection_result):
         """Load videos as individual entries"""
@@ -601,26 +624,16 @@ class VideoTab:
                 if entry_id is not None:
                     created_entries.append(entry_id)
 
-        # Log results with smart population info
+        # Log results concisely
         total_pairs = len(all_pairs)
         new_count = len(new_pairs)
         duplicate_count = total_pairs - new_count
 
-        if populated_entries and created_entries:
+        if new_count > 0:
             if duplicate_count > 0:
-                self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries, skipped {duplicate_count} duplicates")
+                self.main_gui.log(f"Loaded {new_count} videos, skipped {duplicate_count} duplicates")
             else:
-                self.main_gui.log(f"Populated entry #{populated_entries[0]}, created {len(created_entries)} new entries")
-        elif populated_entries:
-            if duplicate_count > 0:
-                self.main_gui.log(f"Populated entry #{populated_entries[0]}, skipped {duplicate_count} duplicates")
-            else:
-                self.main_gui.log(f"Populated entry #{populated_entries[0]}")
-        elif created_entries:
-            if duplicate_count > 0:
-                self.main_gui.log(f"Created {len(created_entries)} new video entries, skipped {duplicate_count} duplicates")
-            else:
-                self.main_gui.log(f"Created {len(created_entries)} new video entries")
+                self.main_gui.log(f"Loaded {new_count} videos")
         else:
             if duplicate_count > 0:
                 self.main_gui.log(f"No new videos loaded, skipped {duplicate_count} duplicates")
@@ -646,15 +659,6 @@ class VideoTab:
 
         group_id = self.next_group_id
         self.next_group_id += 1
-        
-        # Debug: Log group info details
-        self.main_gui.log(f"Creating group {group_id}: {group_info.get('folder_name', 'Unknown')}")
-        pairs = group_info.get('pairs', [])
-        self.main_gui.log(f"  - Group has {len(pairs)} pairs")
-        for i, pair in enumerate(pairs):
-            video_file = pair.get('video_file', 'No video')
-            prompt = pair.get('prompt', 'No prompt')
-            self.main_gui.log(f"  - Pair {i+1}: Video={bool(video_file)}, Prompt length={len(prompt) if prompt else 0}")
         
         # Create group entry
         group_entry = GroupEntry(
@@ -761,6 +765,16 @@ class VideoTab:
             if data['video_file']:
                 existing_files.append(data['video_file'])
         return existing_files
+
+    def _get_existing_folder_paths(self):
+        """Get list of folder paths already loaded in group entries"""
+        existing_paths = []
+        for group_entry in self.group_entries.values():
+            group_data = group_entry.get_group_data()
+            folder_path = group_data.get('folder_path', '')
+            if folder_path:
+                existing_paths.append(folder_path)
+        return existing_paths
 
     def _generate_unique_name(self, base_path, existing_paths):
         """Generate a unique name by adding numbers if duplicates exist"""

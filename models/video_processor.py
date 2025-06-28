@@ -21,8 +21,8 @@ class VideoProcessor:
         # TTS settings (load from user settings)
         self.tts_settings = self._load_tts_settings()
 
-        # Speech recognition validation settings (enabled by default)
-        self.enable_speech_validation = True
+        # Speech recognition validation settings (disabled for speed optimization)
+        self.enable_speech_validation = False
         self.speech_validation_threshold = 0.7
 
         # Processing state
@@ -39,7 +39,7 @@ class VideoProcessor:
             video_tab_settings = settings_manager.get_tab_settings('video_tab')
 
             # Load video-specific settings
-            self.enable_speech_validation = video_tab_settings.get('enable_speech_validation', True)
+            self.enable_speech_validation = video_tab_settings.get('enable_speech_validation', False)
             self.content_analysis_enabled = video_tab_settings.get('content_analysis_enabled', True)
             self.auto_cleanup = video_tab_settings.get('auto_cleanup', True)
 
@@ -181,7 +181,7 @@ class VideoProcessor:
         # Store content analysis for later use
         self.content_analysis = content_analysis
 
-        from services.audio_service import generate_audio
+        from services.audio_service import generate_audio_with_timing_analysis
         audio_file = os.path.join(output_dir, "voice.mp3")
 
         # Get TTS settings from enhancement options or use defaults
@@ -207,23 +207,29 @@ class VideoProcessor:
 
         log_essential(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
 
-        if not generate_audio(text_input, audio_file, voice_actor=voice_actor, speed=speed, emotion=emotion,
-                             language=language, content_analysis=content_analysis):
-            print("ERROR: Failed to generate audio.")
+        # Generate audio with timing analysis for subtitle synchronization
+        audio_timing_result = generate_audio_with_timing_analysis(
+            text_input, audio_file, voice_actor=voice_actor, speed=speed,
+            emotion=emotion, language=language, content_analysis=content_analysis
+        )
+
+        if not audio_timing_result.success:
+            print("ERROR: Failed to generate audio with timing analysis.")
             self.update_progress(0, "Failed to generate audio")
             return None
 
-        self.update_progress(40, "Audio generated successfully with content-aware settings")
+        # Store timing result for subtitle generation
+        self.audio_timing_result = audio_timing_result
+        self.update_progress(40, "Audio generated with timing analysis for subtitle synchronization")
 
-        # Optional speech recognition validation (enable by default for video generation)
-        enable_speech_validation = getattr(self, 'enable_speech_validation', True)
-        if enable_speech_validation:
-            validation_result = self._validate_speech_recognition(audio_file, stop_event)
-            if validation_result is not None and not validation_result:
-                # Validation failed, but continue with warning
-                self.update_progress(45, "⚠️ Speech recognition validation failed, but continuing...")
-            elif validation_result:
-                self.update_progress(45, "✅ Speech recognition validation passed")
+        # Speech recognition validation disabled for speed optimization
+        # enable_speech_validation = getattr(self, 'enable_speech_validation', False)
+        # if enable_speech_validation:
+        #     validation_result = self._validate_speech_recognition(audio_file, stop_event)
+        #     if validation_result is not None and not validation_result:
+        #         self.update_progress(45, "⚠️ Speech recognition validation failed, but continuing...")
+        #     elif validation_result:
+        #         self.update_progress(45, "✅ Speech recognition validation passed")
 
         return audio_file
 
@@ -251,7 +257,6 @@ class VideoProcessor:
             speech_service = EnhancedSpeechRecognitionService()
 
             if not speech_service.is_available():
-                print(clean_log_message("⚠️ Speech recognition service not available, skipping validation"))
                 return None
 
             # Get voice settings for validation (use current TTS settings)
@@ -275,7 +280,6 @@ class VideoProcessor:
             )
 
             if not enhanced_result.success:
-                print(clean_log_message("⚠️ Enhanced speech recognition failed"))
                 return False
 
             recognized_text = enhanced_result.final_text
@@ -286,17 +290,8 @@ class VideoProcessor:
             threshold = self._get_content_aware_threshold(content_type)
             passes_validation = confidence_score >= threshold
 
-            # Log validation results with method information
-            print(clean_log_message(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})"))
-
-            # Log service status for transparency
-            service_status = speech_service.get_service_status()
-            if service_status['enhanced_mode']:
-                print(clean_log_message(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}"))
-            else:
-                print(clean_log_message(f"🔧 Standard mode: Vosk={service_status['vosk_available']}"))
-
             # Store enhanced validation results
+            service_status = speech_service.get_service_status()
             self.last_speech_validation_result = {
                 'original_text': self.text_input,
                 'recognized_text': recognized_text,
@@ -311,20 +306,14 @@ class VideoProcessor:
 
             # Automatically apply recognized text if validation passes
             if passes_validation and confidence_score >= 0.8:  # High confidence threshold
-                print(clean_log_message(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})"))
                 self.validated_text = recognized_text
             else:
                 # Keep original text if validation fails or confidence is low
                 self.validated_text = self.text_input
-                if not passes_validation:
-                    print(clean_log_message(f"⚠️ Using original text due to validation failure"))
-                else:
-                    print(clean_log_message(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})"))
 
             return passes_validation
 
         except Exception as e:
-            print(clean_log_message(f"❌ Error during speech recognition validation: {e}"))
             return None
 
     def _get_content_aware_threshold(self, content_type):
@@ -386,25 +375,27 @@ class VideoProcessor:
         # Step 3: Generating Subtitles
         self.update_progress(75, "Generating subtitles...")
         
-        from services.subtitle_service import generate_subtitles
+        from services.subtitle_service import generate_subtitles_with_timing_sync
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
-        
+
         # Get subtitle style from enhancement options or config default
         from config import SUBTITLE_CONFIG
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
-        
-        # Use validated text if available, otherwise use original text
-        text_for_subtitles = getattr(self, 'validated_text', text_input)
 
-        if not generate_subtitles(text_for_subtitles, video_file, audio_file, subtitle_file, subtitle_style):
-            print("ERROR: Failed to generate subtitles.")
+        # Use audio timing result for synchronized subtitle generation
+        audio_timing_result = getattr(self, 'audio_timing_result', None)
+        if not audio_timing_result:
+            print("ERROR: No audio timing result available for subtitle synchronization.")
+            self.update_progress(0, "Failed to generate subtitles - no timing data")
+            return None
+
+        if not generate_subtitles_with_timing_sync(text_input, audio_timing_result, subtitle_file, subtitle_style):
+            print("ERROR: Failed to generate synchronized subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None
 
-        # Log which text was used for subtitles
-        if hasattr(self, 'validated_text') and self.validated_text != text_input:
-            print(clean_log_message("📝 Subtitles generated using validated text from speech recognition"))
+
 
         self.update_progress(90, "Subtitles generated successfully")
         return subtitle_file

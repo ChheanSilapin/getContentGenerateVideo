@@ -19,7 +19,7 @@ from utils.helpers import (
     configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
     cleanup_temp_files
 )
-from .video_utils import create_fallback_video, use_best_available_output
+# video_utils removed for performance optimization
 from config import DEFAULT_ASPECT_RATIO
 
 def process_image_for_slideshow(img, target_width, target_height, fit_method="cover", zoom_effect=True):

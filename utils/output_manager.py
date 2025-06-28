@@ -194,7 +194,6 @@ class OutputManager:
             time.sleep(1.0)
 
             shutil.rmtree(temp_dir)
-            print(f"🗑️ Cleaned up temporary directory: {temp_dir}")
 
         except Exception as e:
             print(f"⚠️ Could not clean up temporary directory {temp_dir}: {e}")
@@ -259,7 +258,6 @@ class OutputManager:
         try:
             if os.path.exists(images_dir):
                 shutil.rmtree(images_dir)
-                print(f"🗑️ Cleaned up extracted frames: {images_dir}")
         except Exception as e:
             print(f"⚠️ Could not clean up extracted frames: {e}")
 
@@ -451,7 +449,6 @@ class OutputManager:
         for attempt in range(max_retries):
             try:
                 os.remove(file_path)
-                print(f"🗑️ Cleaned: {os.path.basename(file_path)}")
                 return 1
             except PermissionError:
                 if attempt < max_retries - 1:

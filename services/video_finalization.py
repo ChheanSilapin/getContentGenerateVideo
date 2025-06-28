@@ -270,7 +270,6 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         # Strategy 1: Try alternative FFmpeg subtitle method
         if ffmpeg_available:
             try:
-                print("📝 Attempting alternative subtitle embedding method...")
                 # Try using filter_complex instead of vf for better compatibility
                 alt_cmd = [
                     ffmpeg_cmd, '-y', '-i', video_path, '-i', temp_subtitle_path,
@@ -283,10 +282,9 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 subprocess.run(alt_cmd, check=True, capture_output=True, text=True, timeout=90)
 
                 if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
-                    print("✅ Alternative subtitle method succeeded!")
                     return output_file
             except Exception as alt_e:
-                print(f"⚠️ Alternative subtitle method failed: {alt_e}")
+                pass
 
         # Strategy 2: Convert video to compatible format and retry
         if ffmpeg_available:
@@ -302,13 +300,12 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 subprocess.run(retry_cmd, check=True, capture_output=True, text=True, timeout=90)
 
                 if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
-                    print("✅ Subtitle embedding succeeded with compatible video!")
                     cleanup_temp_files(compatible_video)
                     return output_file
 
                 cleanup_temp_files(compatible_video)
             except Exception as compat_e:
-                print(f"⚠️ Compatible format strategy failed: {compat_e}")
+                pass
 
         # Strategy 3: Use original video without subtitles (graceful degradation)
         print("📹 Using original video without subtitles as fallback...")
@@ -317,18 +314,15 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         if os.path.exists(backup_video):
             try:
                 shutil.copy2(backup_video, output_file)
-                print(f"✅ Used backup video: {output_file}")
                 return output_file
             except Exception as backup_e:
-                print(f"⚠️ Backup copy failed: {backup_e}")
+                pass
 
         # Final fallback: copy original video directly
         try:
             shutil.copy2(video_path, output_file)
-            print(f"✅ Used original video: {output_file}")
             return output_file
         except Exception as copy_e:
-            print(f"❌ All recovery strategies failed: {copy_e}")
             return None
 
     # Clean up temporary subtitle file if it was created using centralized cleanup

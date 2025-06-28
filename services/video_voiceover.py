@@ -222,18 +222,11 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         if target_duration > 0 and video_duration > 0 and target_duration > video_duration:
             loops_needed = int(target_duration / video_duration) + 1
 
-            # Try seamless looping first (fast and reliable for most videos)
+            # Use only seamless looping for speed (fastest and most reliable)
             looped_video = loop_video(video_file, target_duration, ffmpeg_path, output_file, method="seamless")
 
             if not looped_video:
-                # Try ping-pong as second option
-                looped_video = loop_video(video_file, target_duration, ffmpeg_path, output_file, method="pingpong")
-
-            if not looped_video:
-                # Try direct as last resort
-                looped_video = loop_video(video_file, target_duration, ffmpeg_path, output_file, method="direct")
-
-            if not looped_video:
+                print("⚠️ Seamless looping failed, skipping video looping for speed")
                 return False
 
             video_for_mixing = looped_video

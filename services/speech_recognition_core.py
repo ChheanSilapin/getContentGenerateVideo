@@ -9,18 +9,164 @@ from typing import Dict, List, Optional
 from difflib import SequenceMatcher
 
 from services.speech_recognition_models import SpeechRecognitionResult, TextComparisonMetrics
-from services.speech_recognition_postprocessor import SpeechRecognitionPostProcessor
 from services.content_analysis import ContentType
-from services.audio_service import (
-    generate_audio,
-    initialize_speech_recognition,
-    recognize_speech_from_file,
-    VOSK_AVAILABLE,
-    GTTS_AVAILABLE
-)
+
+# Check for Vosk availability
+try:
+    import vosk
+    import json
+    import wave
+    VOSK_AVAILABLE = True
+except ImportError:
+    VOSK_AVAILABLE = False
+
+# Check for gTTS availability
+try:
+    from gtts import gTTS
+    GTTS_AVAILABLE = True
+except ImportError:
+    GTTS_AVAILABLE = False
 
 # Import logging utilities for emoji handling
 from utils.logging_utils import clean_log_message
+
+
+def initialize_speech_recognition(model_path: str):
+    """Initialize Vosk speech recognition model and recognizer"""
+    try:
+        if not VOSK_AVAILABLE:
+            return None, None
+
+        model = vosk.Model(model_path)
+        recognizer = vosk.KaldiRecognizer(model, 16000)
+        return model, recognizer
+    except Exception as e:
+        print(clean_log_message(f"❌ Failed to initialize Vosk: {e}"))
+        return None, None
+
+
+def recognize_speech_from_file(audio_file: str, model, recognizer):
+    """Recognize speech from audio file using Vosk"""
+    try:
+        if not VOSK_AVAILABLE or not model or not recognizer:
+            return ""
+
+        # Convert MP3 to WAV if needed
+        wav_file = _convert_to_wav_if_needed(audio_file)
+        if not wav_file:
+            return ""
+
+        # Open audio file
+        wf = wave.open(wav_file, 'rb')
+
+        # Check audio format
+        if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
+            print(clean_log_message("❌ Audio file must be WAV format mono PCM."))
+            wf.close()
+            # Clean up temporary file if created
+            if wav_file != audio_file and os.path.exists(wav_file):
+                os.remove(wav_file)
+            return ""
+
+        # Process audio
+        results = []
+        while True:
+            data = wf.readframes(4000)
+            if len(data) == 0:
+                break
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                if 'text' in result:
+                    results.append(result['text'])
+
+        # Get final result
+        final_result = json.loads(recognizer.FinalResult())
+        if 'text' in final_result:
+            results.append(final_result['text'])
+
+        wf.close()
+
+        # Clean up temporary file if created
+        if wav_file != audio_file and os.path.exists(wav_file):
+            os.remove(wav_file)
+
+        return ' '.join(results).strip()
+
+    except Exception as e:
+        print(clean_log_message(f"❌ Speech recognition error: {e}"))
+        return ""
+
+
+def _convert_to_wav_if_needed(audio_file: str) -> str:
+    """Convert MP3 to WAV for Vosk if needed"""
+    try:
+        # Check if already WAV
+        if audio_file.lower().endswith('.wav'):
+            return audio_file
+
+        # Try to import pydub for conversion
+        try:
+            from pydub import AudioSegment
+        except ImportError:
+            print(clean_log_message("⚠️ pydub not available for MP3 conversion. Install with: pip install pydub"))
+            return None
+
+        # Convert MP3 to WAV
+        audio = AudioSegment.from_mp3(audio_file)
+
+        # Convert to mono 16kHz 16-bit (Vosk requirements)
+        audio = audio.set_channels(1)  # Mono
+        audio = audio.set_frame_rate(16000)  # 16kHz
+        audio = audio.set_sample_width(2)  # 16-bit
+
+        # Create temporary WAV file
+        wav_file = audio_file.replace('.mp3', '_vosk_temp.wav')
+        audio.export(wav_file, format="wav")
+
+        return wav_file
+
+    except Exception as e:
+        print(clean_log_message(f"❌ Audio conversion error: {e}"))
+        return None
+
+
+def generate_audio(text: str, output_file: str, voice_actor: str = "American",
+                  speed: float = 0.8, emotion: str = "neutral", language: str = 'en',
+                  content_analysis=None, title: str = "") -> bool:
+    """Generate audio using gTTS"""
+    try:
+        if not GTTS_AVAILABLE:
+            return False
+
+        # Map language codes
+        lang_map = {
+            'en': 'en',
+            'en-us': 'en',
+            'en-uk': 'en',
+            'es': 'es',
+            'fr': 'fr',
+            'de': 'de',
+            'it': 'it',
+            'pt': 'pt',
+            'ru': 'ru',
+            'ja': 'ja',
+            'ko': 'ko',
+            'zh': 'zh'
+        }
+
+        gtts_lang = lang_map.get(language, 'en')
+
+        # Create gTTS object
+        tts = gTTS(text=text, lang=gtts_lang, slow=False)
+
+        # Save to file
+        tts.save(output_file)
+        return True
+
+    except Exception as e:
+        print(clean_log_message(f"❌ gTTS error: {e}"))
+        return False
+
 
 class SpeechRecognitionService:
     """Streamlined speech recognition service"""
@@ -31,7 +177,7 @@ class SpeechRecognitionService:
         self.temp_dir = temp_dir or tempfile.gettempdir()
         self.vosk_model = None
         self.vosk_recognizer = None
-        self.post_processor = SpeechRecognitionPostProcessor()
+        # Post-processor removed for performance optimization
         
         # Initialize Vosk if available
         if VOSK_AVAILABLE and self.model_path:
@@ -90,12 +236,8 @@ class SpeechRecognitionService:
         result = self.process_text_to_speech_to_text(text, voice_settings, cleanup_audio)
         
         if result.success and result.recognized_text:
-            # Apply post-processing to improve accuracy
-            post_processed_text = self.post_processor.post_process_recognized_text(
-                result.recognized_text,
-                content_type,
-                text
-            )
+            # Skip post-processing for performance optimization
+            post_processed_text = result.recognized_text
 
             # Recalculate metrics with post-processed text
             if post_processed_text != result.recognized_text:
@@ -136,13 +278,9 @@ class SpeechRecognitionService:
             # Step 1: Recognize speech from existing audio
             recognized_text = self._recognize_speech_from_audio(audio_file)
 
-            # Step 2: Apply post-processing
+            # Step 2: Skip post-processing for performance
             if recognized_text:
-                post_processed_text = self.post_processor.post_process_recognized_text(
-                    recognized_text,
-                    content_type,
-                    original_text
-                )
+                post_processed_text = recognized_text
 
                 if post_processed_text != recognized_text:
                     # Only show post-processing changes if significant

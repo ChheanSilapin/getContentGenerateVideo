@@ -326,10 +326,9 @@ class BatchProcessor:
                 
                 if processed_video:
                     processed_videos.append(processed_video)
-                    print(f"✅ Successfully processed: {os.path.basename(pair['video_file'])}")
                 else:
-                    print(f"❌ Failed to process video: {os.path.basename(pair['video_file'])}")
                     # Continue processing other videos instead of failing the entire group
+                    pass
 
             # If we have processed videos, combine them
             if processed_videos:
@@ -358,12 +357,6 @@ class BatchProcessor:
             for video_path in processed_videos:
                 if video_path and os.path.exists(video_path):
                     valid_videos.append(video_path)
-                    print(f"   ✅ Valid video: {os.path.basename(video_path)}")
-                else:
-                    print(f"   ❌ Missing video: {video_path}")
-
-            if len(valid_videos) < len(processed_videos):
-                print(f"⚠️ Warning: Only {len(valid_videos)}/{len(processed_videos)} videos are valid for merging")
 
             if not valid_videos:
                 print("❌ No valid videos to merge")
@@ -400,18 +393,13 @@ class BatchProcessor:
                 final_progress = min(final_progress, 99)
                 self.update_progress(final_progress, f"Group {job_index+1}: {m}")
 
-            print(f"🚀 Starting video merge with VideoService.merge_videos_optimized...")
             merge_result = VideoService.merge_videos_optimized(
                 valid_videos,
                 temp_combined_output,
                 progress_callback=merge_progress_callback
             )
 
-            print(f"📊 Merge result: {merge_result}, File exists: {os.path.exists(temp_combined_output) if temp_combined_output else False}")
-
             if merge_result and os.path.exists(temp_combined_output):
-                print(f"✅ Merge successful! Moving to final location...")
-
                 # Get source files for intelligent default naming (first file from group)
                 source_files = []
                 if group_data.get('pairs') and len(group_data['pairs']) > 0:
@@ -423,7 +411,6 @@ class BatchProcessor:
 
                 # Move final combined video to user's output directory with conflict resolution
                 custom_filename = group_data.get('custom_filename', '')
-                print(f"📁 Moving to output directory with custom_filename: '{custom_filename}', base_name: '{base_name}'")
 
                 final_video_path = output_manager.move_final_video(
                     temp_video_path=temp_combined_output,
@@ -479,25 +466,13 @@ class BatchProcessor:
 
                         # Also clean up the main temporary directory
                         output_manager.cleanup_temp_directory(temp_dir)
-                        print(f"✅ Cleanup completed: removed {cleaned_count} individual files and {cleaned_dirs} temp directories")
-                    else:
-                        print(f"🔧 Keeping individual video folders for debugging (AUTO_CLEANUP_AFTER_COMPLETION = False)")
-                        print(f"📁 Individual folders preserved: {len(valid_videos)} folders with debug files")
-
-                        # Log the specific folders being preserved for debugging
-                        for video_path in valid_videos:
-                            individual_folder = os.path.dirname(video_path)
-                            folder_name = os.path.basename(individual_folder)
-                            print(f"   📂 Debug folder: {folder_name} (contains subtitles.ass, voice.mp3, etc.)")
 
                     self.update_progress(int((job_index + 1) * (100 / total_jobs)),
                                        f"✅ Completed group {job_index+1}: {os.path.basename(final_video_path)}")
                     return final_video_path
                 else:
-                    print(f"❌ ERROR: Failed to move combined video to output directory")
                     return temp_combined_output  # Return temp path as fallback
             else:
-                print(f"❌ ERROR: Video merge failed - merge_result: {merge_result}, file_exists: {os.path.exists(temp_combined_output) if temp_combined_output else False}")
                 return None
                 
         except Exception as e:

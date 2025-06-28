@@ -51,10 +51,11 @@ class GroupEntry:
         header_frame = ttk.Frame(self.entry_frame)
         header_frame.pack(fill="x", pady=(0, 8))
 
-        # Group label on the left
+        # Group label on the left - cleaner, more concise
+        video_count = len(self.group_info['pairs'])
         group_label = ttk.Label(
             header_frame,
-            text=f"📦 {self.group_info['folder_name']} ({len(self.group_info['pairs'])} videos)",
+            text=f"Group {self.group_id} ({video_count} videos)",
             font=("Cascadia Code", 10, "bold")
         )
         group_label.pack(side="left")
@@ -133,19 +134,19 @@ class GroupEntry:
 
     def setup_group_summary(self):
         """Set up the group summary display"""
-        # Summary row with video list preview
+        # Summary row with video list preview - more concise
         summary_frame = ttk.Frame(self.entry_frame)
         summary_frame.pack(fill="x", pady=(0, 6))
 
-        # Video list preview
-        video_names = [os.path.basename(pair['video_file']) for pair in self.group_info['pairs']]
-        preview_text = ", ".join(video_names[:3])  # Show first 3
-        if len(video_names) > 3:
-            preview_text += f", ... (+{len(video_names) - 3} more)"
+        # Simple video count display - much cleaner
+        video_count = len(self.group_info['pairs'])
+        folder_name = self.group_info.get('folder_name', 'Unknown')
+
+        preview_text = f"📁 {folder_name} • {video_count} videos"
 
         video_preview_label = ttk.Label(
             summary_frame,
-            text=f"🎥 {preview_text}",
+            text=preview_text,
             font=("Cascadia Code", 9),
             foreground="#666666"
         )
@@ -186,15 +187,15 @@ class GroupEntry:
 
     def create_video_detail_entry(self, parent, index, pair):
         """Create a detailed entry for one video in the group"""
-        # Individual video frame - cleaner title
+        # Individual video frame - simple numeric title
         video_frame = ttk.LabelFrame(
             parent,
-            text=f"🎬 {index + 1}: {os.path.basename(pair['video_file'])}",
+            text=f"Video {index + 1}",
             padding=6
         )
         video_frame.pack(fill="x", pady=2)
 
-        # Video file path (read-only) - remove redundant label
+        # Video file path (read-only) - show only filename for cleaner display
         path_frame = ttk.Frame(video_frame)
         path_frame.pack(fill="x", pady=(0, 4))
 
@@ -206,7 +207,7 @@ class GroupEntry:
         )
         path_entry.pack(fill="x", expand=True)
         path_entry.config(state="normal")
-        path_entry.insert(0, pair['video_file'])
+        path_entry.insert(0, os.path.basename(pair['video_file']))  # Show only filename
         path_entry.config(state="readonly")
 
         # Prompt text (editable) - remove redundant label

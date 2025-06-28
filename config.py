@@ -142,12 +142,9 @@ SUBTITLE_CONFIG = {
     "background_border_radius": 8,          # Rounded corners for background
     "voice_sync_precision": "high",         # Background sync precision: "low", "medium", "high"
 
-    # Word-Level Highlighting (Karaoke Effect)
-    "enable_word_level_highlighting": True, # Enable word-by-word highlighting effect
-    "word_highlight_mode": "karaoke",       # Highlighting mode: "karaoke", "sentence", "disabled"
-    "word_spacing": 0.05,                   # Time gap between words in seconds
-    "word_min_duration": 0.3,              # Minimum display time per word in seconds
-    "word_max_duration": 2.0,              # Maximum display time per word in seconds
+    # Sentence-Level Processing Only (optimized for speed)
+    "enable_word_level_highlighting": False, # Disabled for speed optimization
+    "word_highlight_mode": "sentence",       # Force sentence-level only
 
     # Style Presets
     "available_styles": {
@@ -255,45 +252,17 @@ ENABLE_TTS_CACHE = True
 TTS_CACHE_MAX_SIZE = 50
 TTS_CACHE_TTL_HOURS = 48
 
-# Hybrid TTS System Configuration
-HYBRID_TTS_CONFIG = {
-    # Provider Settings
-    "enabled_providers": ["google_tts", "pyttsx3", "windows_sapi"],
-    "provider_priority": ["google_tts", "pyttsx3", "windows_sapi"],
-
-    # Quality and Performance Settings
-    "quality_threshold": 7,          # Minimum quality score (1-10)
-    "prefer_offline": False,         # Prefer offline providers when available
-    "fallback_enabled": True,        # Enable automatic fallbacks
-    "max_retry_attempts": 2,         # Max retries per provider
-
-    # pyttsx3 Specific Settings
-    "pyttsx3_settings": {
-        "base_rate": 200,            # Base words per minute
-        "voice_preferences": {       # Voice selection preferences
-            "british": ["british", "uk", "hazel", "george"],
-            "excited": ["female", "zira", "hazel"],
-            "dramatic": ["male", "david", "mark"]
-        }
-    },
-
-    # Language Support Matrix
-    "language_support": {
-        "google_tts": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
-        "pyttsx3": ["en", "en-us"],
-        "windows_sapi": ["en", "en-us"]
-    },
-
-    # Backward Compatibility Settings
-    "maintain_gtts_compatibility": True,    # Preserve existing gTTS behavior
-    "preserve_voice_settings": True,       # Keep current voice actor preferences
+# Optimized TTS Configuration (gTTS only)
+GTTS_CONFIG = {
+    # gTTS Settings
+    "language_support": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
     "emotion_processing": True,            # Maintain emotional text processing
     "speed_adjustment": True               # Keep speed adjustment features
 }
 
 FFMPEG_OPTIMIZATION = {
-    "preset": "fast",           # Balance of speed/quality (ultrafast, superfast, veryfast, faster, fast, medium, slow, slower, veryslow)
-    "crf": 22,                  # Quality setting (18-28, lower = better quality)
+    "preset": "ultrafast",      # Fastest encoding for speed
+    "crf": 28,                  # Higher CRF = faster encoding
     "threads": 0,               # Use all available CPU cores (0 = auto)
     "tune": "film",             # Optimize for content type (film, animation, grain, stillimage, fastdecode, zerolatency)
     "profile": "high",          # H.264 profile (baseline, main, high)
@@ -331,17 +300,18 @@ DUPLICATE_SIMILARITY_THRESHOLD = 0.95  # Similarity threshold (0.0-1.0)
 # Processing Optimizations
 PROCESSING_OPTIMIZATIONS = {
     "skip_redundant_analysis": True,     # Skip analysis if content hasn't changed
-    "reuse_similar_effects": True,       # Reuse effects for similar content types
-    "batch_audio_generation": True,      # Generate all audio files before video processing
-    "optimize_image_loading": True,      # Optimize image loading and caching
-    "smart_temp_cleanup": True,          # Clean temporary files during processing
-    "memory_efficient_mode": True       # Use memory-efficient processing for large batches
+    "reuse_similar_effects": False,      # Disable for speed - skip effect reuse logic
+    "batch_audio_generation": False,     # Disable batching - process one at a time for speed
+    "optimize_image_loading": True,      # Keep image optimization
+    "smart_temp_cleanup": True,          # Keep cleanup
+    "memory_efficient_mode": False,      # Disable for speed - use direct processing
+    "fast_mode": True                    # Enable fast mode - skip non-essential processing
 }
 
 # Logging Configuration - Cleaner, less verbose output
 LOGGING_CONFIG = {
     "verbose_mode": False,               # Enable/disable verbose logging
-    "show_emojis": True,                # Show emoji indicators in logs (helpful for status)
+    "show_emojis": False,                # Show emoji indicators in logs (helpful for status)
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
     "show_speech_recognition": False,    # Show speech recognition results (essential info)

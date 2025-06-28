@@ -1,841 +1,254 @@
 """
-Audio service for generating speech from text with gTTS and Vosk speech recognition
-Includes smart caching to prevent duplicate TTS generation and improve performance
+Optimized Audio Service - TTS-to-Text Workflow for Subtitle Synchronization
+Clean implementation: Text → gTTS → Speech Recognition Analysis → Synchronized Subtitles
 """
-from utils.common_imports import os, subprocess, traceback
-import platform
+import os
 import tempfile
-import hashlib
 import time
-import shutil
+from typing import Optional, Dict, Any, Tuple
 
-# Try to import gTTS for text-to-speech
-try:
-    from gtts import gTTS
-    GTTS_AVAILABLE = True
-except ImportError:
-    GTTS_AVAILABLE = False
-    print("gTTS not available. Will use system TTS as fallback.")
+# Import logging utilities
+from utils.logging_utils import clean_log_message
 
-# Try to import Vosk for speech recognition
+# Import TTS manager
+from services.tts_providers import get_tts_manager
+
+# Import speech recognition for timing analysis
 try:
-    import vosk
-    import json
-    import pyaudio
+    from services.speech_recognition_core import SpeechRecognitionService
     VOSK_AVAILABLE = True
 except ImportError:
     VOSK_AVAILABLE = False
-    print("Vosk or PyAudio not available. Speech recognition will be disabled.")
 
-# Try to import pydub for audio processing
 try:
-    from pydub import AudioSegment
-    PYDUB_AVAILABLE = True
+    from services.whisper_timestamped_service import WhisperTimestampedService
+    WHISPER_AVAILABLE = True
 except ImportError:
-    PYDUB_AVAILABLE = False
-    print("pydub not available. Some audio processing features may be limited.")
-
-# Import from utils
-from utils.helpers import ensure_directory_exists
-from utils.text_processing import process_text_for_tts
-
-# =============================================================================
-# TTS CACHING SYSTEM
-# =============================================================================
-
-class TTSCache:
-    """Smart caching system for TTS audio files"""
-
-    def __init__(self):
-        self._cache = {}
-        self._cache_timestamps = {}
-        self._cache_dir = None
-        self._load_config()
-        self._setup_cache_directory()
-
-    def _load_config(self):
-        """Load TTS cache configuration"""
-        try:
-            import config
-            self.cache_enabled = getattr(config, 'ENABLE_TTS_CACHE', True)
-            self.cache_max_size = getattr(config, 'TTS_CACHE_MAX_SIZE', 50)
-            self.cache_ttl_hours = getattr(config, 'TTS_CACHE_TTL_HOURS', 48)
-        except ImportError:
-            self.cache_enabled = True
-            self.cache_max_size = 50
-            self.cache_ttl_hours = 48
-
-    def _setup_cache_directory(self):
-        """Setup cache directory for audio files"""
-        if not self.cache_enabled:
-            return
-
-        try:
-            cache_base = os.path.join(tempfile.gettempdir(), "video_generator_cache")
-            self._cache_dir = os.path.join(cache_base, "tts_audio")
-            os.makedirs(self._cache_dir, exist_ok=True)
-        except Exception as e:
-            print(f"Warning: Could not create TTS cache directory: {e}")
-            self.cache_enabled = False
-
-    def _get_cache_key(self, text, voice_actor, speed, emotion, language):
-        """Generate cache key for TTS parameters"""
-        cache_data = f"{text}|{voice_actor}|{speed}|{emotion}|{language}"
-        return hashlib.md5(cache_data.encode('utf-8')).hexdigest()
-
-    def get_cached_audio(self, text, voice_actor, speed, emotion, language, output_file):
-        """Get cached audio file if available"""
-        if not self.cache_enabled:
-            return False
-
-        cache_key = self._get_cache_key(text, voice_actor, speed, emotion, language)
-
-        if cache_key in self._cache and self._is_cache_valid(cache_key):
-            cached_file = self._cache[cache_key]
-
-            if os.path.exists(cached_file):
-                try:
-                    shutil.copy2(cached_file, output_file)
-                    from utils.logging_utils import log_cache_operations
-                    log_cache_operations(f"🚀 Using cached TTS audio (key: {cache_key[:8]}...)")
-                    return True
-                except Exception as e:
-                    print(f"Warning: Could not copy cached audio: {e}")
-
-        return False
-
-    def cache_audio(self, text, voice_actor, speed, emotion, language, audio_file):
-        """Cache generated audio file"""
-        if not self.cache_enabled or not os.path.exists(audio_file):
-            return
-
-        cache_key = self._get_cache_key(text, voice_actor, speed, emotion, language)
-        cached_file = os.path.join(self._cache_dir, f"{cache_key}.mp3")
-
-        try:
-            shutil.copy2(audio_file, cached_file)
-            self._cache[cache_key] = cached_file
-            self._cache_timestamps[cache_key] = time.time()
-            from utils.logging_utils import log_cache_operations
-            log_cache_operations(f"💾 Cached TTS audio (cache size: {len(self._cache)})")
-
-            # Cleanup old cache entries periodically
-            if len(self._cache) % 10 == 0:
-                self._cleanup_cache()
-
-        except Exception as e:
-            print(f"Warning: Could not cache TTS audio: {e}")
-
-    def _is_cache_valid(self, cache_key):
-        """Check if cached audio is still valid"""
-        if cache_key not in self._cache_timestamps:
-            return False
-
-        cache_time = self._cache_timestamps[cache_key]
-        current_time = time.time()
-        age_hours = (current_time - cache_time) / 3600
-
-        return age_hours < self.cache_ttl_hours
-
-    def _cleanup_cache(self):
-        """Remove old or excess cache entries"""
-        current_time = time.time()
-
-        # Remove expired entries
-        expired_keys = []
-        for key, timestamp in self._cache_timestamps.items():
-            age_hours = (current_time - timestamp) / 3600
-            if age_hours >= self.cache_ttl_hours:
-                expired_keys.append(key)
-
-        for key in expired_keys:
-            cached_file = self._cache.get(key)
-            if cached_file and os.path.exists(cached_file):
-                try:
-                    os.unlink(cached_file)
-                except:
-                    pass
-            self._cache.pop(key, None)
-            self._cache_timestamps.pop(key, None)
-
-    def clear_cache(self):
-        """Clear all cached TTS audio"""
-        # Clear memory cache
-        self._cache.clear()
-        self._cache_timestamps.clear()
-
-        # Clear cached files from disk
-        if self._cache_dir and os.path.exists(self._cache_dir):
-            try:
-                for filename in os.listdir(self._cache_dir):
-                    if filename.endswith('.mp3'):
-                        file_path = os.path.join(self._cache_dir, filename)
-                        os.unlink(file_path)
-                print("🗑️ TTS cache cleared")
-            except Exception as e:
-                print(f"Warning: Could not clear TTS cache files: {e}")
-
-# Global TTS cache instance
-_tts_cache = TTSCache()
+    WHISPER_AVAILABLE = False
 
 
-def clear_all_caches():
-    """Clear both content analysis and TTS caches"""
-    # Clear TTS cache
-    _tts_cache.clear_cache()
+class AudioTimingResult:
+    """Result from TTS-to-Text timing analysis"""
+    def __init__(self, success: bool, audio_file: str, timing_data: Optional[Dict] = None, error: str = ""):
+        self.success = success
+        self.audio_file = audio_file
+        self.timing_data = timing_data or {}
+        self.error = error
+        self.vosk_segments = timing_data.get('vosk_segments', []) if timing_data else []
+        self.whisper_segments = timing_data.get('whisper_segments', []) if timing_data else []
+        self.processing_time = timing_data.get('processing_time', 0.0) if timing_data else 0.0
 
-    # Clear content analysis cache
-    from services.content_analysis import ContentAnalyzer
-    analyzer = ContentAnalyzer()
-    analyzer.clear_cache()
 
-    print("🗑️ All caches cleared - voice settings will be regenerated")
-
-
-def generate_audio(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en',
-                  content_analysis=None, title=""):
+def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor: str = "American", 
+                                       speed: float = 1.0, emotion: str = "neutral", 
+                                       language: str = 'en-us', content_analysis=None) -> AudioTimingResult:
     """
-    Generate audio from text using gTTS with emotional expression and content-aware settings
-
+    Generate audio with gTTS and analyze timing for subtitle synchronization
+    
     Args:
         text: Text to convert to speech
-        output_file: Path to output audio file
-        voice_actor: Optional voice actor to use (for gTTS, this affects language/accent)
-        speed: Speed of speech (0.5 to 2.0, with 1.0 being normal speed)
-        emotion: Emotion to apply ("neutral", "excited", "dramatic", "calm", "energetic")
-        language: Language code for gTTS (default: 'en')
-        content_analysis: Optional ContentAnalysis object for enhanced settings
-        title: Optional title for content analysis
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    if not text:
-        print("No text input provided.")
-        return False
-
-    # Ensure we're using absolute paths if not already
-    if not os.path.isabs(output_file):
-        output_file = os.path.abspath(output_file)
-
-    # Create output directory if it doesn't exist
-    output_dir = os.path.dirname(output_file)
-    if output_dir:
-        ensure_directory_exists(output_dir)
-
-    print(f"Generating audio for text: {text[:50]}...")
-
-    # Store original user settings before content analysis
-    original_voice_actor = voice_actor
-    original_language = language
-
-    # Use content analysis for enhanced settings if available
-    if content_analysis:
-        voice_settings = content_analysis.recommended_voice_settings
-        speed = voice_settings.get('speed', speed)
-        emotion = voice_settings.get('emotion', emotion)
-        # Only use content analysis language/voice if user hasn't specified one
-        if not original_voice_actor or original_voice_actor == "Default":
-            language = voice_settings.get('language', language)
-            voice_actor = voice_settings.get('voice_actor', voice_actor)
-        print(f"Using content-aware settings: type={content_analysis.content_type.value}, "
-              f"tone={content_analysis.emotional_tone.value}, speed={speed}, emotion={emotion}")
-    elif title:
-        # Perform quick content analysis if title is provided
-        from services.content_analysis import ContentAnalyzer
-        analyzer = ContentAnalyzer()
-        analysis = analyzer.analyze_content(text, title)
-        voice_settings = analysis.recommended_voice_settings
-        speed = voice_settings.get('speed', speed)
-        emotion = voice_settings.get('emotion', emotion)
-        # Only use content analysis language/voice if user hasn't specified one
-        if not original_voice_actor or original_voice_actor == "Default":
-            language = voice_settings.get('language', language)
-            voice_actor = voice_settings.get('voice_actor', voice_actor)
-        print(f"Auto-detected content: type={analysis.content_type.value}, "
-              f"tone={analysis.emotional_tone.value}")
-
-    print("Processing text for TTS...")
-
-    # Process text for TTS with emotional enhancement
-    processed_text = process_text_for_tts(text, emotion)
-    from utils.logging_utils import log_content_analysis
-    log_content_analysis(f"Processed text: {processed_text[:100]}...")
-
-    # Check cache first for performance optimization
-    if _tts_cache.get_cached_audio(processed_text, voice_actor, speed, emotion, language, output_file):
-        return True
-
-    # Use hybrid TTS system with intelligent provider selection
-    success = generate_audio_hybrid(processed_text, output_file, voice_actor, speed, emotion, language)
-
-    # Cache the generated audio if successful
-    if success:
-        _tts_cache.cache_audio(processed_text, voice_actor, speed, emotion, language, output_file)
-
-    return success
-
-def generate_audio_hybrid(text, output_file, voice_actor=None, speed=0.8, emotion="neutral", language='en'):
-    """
-    Generate audio using hybrid TTS system with intelligent provider selection
-
-    This function maintains backward compatibility while adding advanced TTS capabilities:
-    1. gTTS (Google TTS, reliable, current default)
-    2. pyttsx3 (cross-platform offline TTS)
-    3. Windows SAPI (system fallback)
-
-    Args:
-        text: Text to convert to speech
-        output_file: Path to output audio file
+        output_file: Path for output audio file
         voice_actor: Voice actor preference
-        speed: Speech speed (0.5 to 2.0)
-        emotion: Emotion to apply
+        speed: Speech speed multiplier
+        emotion: Emotional tone
         language: Language code
-
+        content_analysis: Content analysis for optimization
+        
     Returns:
-        bool: True if successful, False otherwise
+        AudioTimingResult with timing data for subtitle synchronization
     """
+    start_time = time.time()
+    
     try:
-        # Import hybrid TTS manager
-        from services.tts_providers import get_hybrid_tts_manager
+        # Step 1: Generate audio with gTTS
+        # Get TTS manager
+        tts_manager = get_tts_manager()
+        if not tts_manager:
+            return AudioTimingResult(False, "", error="TTS manager not available")
 
-        # Get hybrid TTS manager instance
-        tts_manager = get_hybrid_tts_manager()
-
-        # Prepare parameters for TTS generation
+        # Generate audio
         tts_params = {
-            'voice_actor': voice_actor,
-            'speed': speed,
+            'language': language,
             'emotion': emotion,
-            'language': language
+            'speed': speed,
+            'voice_actor': voice_actor
         }
 
-        print(f"🎯 Hybrid TTS: Using parameters - voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
-
-        # Generate speech using hybrid system
         success = tts_manager.generate_speech(text, output_file, **tts_params)
+        if not success:
+            return AudioTimingResult(False, output_file, error="gTTS generation failed")
 
-        if success:
-            print(f"✅ Hybrid TTS successfully generated: {output_file}")
-        else:
-            print("❌ Hybrid TTS failed - all providers exhausted")
+        # Step 2: Analyze generated audio for timing synchronization
+        timing_data = _analyze_audio_timing(output_file, text, content_analysis)
 
-        return success
-
+        processing_time = time.time() - start_time
+        timing_data['processing_time'] = processing_time
+        
+        return AudioTimingResult(True, output_file, timing_data)
+        
     except Exception as e:
-        print(f"❌ Hybrid TTS system error: {e}")
-        traceback.print_exc()
+        error_msg = f"Audio generation with timing analysis failed: {e}"
+        print(clean_log_message(f"❌ {error_msg}"))
+        return AudioTimingResult(False, output_file, error=error_msg)
 
-        # Fallback to original gTTS method for maximum compatibility
-        print("🔄 Falling back to original gTTS method...")
-        try:
-            if GTTS_AVAILABLE:
-                return generate_audio_gtts(text, output_file, speed, emotion, language, voice_actor)
-            else:
-                return generate_audio_system_emotional(text, output_file, emotion)
-        except Exception as fallback_error:
-            print(f"❌ Fallback also failed: {fallback_error}")
-            return False
 
-def generate_audio_gtts(text, output_file, speed=0.8, emotion="neutral", language='en', voice_actor=None):
+def _analyze_audio_timing(audio_file: str, original_text: str, content_analysis=None) -> Dict[str, Any]:
     """
-    Generate audio using gTTS with emotional settings and speed adjustment
-
+    Analyze generated audio using Vosk + Whisper for subtitle timing synchronization
+    
     Args:
-        text: Text to convert to speech
-        output_file: Path to output audio file
-        speed: Speed of speech (0.5 to 2.0, with 1.0 being normal speed)
-        emotion: Emotion to apply
-        language: Language code for gTTS
-        voice_actor: Voice actor preference (affects language/accent selection)
-
+        audio_file: Path to generated audio file
+        original_text: Original text for reference
+        content_analysis: Content analysis for optimization
+        
     Returns:
-        bool: True if successful, False otherwise
+        Dictionary with timing analysis results
     """
-    try:
-        # Map voice_actor to language variants if available
-        lang_code = get_language_for_voice_actor(voice_actor, language)
-
-        # Adjust text based on emotion for better gTTS output
-        emotional_text = enhance_text_for_emotion(text, emotion)
-
-        from utils.logging_utils import log_essential
-        log_essential(f"Generating audio with gTTS using language: {lang_code}")
-        if voice_actor and voice_actor != "Default":
-            log_essential(f"Voice actor '{voice_actor}' mapped to language: {lang_code}")
-        log_essential(f"Emotion: {emotion}, Speed: {speed}")
-
-        # Create gTTS object
-        tts = gTTS(text=emotional_text, lang=lang_code, slow=False)
-
-        # Save to temporary file first (gTTS saves as MP3)
-        temp_mp3 = tempfile.NamedTemporaryFile(delete=False, suffix='.mp3')
-        temp_mp3.close()
-
-        try:
-            # Generate the audio file
-            tts.save(temp_mp3.name)
-            print(f"gTTS audio saved to temporary file: {temp_mp3.name}")
-
-            # Convert and adjust speed if needed
-            if PYDUB_AVAILABLE and speed != 1.0:
-                # Load the MP3 file
-                audio = AudioSegment.from_mp3(temp_mp3.name)
-
-                # Adjust speed (playback rate)
-                if speed != 1.0:
-                    # Speed up or slow down the audio
-                    new_sample_rate = int(audio.frame_rate * speed)
-                    audio_with_speed = audio._spawn(audio.raw_data, overrides={"frame_rate": new_sample_rate})
-                    audio = audio_with_speed.set_frame_rate(audio.frame_rate)
-
-                # Apply emotional adjustments
-                audio = apply_emotional_effects(audio, emotion)
-
-                # Export to the desired format
-                if output_file.lower().endswith('.mp3'):
-                    audio.export(output_file, format="mp3")
-                elif output_file.lower().endswith('.wav'):
-                    audio.export(output_file, format="wav")
-                else:
-                    # Default to WAV for compatibility
-                    audio.export(output_file, format="wav")
-
-            else:
-                # No speed adjustment needed, just copy/convert the file
-                if PYDUB_AVAILABLE:
-                    audio = AudioSegment.from_mp3(temp_mp3.name)
-                    audio = apply_emotional_effects(audio, emotion)
-
-                    if output_file.lower().endswith('.mp3'):
-                        audio.export(output_file, format="mp3")
-                    else:
-                        audio.export(output_file, format="wav")
-                else:
-                    # Simple file copy if pydub not available
-                    import shutil
-                    if output_file.lower().endswith('.mp3'):
-                        shutil.copy2(temp_mp3.name, output_file)
-                    else:
-                        # Can't convert without pydub, keep as MP3
-                        shutil.copy2(temp_mp3.name, output_file.rsplit('.', 1)[0] + '.mp3')
-
-            # Clean up temporary file
-            try:
-                os.unlink(temp_mp3.name)
-            except:
-                pass
-
-            # Verify the file was created
-            if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-                print(f"Audio generated successfully with gTTS ({emotion} emotion): {output_file}")
-                return True
-            else:
-                print(f"Error: Audio file not created or empty: {output_file}")
-                return False
-
-        except Exception as e:
-            # Clean up temporary file on error
-            try:
-                os.unlink(temp_mp3.name)
-            except:
-                pass
-            raise e
-
-    except Exception as e:
-        print(f"Error generating audio with gTTS: {e}")
-        traceback.print_exc()
-        return False
-
-def generate_audio_system_emotional(text, output_file, emotion="neutral"):
-    """
-    Generate audio using system TTS with emotional settings
-
-    Args:
-        text: Text to convert to speech
-        output_file: Path to output audio file
-        emotion: Emotion to apply
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        # Use system-specific TTS with emotional parameters
-        if platform.system() == "Windows":
-            # Use PowerShell's text-to-speech with voice selection
-            voice_name = "Microsoft Zira Desktop"  # Default to Zira (female, more expressive)
-            
-            if emotion == "dramatic":
-                voice_name = "Microsoft David Desktop"  # Male voice for drama
-            elif emotion in ["excited", "energetic"]:
-                voice_name = "Microsoft Zira Desktop"  # Female voice for excitement
-            
-            # Create PowerShell script with emotional settings
-            ps_script = f'''
-            Add-Type -AssemblyName System.Speech
-            $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer
-            
-            # Try to set voice
-            try {{
-                $speak.SelectVoice("{voice_name}")
-            }} catch {{
-                Write-Host "Could not select voice {voice_name}, using default"
-            }}
-            
-            # Set rate based on emotion
-            $speak.Rate = {get_rate_for_emotion(emotion)}
-            
-            # Set volume based on emotion
-            $speak.Volume = {get_volume_for_emotion(emotion)}
-            
-            # Set output to file
-            $speak.SetOutputToWaveFile("{output_file}")
-            
-            # Speak the text
-            $speak.Speak("{text}")
-            
-            # Clean up
-            $speak.Dispose()
-            '''
-            
-            subprocess.run(["powershell", "-Command", ps_script], check=True)
-            
-        elif platform.system() == "Darwin":  # macOS
-            # Use macOS say command with voice selection
-            voice_option = []
-            if emotion == "excited":
-                voice_option = ["-v", "Samantha"]  # Energetic female voice
-            elif emotion == "dramatic":
-                voice_option = ["-v", "Alex"]  # Deep male voice
-            elif emotion == "calm":
-                voice_option = ["-v", "Victoria"]  # Calm female voice
-            
-            cmd = ["say"] + voice_option + ["-o", output_file, text]
-            subprocess.run(cmd, check=True)
-            
-        else:  # Linux
-            # Try using espeak with emotional parameters
-            pitch = 50  # Default pitch
-            speed = 175  # Default speed
-            
-            if emotion == "excited":
-                pitch = 70
-                speed = 200
-            elif emotion == "dramatic":
-                pitch = 30
-                speed = 150
-            elif emotion == "calm":
-                pitch = 40
-                speed = 140
-            elif emotion == "energetic":
-                pitch = 60
-                speed = 190
-            
-            subprocess.run([
-                "espeak", 
-                "-w", output_file, 
-                "-p", str(pitch),
-                "-s", str(speed),
-                text
-            ], check=True)
-
-        # Check if the file was created
-        if os.path.exists(output_file) and os.path.getsize(output_file) > 0:
-            print(f"Audio generated successfully using system TTS with {emotion} emotion: {output_file}")
-            return True
-        else:
-            print(f"Audio file not created or empty: {output_file}")
-            return False
-    except Exception as e:
-        print(f"Error generating audio with system TTS: {e}")
-        traceback.print_exc()
-        return False
-
-def get_rate_for_emotion(emotion):
-    """Get speech rate for emotion (Windows TTS)"""
-    rates = {
-        "excited": 2,
-        "energetic": 1,
-        "neutral": 0,
-        "dramatic": -2,
-        "calm": -3
+    timing_data = {
+        'vosk_segments': [],
+        'whisper_segments': [],
+        'combined_segments': [],
+        'confidence_score': 0.0,
+        'method_used': 'none'
     }
-    return rates.get(emotion, 0)
-
-def get_volume_for_emotion(emotion):
-    """Get speech volume for emotion (Windows TTS)"""
-    volumes = {
-        "excited": 90,
-        "energetic": 85,
-        "neutral": 80,
-        "dramatic": 75,
-        "calm": 70
-    }
-    return volumes.get(emotion, 80)
-
-def get_language_for_voice_actor(voice_actor, default_language='en'):
-    """Map voice actor preferences to gTTS language codes"""
-    if not voice_actor or voice_actor == "Default":
-        return default_language
-
-    # Map common voice actor preferences to language variants
-    # Note: gTTS has limited accent variation for English variants
-    # For more distinct voices, use different languages
-    voice_mapping = {
-        "British": "en-uk",      # Subtle British pronunciation
-        "American": "en-us",     # Subtle American pronunciation
-        "Australian": "en-au",   # Subtle Australian pronunciation
-        "Canadian": "en-ca",     # Subtle Canadian pronunciation
-        "Indian": "en-in",       # Subtle Indian English pronunciation
-        "French": "fr",          # Distinct French voice
-        "German": "de",          # Distinct German voice
-        "Spanish": "es",         # Distinct Spanish voice
-        "Italian": "it",         # Distinct Italian voice
-        "Portuguese": "pt",      # Distinct Portuguese voice
-        "Hindi": "hi",           # Distinct Hindi voice (for Indian users)
-        "Russian": "ru",         # Distinct Russian voice
-        "Japanese": "ja",        # Distinct Japanese voice
-        "Korean": "ko",          # Distinct Korean voice
-        "Chinese": "zh"          # Distinct Chinese voice
-    }
-
-    return voice_mapping.get(voice_actor, default_language)
-
-def enhance_text_for_emotion(text, emotion):
-    """Enhance text for better emotional expression with gTTS"""
-    if emotion == "excited":
-        # Add emphasis and exclamation
-        text = text.replace(".", "!")
-        text = text.replace("?", "?!")
-        # Add pauses for emphasis
-        text = text.replace(",", ", ")
-
-    elif emotion == "dramatic":
-        # Add dramatic pauses
-        text = text.replace(".", "... ")
-        text = text.replace("!", "... ")
-        text = text.replace(",", "... ")
-
-    elif emotion == "calm":
-        # Add gentle pauses
-        text = text.replace(".", ". ")
-        text = text.replace(",", ", ")
-        text = text.replace("!", ".")  # Convert exclamations to periods
-
-    elif emotion == "energetic":
-        # Add energy with varied punctuation
-        text = text.replace(".", "!")
-        text = text.replace(",", ", ")
-
-    return text
-
-def apply_emotional_effects(audio, emotion):
-    """Apply audio effects to enhance emotional expression"""
-    if not PYDUB_AVAILABLE:
-        return audio
-
+    
     try:
-        if emotion == "excited":
-            # Increase volume and add slight pitch variation
-            audio = audio + 3  # Increase volume by 3dB
+        # Analyze with Vosk for fast sentence-level timing
+        if VOSK_AVAILABLE:
+            vosk_result = _analyze_with_vosk(audio_file, original_text)
+            if vosk_result:
+                timing_data['vosk_segments'] = vosk_result
+                timing_data['method_used'] = 'vosk'
 
-        elif emotion == "dramatic":
-            # Lower volume slightly and add reverb effect (simulated)
-            audio = audio - 2  # Decrease volume by 2dB
+        # Analyze with Whisper for precise timing
+        if WHISPER_AVAILABLE:
+            whisper_result = _analyze_with_whisper(audio_file, content_analysis)
+            if whisper_result:
+                timing_data['whisper_segments'] = whisper_result
+                timing_data['method_used'] = 'whisper' if not timing_data['vosk_segments'] else 'vosk+whisper'
 
-        elif emotion == "calm":
-            # Lower volume for calming effect
-            audio = audio - 4  # Decrease volume by 4dB
-
-        elif emotion == "energetic":
-            # Slight volume boost
-            audio = audio + 2  # Increase volume by 2dB
-
-        return audio
-
+        # Combine results for optimal timing
+        combined_segments = _combine_timing_results(timing_data['vosk_segments'], timing_data['whisper_segments'])
+        timing_data['combined_segments'] = combined_segments
+        timing_data['confidence_score'] = _calculate_confidence_score(combined_segments)
+        
+        return timing_data
+        
     except Exception as e:
-        print(f"Warning: Could not apply emotional effects: {e}")
-        return audio
+        print(f"⚠️ Audio timing analysis error: {e}")
+        return timing_data
 
-# Speech Recognition Functions using Vosk
-def initialize_speech_recognition(model_path=None, language="en-us"):
-    """
-    Initialize Vosk speech recognition
 
-    Args:
-        model_path: Path to Vosk model directory (optional)
-        language: Language code for recognition
-
-    Returns:
-        tuple: (model, recognizer) or (None, None) if failed
-    """
-    if not VOSK_AVAILABLE:
-        print("Vosk not available for speech recognition")
-        return None, None
-
+def _analyze_with_vosk(audio_file: str, original_text: str) -> list:
+    """Analyze audio with Vosk for sentence-level timing"""
     try:
-        # Set log level to reduce Vosk output
-        vosk.SetLogLevel(-1)
+        vosk_service = SpeechRecognitionService()
 
-        if model_path and os.path.exists(model_path):
-            model = vosk.Model(model_path)
-        else:
-            # Try to find a bundled model first (for PyInstaller)
-            import sys
-            bundled_model_path = None
+        if not vosk_service.vosk_model:
+            return []
 
-            if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
-                bundled_model_path = os.path.join(sys._MEIPASS, 'vosk-model')
-                if os.path.exists(bundled_model_path):
-                    try:
-                        model = vosk.Model(bundled_model_path)
-                        print(f"Using bundled Vosk model: {bundled_model_path}")
-                        return model, vosk.KaldiRecognizer(model, 16000)
-                    except Exception as e:
-                        print(f"Failed to load bundled model: {e}")
-
-            # Fallback: Try to find a default model by name
-            default_models = [
-                f"vosk-model-{language}",
-                f"vosk-model-small-{language}",
-                "vosk-model-en-us-0.22",
-                "vosk-model-small-en-us-0.15"
-            ]
-
-            model = None
-            for model_name in default_models:
-                try:
-                    model = vosk.Model(model_name)
-                    print(f"Using Vosk model: {model_name}")
-                    break
-                except:
-                    continue
-
-            if not model:
-                print("No Vosk model found. Please download a model from https://alphacephei.com/vosk/models")
-                return None, None
-
-        recognizer = vosk.KaldiRecognizer(model, 16000)
-        # Reduced logging: print("Speech recognition initialized successfully")
-        return model, recognizer
-
-    except Exception as e:
-        print(f"Error initializing speech recognition: {e}")
-        return None, None
-
-def recognize_speech_from_microphone(duration=5, model=None, recognizer=None):
-    """
-    Recognize speech from microphone using Vosk
-
-    Args:
-        duration: Recording duration in seconds
-        model: Vosk model (optional, will initialize if not provided)
-        recognizer: Vosk recognizer (optional, will initialize if not provided)
-
-    Returns:
-        str: Recognized text or empty string if failed
-    """
-    if not VOSK_AVAILABLE:
-        print("Vosk not available for speech recognition")
-        return ""
-
-    # Initialize if not provided
-    if not model or not recognizer:
-        model, recognizer = initialize_speech_recognition()
-        if not model or not recognizer:
-            return ""
-
-    try:
-        # Initialize PyAudio
-        p = pyaudio.PyAudio()
-
-        # Open microphone stream
-        stream = p.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=16000,
-            input=True,
-            frames_per_buffer=8000
+        # Get sentence-level segments from Vosk
+        result = vosk_service.recognize_speech_from_audio_with_postprocessing(
+            audio_file, original_text, None
         )
 
-        print(f"Recording for {duration} seconds...")
+        if result and result.success:
+            # Convert to timing segments
+            segments = []
+            if hasattr(result, 'segments') and result.segments:
+                for segment in result.segments:
+                    segments.append({
+                        'text': segment.get('text', ''),
+                        'start': segment.get('start', 0.0),
+                        'end': segment.get('end', 0.0),
+                        'confidence': segment.get('confidence', 0.8)
+                    })
+            return segments
 
-        # Record and recognize
-        for _ in range(0, int(16000 / 8000 * duration)):
-            data = stream.read(8000)
-            if recognizer.AcceptWaveform(data):
-                result = json.loads(recognizer.Result())
-                if result.get('text'):
-                    print(f"Recognized: {result['text']}")
-
-        # Get final result
-        final_result = json.loads(recognizer.FinalResult())
-        recognized_text = final_result.get('text', '')
-
-        # Clean up
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-
-        print(f"Final recognized text: {recognized_text}")
-        return recognized_text
+        return []
 
     except Exception as e:
-        print(f"Error during speech recognition: {e}")
-        return ""
+        print(f"⚠️ Vosk analysis error: {e}")
+        return []
 
-def recognize_speech_from_file(audio_file, model=None, recognizer=None):
-    """
-    Recognize speech from audio file using Vosk
 
-    Args:
-        audio_file: Path to audio file
-        model: Vosk model (optional, will initialize if not provided)
-        recognizer: Vosk recognizer (optional, will initialize if not provided)
-
-    Returns:
-        str: Recognized text or empty string if failed
-    """
-    if not VOSK_AVAILABLE or not PYDUB_AVAILABLE:
-        print("Vosk or pydub not available for speech recognition")
-        return ""
-
-    # Initialize if not provided
-    if not model or not recognizer:
-        model, recognizer = initialize_speech_recognition()
-        if not model or not recognizer:
-            return ""
-
+def _analyze_with_whisper(audio_file: str, content_analysis=None) -> list:
+    """Analyze audio with Whisper for precise timing"""
     try:
-        # Load audio file and convert to required format
-        audio = AudioSegment.from_file(audio_file)
+        whisper_service = WhisperTimestampedService()
+        if not whisper_service.is_available:
+            return []
 
-        # Convert to mono, 16kHz, 16-bit
-        audio = audio.set_channels(1).set_frame_rate(16000).set_sample_width(2)
+        # Get content type for optimization
+        content_type = None
+        if content_analysis and hasattr(content_analysis, 'content_type'):
+            content_type = content_analysis.content_type
 
-        # Get raw audio data
-        raw_data = audio.raw_data
+        # Analyze with Whisper
+        result = whisper_service.analyze_audio_with_timestamps(
+            audio_file=audio_file,
+            language="en",
+            use_vad=True,
+            content_type=content_type
+        )
 
-        # Process audio in chunks
-        chunk_size = 8000
-        recognized_text = ""
+        if result.success and result.segments:
+            # Convert to timing segments
+            segments = []
+            for segment in result.segments:
+                segment_data = {
+                    'text': segment.text,
+                    'start': segment.start,
+                    'end': segment.end,
+                    'confidence': segment.confidence
+                }
+                segments.append(segment_data)
 
-        for i in range(0, len(raw_data), chunk_size):
-            chunk = raw_data[i:i+chunk_size]
-            if recognizer.AcceptWaveform(chunk):
-                result = json.loads(recognizer.Result())
-                if result.get('text'):
-                    recognized_text += result['text'] + " "
+                # Add word-level data to segment if available
+                if hasattr(segment, 'words') and segment.words:
+                    segment_data['words'] = segment.words
 
-        # Get final result
-        final_result = json.loads(recognizer.FinalResult())
-        if final_result.get('text'):
-            recognized_text += final_result['text']
+            return segments
 
-        recognized_text = recognized_text.strip()
-        print(f"Recognized text from file: {recognized_text}")
-        return recognized_text
+        return []
 
     except Exception as e:
-        print(f"Error recognizing speech from file: {e}")
-        return ""
+        print(f"⚠️ Whisper analysis error: {e}")
+        return []
+
+
+def _combine_timing_results(vosk_segments: list, whisper_segments: list) -> list:
+    """Combine Vosk and Whisper timing results for optimal synchronization"""
+    if not vosk_segments and not whisper_segments:
+        return []
+    
+    # Prefer Whisper for precision, fallback to Vosk for speed
+    if whisper_segments:
+        return whisper_segments
+    elif vosk_segments:
+        return vosk_segments
+    
+    return []
+
+
+def _calculate_confidence_score(segments: list) -> float:
+    """Calculate overall confidence score from timing segments"""
+    if not segments:
+        return 0.0
+    
+    total_confidence = sum(segment.get('confidence', 0.0) for segment in segments)
+    return total_confidence / len(segments)
+
+
+# Legacy function for backward compatibility
+def generate_audio(text: str, output_file: str, voice_actor: str = "American", 
+                  speed: float = 0.8, emotion: str = "neutral", language: str = 'en',
+                  content_analysis=None, title: str = "") -> bool:
+    """
+    Legacy function - generates audio without timing analysis
+    Use generate_audio_with_timing_analysis for subtitle synchronization
+    """
+    result = generate_audio_with_timing_analysis(
+        text, output_file, voice_actor, speed, emotion, language, content_analysis
+    )
+    return result.success

@@ -34,13 +34,9 @@ def _create_whisper_service():
         )
         
         if service.is_service_available():
-            # Only print once during first initialization
-            if not hasattr(_create_whisper_service, '_initialized'):
-                print(clean_log_message(" Shared whisper-timestamped service initialized"))
-                _create_whisper_service._initialized = True
+            # Silent initialization for speed optimization
             return service
         else:
-            print(clean_log_message(" Whisper-timestamped service unavailable"))
             return None
 
     except ImportError:

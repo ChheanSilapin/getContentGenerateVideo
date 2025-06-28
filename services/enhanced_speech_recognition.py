@@ -43,13 +43,9 @@ class EnhancedSpeechRecognitionService:
         self.whisper_service = get_whisper_service()
         self.whisper_config = WHISPER_TIMESTAMPED_CONFIG
 
-        if self.whisper_service:
-            # Only print once during first initialization
-            if not hasattr(self.__class__, '_whisper_status_printed'):
-                print("✅ Enhanced speech recognition with whisper-timestamped initialized")
-                self.__class__._whisper_status_printed = True
-        else:
-            print("⚠️ Whisper-timestamped service not available, using Vosk only")
+        # Silent initialization for speed optimization (speech recognition validation disabled)
+        if not self.whisper_service:
+            print("⚠️ Whisper-timestamped service not available")
     
     def process_text_with_enhanced_validation(self, 
                                             text: str,
