@@ -14,7 +14,11 @@ try:
     WHISPER_TIMESTAMPED_AVAILABLE = True
 except ImportError:
     WHISPER_TIMESTAMPED_AVAILABLE = False
-    print("⚠️ whisper-timestamped not available. Install with: pip install whisper-timestamped")
+    # Only show warning in development, not in bundled executable
+    import sys
+    if not getattr(sys, 'frozen', False):
+        print("⚠️ whisper-timestamped not available. Enhanced subtitle timing disabled.")
+        print("   Install with: pip install whisper-timestamped (for better voice synchronization)")
 
 from services.content_analysis import ContentType
 from utils.logging_utils import log_speech_recognition
@@ -63,6 +67,13 @@ class WhisperTimestampedService:
         self.model = None
         self.is_available = WHISPER_TIMESTAMPED_AVAILABLE
 
+        # Debug logging for PyInstaller builds
+        print(f"[DEBUG] WhisperTimestampedService init: WHISPER_TIMESTAMPED_AVAILABLE={WHISPER_TIMESTAMPED_AVAILABLE}")
+
+        if not self.is_available:
+            print(f"[DEBUG] Whisper not available - import failed")
+            return
+
         # Performance optimization: result caching
         self._result_cache = {}
         self._cache_max_size = 50
@@ -70,14 +81,27 @@ class WhisperTimestampedService:
         self._cache_misses = 0
 
         if self.is_available:
+            print(f"[DEBUG] Attempting to load Whisper model...")
             self._load_model()
+            print(f"[DEBUG] After model loading: is_available={self.is_available}, model={self.model is not None}")
         else:
+            print(f"[DEBUG] Skipping model loading - whisper not available")
             log_speech_recognition(" Whisper-timestamped service unavailable")
     
     def _load_model(self):
         """Load the whisper model with enhanced error handling and fallbacks"""
         try:
             log_speech_recognition(f" Loading Whisper model ({self.model_name})...")
+
+            # Check if running as PyInstaller executable and set model cache
+            import sys
+            if getattr(sys, 'frozen', False):
+                # Running as PyInstaller executable
+                bundled_models_dir = os.path.join(sys._MEIPASS, 'whisper_models')
+                if os.path.exists(bundled_models_dir):
+                    # Set environment variable for whisper to use bundled models
+                    os.environ['TORCH_HOME'] = bundled_models_dir
+                    log_speech_recognition(f" Using bundled models from: {bundled_models_dir}")
 
             # Try loading with different device configurations
             devices_to_try = []

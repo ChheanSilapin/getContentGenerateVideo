@@ -270,6 +270,8 @@ class VideoGeneratorGUI:
         if self.tabs_to_show['video']:
             self.setup_video_tab()
 
+       
+
 
     def _configure_styles(self):
         """Configure ttk styles for consistent appearance"""
@@ -302,6 +304,7 @@ class VideoGeneratorGUI:
         """Set up the video tab using the VideoTab component"""
         # Create the VideoTab component
         self.video_tab_component = VideoTab(self.video_tab, self)
+
 
     def setup_log_tab(self):
         self.log_text = tk.Text(

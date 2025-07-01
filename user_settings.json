@@ -2,8 +2,8 @@
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
   "_migration_completed": true,
   "shared_settings": {
-    "tts_language": "en-in",
-    "tts_voice_actor": "Indian",
+    "tts_language": "hi",
+    "tts_voice_actor": "Hindi",
     "tts_speed": 0.8352941176470589,
     "tts_emotion": "neutral",
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
@@ -23,7 +23,7 @@
   },
   "image_tab_settings": {
     "image_fit_method": "contain",
-    "aspect_ratio": "1:1 (Square)"
+    "aspect_ratio": "9:16 (Portrait)"
   },
   "video_tab_settings": {
     "mute_original_audio": true,

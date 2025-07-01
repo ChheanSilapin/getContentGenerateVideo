@@ -185,6 +185,7 @@ def _analyze_with_whisper(audio_file: str, content_analysis=None) -> list:
     try:
         whisper_service = WhisperTimestampedService()
         if not whisper_service.is_available:
+            print(f"[DEBUG] Whisper service not available - falling back to Vosk only")
             return []
 
         # Get content type for optimization

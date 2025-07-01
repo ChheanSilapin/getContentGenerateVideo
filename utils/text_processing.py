@@ -220,15 +220,17 @@ def process_text_for_speech_recognition(text):
     # Step 3: Remove emojis but preserve emotional context
     text = emoji.replace_emoji(text, replace='')
 
-    # Step 4: Fix apostrophe encoding issues while preserving contractions
+    # Step 4: Fix apostrophe encoding issues while preserving contractions and possessives
     # Replace various apostrophe characters with standard ASCII apostrophe
-    text = re.sub(r'[''`´]', "'", text)  # Replace smart quotes and other apostrophe variants
+    text = re.sub(r'[’`´]', "'", text)  # Replace smart apostrophes with standard ASCII
+    # Fix split possessives (e.g., "pig s" -> "pig's")
+    text = re.sub(r'\b(\w+) s\b(?!\w)', r"\1's", text, flags=re.IGNORECASE)
 
     # Step 5: Normalize quotation marks for speech
     text = re.sub(r'["""]', '"', text)
 
     # Step 6: Remove non-ASCII characters EXCEPT standard apostrophes and quotes
-    # This preserves contractions while removing problematic characters
+    # This preserves contractions and possessives while removing problematic characters
     text = re.sub(r'[^\x00-\x7F\'\"]+', ' ', text)
 
     # Step 7: Fix broken contractions that may have been created by encoding issues
@@ -273,25 +275,25 @@ def process_text_for_speech_recognition(text):
     for pattern, fixed_contraction in broken_contractions.items():
         text = re.sub(pattern, fixed_contraction, text)
 
-    # Step 7: Improve sentence flow for speech
+    # Step 8: Improve sentence flow for speech
     # The text already has good natural pauses, so we'll skip aggressive comma insertion
 
-    # Step 8: Handle punctuation for better speech flow
+    # Step 9: Handle punctuation for better speech flow
     # Ensure proper spacing around punctuation
     text = re.sub(r'\s*([.!?])\s*', r'\1 ', text)
     text = re.sub(r'\s*([,;:])\s*', r'\1 ', text)
 
-    # Step 9: Handle special cases for better pronunciation
+    # Step 10: Handle special cases for better pronunciation
     # Convert em dashes to commas for better speech flow
     text = re.sub(r'\s*—\s*', ', ', text)
     text = re.sub(r'\s*–\s*', ', ', text)
 
-    # Step 10: Clean up excessive punctuation
+    # Step 11: Clean up excessive punctuation
     # Remove multiple consecutive punctuation marks
     text = re.sub(r'([.!?]){2,}', r'\1', text)
     text = re.sub(r'([,;:]){2,}', r'\1', text)
 
-    # Step 11: Ensure proper sentence endings
+    # Step 12: Ensure proper sentence endings
     # Make sure sentences end with proper punctuation
     sentences = re.split(r'([.!?])', text)
     processed_sentences = []
@@ -310,7 +312,7 @@ def process_text_for_speech_recognition(text):
 
     text = ' '.join(processed_sentences)
 
-    # Step 12: Final cleanup
+    # Step 13: Final cleanup
     # Remove extra whitespace
     text = re.sub(r'\s+', ' ', text).strip()
 

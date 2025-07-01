@@ -146,7 +146,7 @@ def create_gui():
         
         print("Falling back to console mode...")
         run_console_mode()
-
+        
 def run_console_mode():
     """Run the application in console mode as fallback"""
     print("\n" + "="*50)
@@ -160,7 +160,7 @@ def run_console_mode():
     print("- Required Python packages (see requirements.txt)")
     print("\nTo use GUI mode, ensure all dependencies are installed.")
     print("\nPress Enter to exit...")
-    
+
     try:
         input()
     except (EOFError, KeyboardInterrupt):
