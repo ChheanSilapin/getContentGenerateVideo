@@ -1,6 +1,6 @@
 """
 Whisper-Timestamped Service for precise word-level timestamp extraction
-Integrates with existing gTTS + speech recognition workflow for improved subtitle synchronization
+Integrates with existing Edge TTS/Kokoro TTS + speech recognition workflow for improved subtitle synchronization
 """
 import os
 import time
@@ -20,7 +20,7 @@ except ImportError:
         print("⚠️ whisper-timestamped not available. Enhanced subtitle timing disabled.")
         print("   Install with: pip install whisper-timestamped (for better voice synchronization)")
 
-from services.content_analysis import ContentType
+
 from utils.logging_utils import log_speech_recognition
 
 @dataclass
@@ -148,11 +148,10 @@ class WhisperTimestampedService:
         except ImportError:
             return False
     
-    def analyze_audio_with_timestamps(self, 
-                                    audio_file: str, 
+    def analyze_audio_with_timestamps(self,
+                                    audio_file: str,
                                     language: str = "en",
-                                    use_vad: bool = True,
-                                    content_type: ContentType = None) -> WhisperResult:
+                                    use_vad: bool = True) -> WhisperResult:
         """
         Analyze audio file and extract word-level timestamps
         
@@ -160,7 +159,7 @@ class WhisperTimestampedService:
             audio_file: Path to audio file
             language: Language code (e.g., "en", "hi", "es")
             use_vad: Whether to use Voice Activity Detection
-            content_type: Content type for optimization
+
             
         Returns:
             WhisperResult with word-level timestamps
@@ -188,8 +187,8 @@ class WhisperTimestampedService:
 
             log_speech_recognition(f" Analyzing audio with whisper-timestamped...")
 
-            # Configure transcription options based on content type
-            transcribe_options = self._get_transcription_options(language, use_vad, content_type)
+            # Configure transcription options
+            transcribe_options = self._get_transcription_options(language, use_vad)
 
             # Run whisper-timestamped transcription
             result = whisper.transcribe(self.model, audio_file, **transcribe_options)
@@ -268,8 +267,8 @@ class WhisperTimestampedService:
             "max_cache_size": self._cache_max_size
         }
     
-    def _get_transcription_options(self, language: str, use_vad: bool, content_type: ContentType) -> Dict:
-        """Get optimized transcription options based on content type"""
+    def _get_transcription_options(self, language: str, use_vad: bool) -> Dict:
+        """Get default transcription options"""
         options = {
             "language": language,
             "vad": use_vad,
@@ -277,18 +276,7 @@ class WhisperTimestampedService:
             "verbose": False,
             "temperature": 0.0,  # Deterministic output
         }
-        
-        # Content-type specific optimizations
-        if content_type == ContentType.HISTORICAL:
-            # Historical content may have proper nouns and dates
-            options["initial_prompt"] = "This is historical content with names, dates, and places."
-        elif content_type == ContentType.STORY_REVIEW:
-            # Story reviews may have emotional language
-            options["initial_prompt"] = "This is a story review with descriptive and emotional language."
-        elif content_type == ContentType.DOCUMENTARY:
-            # Documentary content is typically formal
-            options["initial_prompt"] = "This is documentary content with factual information."
-        
+
         return options
     
     def _process_whisper_result(self, result: Dict, processing_time: float) -> WhisperResult:

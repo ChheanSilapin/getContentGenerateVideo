@@ -1,6 +1,6 @@
 """
 Optimized Audio Service - TTS-to-Text Workflow for Subtitle Synchronization
-Clean implementation: Text → gTTS → Speech Recognition Analysis → Synchronized Subtitles
+Clean implementation: Text → Edge TTS/Kokoro TTS → Speech Recognition Analysis → Synchronized Subtitles
 """
 import os
 import tempfile
@@ -29,30 +29,33 @@ except ImportError:
 
 class AudioTimingResult:
     """Result from TTS-to-Text timing analysis"""
-    def __init__(self, success: bool, audio_file: str, timing_data: Optional[Dict] = None, error: str = ""):
+    def __init__(self, success: bool, audio_file: str, timing_data: Optional[Dict] = None, error: str = "",
+                 original_text: str = "", processed_text: str = ""):
         self.success = success
         self.audio_file = audio_file
         self.timing_data = timing_data or {}
         self.error = error
+        self.original_text = original_text  # Text user typed
+        self.processed_text = processed_text  # Text sent to TTS
         self.vosk_segments = timing_data.get('vosk_segments', []) if timing_data else []
         self.whisper_segments = timing_data.get('whisper_segments', []) if timing_data else []
         self.processing_time = timing_data.get('processing_time', 0.0) if timing_data else 0.0
 
 
-def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor: str = "American",
+def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor: str = "Guy",
                                        speed: float = 1.0, emotion: str = "neutral",
-                                       language: str = 'en-us', content_analysis=None) -> AudioTimingResult:
+                                       language: str = 'en') -> AudioTimingResult:
     """
-    Generate audio with gTTS and analyze timing for subtitle synchronization
+    Generate audio with Edge TTS or Kokoro TTS and analyze timing for subtitle synchronization
 
     Args:
-        text: Text to convert to speech
+        text: Text to convert to speech (original text from user)
         output_file: Path for output audio file
-        voice_actor: Voice actor preference
+        voice_actor: Voice actor preference (Guy, Connor, Aria, Michael, Adam, Heart)
         speed: Speech speed multiplier
         emotion: Emotional tone
         language: Language code
-        content_analysis: Content analysis for optimization
+
 
     Returns:
         AudioTimingResult with timing data for subtitle synchronization
@@ -60,19 +63,19 @@ def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor
     start_time = time.time()
 
     try:
-        # Step 1: Preprocess text for better TTS and speech recognition
-        from utils.text_processing import process_text_for_speech_recognition
-        processed_text = process_text_for_speech_recognition(text)
+        # Step 1: Normalize text for natural speech (this is the key fix!)
+        from utils.text_processing import normalize_text_for_natural_speech
+        processed_text = normalize_text_for_natural_speech(text)
 
-        # Log preprocessing if significant changes were made
-        if len(processed_text) != len(text) or processed_text != text:
-            print(clean_log_message(f"📝 Text preprocessed for TTS (length: {len(text)} → {len(processed_text)})"))
+        # Store both original and processed text
+        original_text = text
 
-        # Step 2: Generate audio with gTTS
+        # Step 2: Generate audio with Edge TTS or Kokoro TTS
         # Get TTS manager
         tts_manager = get_tts_manager()
         if not tts_manager:
-            return AudioTimingResult(False, "", error="TTS manager not available")
+            return AudioTimingResult(False, "", error="TTS manager not available",
+                                   original_text=original_text, processed_text=processed_text)
 
         # Generate audio using processed text
         tts_params = {
@@ -84,31 +87,34 @@ def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor
 
         success = tts_manager.generate_speech(processed_text, output_file, **tts_params)
         if not success:
-            return AudioTimingResult(False, output_file, error="gTTS generation failed")
+            return AudioTimingResult(False, output_file, error="TTS generation failed",
+                                   original_text=original_text, processed_text=processed_text)
 
-        # Step 3: Analyze generated audio for timing synchronization (use original text for comparison)
-        timing_data = _analyze_audio_timing(output_file, text, content_analysis)
+        # Step 3: Analyze generated audio for timing synchronization (use processed text for analysis)
+        timing_data = _analyze_audio_timing(output_file, processed_text)
 
         processing_time = time.time() - start_time
         timing_data['processing_time'] = processing_time
-        
-        return AudioTimingResult(True, output_file, timing_data)
-        
+
+        return AudioTimingResult(True, output_file, timing_data,
+                               original_text=original_text, processed_text=processed_text)
+
     except Exception as e:
         error_msg = f"Audio generation with timing analysis failed: {e}"
         print(clean_log_message(f"❌ {error_msg}"))
-        return AudioTimingResult(False, output_file, error=error_msg)
+        return AudioTimingResult(False, output_file, error=error_msg,
+                               original_text=text, processed_text="")
 
 
-def _analyze_audio_timing(audio_file: str, original_text: str, content_analysis=None) -> Dict[str, Any]:
+def _analyze_audio_timing(audio_file: str, original_text: str) -> Dict[str, Any]:
     """
     Analyze generated audio using Vosk + Whisper for subtitle timing synchronization
-    
+
     Args:
         audio_file: Path to generated audio file
         original_text: Original text for reference
-        content_analysis: Content analysis for optimization
-        
+
+
     Returns:
         Dictionary with timing analysis results
     """
@@ -130,7 +136,7 @@ def _analyze_audio_timing(audio_file: str, original_text: str, content_analysis=
 
         # Analyze with Whisper for precise timing
         if WHISPER_AVAILABLE:
-            whisper_result = _analyze_with_whisper(audio_file, content_analysis)
+            whisper_result = _analyze_with_whisper(audio_file)
             if whisper_result:
                 timing_data['whisper_segments'] = whisper_result
                 timing_data['method_used'] = 'whisper' if not timing_data['vosk_segments'] else 'vosk+whisper'
@@ -161,16 +167,23 @@ def _analyze_with_vosk(audio_file: str, original_text: str) -> list:
         )
 
         if result and result.success:
-            # Convert to timing segments
+            # Get actual audio duration for proper timing
+            from utils.helpers import get_media_duration_safe
+            audio_duration = get_media_duration_safe(audio_file)
+
+            # Debug logging for timing verification
+            print(f"[VOSK TIMING] Audio file: {os.path.basename(audio_file)} | Duration: {audio_duration:.2f}s")
+
+            # Vosk doesn't provide detailed segments, create a single segment from the full result
             segments = []
-            if hasattr(result, 'segments') and result.segments:
-                for segment in result.segments:
-                    segments.append({
-                        'text': segment.get('text', ''),
-                        'start': segment.get('start', 0.0),
-                        'end': segment.get('end', 0.0),
-                        'confidence': segment.get('confidence', 0.8)
-                    })
+            if result.recognized_text:
+                segments.append({
+                    'text': result.recognized_text,
+                    'start': 0.0,
+                    'end': audio_duration,  # Use actual audio duration instead of placeholder
+                    'confidence': result.similarity_score
+                })
+                print(f"[VOSK TIMING] Created segment: 0.0-{audio_duration:.2f}s | Text: '{result.recognized_text[:50]}...'")
             return segments
 
         return []
@@ -180,7 +193,7 @@ def _analyze_with_vosk(audio_file: str, original_text: str) -> list:
         return []
 
 
-def _analyze_with_whisper(audio_file: str, content_analysis=None) -> list:
+def _analyze_with_whisper(audio_file: str) -> list:
     """Analyze audio with Whisper for precise timing"""
     try:
         whisper_service = WhisperTimestampedService()
@@ -188,17 +201,11 @@ def _analyze_with_whisper(audio_file: str, content_analysis=None) -> list:
             print(f"[DEBUG] Whisper service not available - falling back to Vosk only")
             return []
 
-        # Get content type for optimization
-        content_type = None
-        if content_analysis and hasattr(content_analysis, 'content_type'):
-            content_type = content_analysis.content_type
-
         # Analyze with Whisper
         result = whisper_service.analyze_audio_with_timestamps(
             audio_file=audio_file,
             language="en",
-            use_vad=True,
-            content_type=content_type
+            use_vad=True
         )
 
         if result.success and result.segments:
@@ -250,14 +257,14 @@ def _calculate_confidence_score(segments: list) -> float:
 
 
 # Legacy function for backward compatibility
-def generate_audio(text: str, output_file: str, voice_actor: str = "American", 
-                  speed: float = 0.8, emotion: str = "neutral", language: str = 'en',
+def generate_audio(text: str, output_file: str, voice_actor: str = "Guy",
+                  speed: float = 1.0, emotion: str = "neutral", language: str = 'en',
                   content_analysis=None, title: str = "") -> bool:
     """
     Legacy function - generates audio without timing analysis
     Use generate_audio_with_timing_analysis for subtitle synchronization
     """
     result = generate_audio_with_timing_analysis(
-        text, output_file, voice_actor, speed, emotion, language, content_analysis
+        text, output_file, voice_actor, speed, emotion, language
     )
     return result.success

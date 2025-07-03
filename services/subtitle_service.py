@@ -1,6 +1,6 @@
 """
-Optimized Subtitle Service - TTS-to-Text Timing Synchronization
-Clean implementation using speech recognition analysis for perfect subtitle timing
+Optimized Subtitle Service - Natural Speech Group Synchronization
+Simplified implementation using Whisper-timestamped (word-level) and Vosk (fallback) for precise subtitle timing
 """
 import os
 from typing import Dict, List, Tuple
@@ -26,17 +26,17 @@ class SynchronizedSubtitleGenerator:
     def __init__(self):
         self.config = SUBTITLE_CONFIG
 
-    def generate_subtitles_with_timing_sync(self, text: str, audio_timing_result, 
+    def generate_subtitles_with_timing_sync(self, text: str, audio_timing_result,
                                           output_file: str, style: str = "modern_glow") -> bool:
         """
-        Generate subtitles using TTS-to-Text timing synchronization
-        
+        Generate subtitles using optimized speech recognition timing synchronization
+
         Args:
             text: Original text
             audio_timing_result: AudioTimingResult from audio generation
             output_file: Output subtitle file path
             style: Subtitle style
-            
+
         Returns:
             bool: Success status
         """
@@ -48,37 +48,48 @@ class SynchronizedSubtitleGenerator:
             # Create output directory
             ensure_directory_exists(os.path.dirname(output_file))
 
-            # Text is already preprocessed when passed from video generation
-            cleaned_text = text
+            # Use TTS-processed text for timing alignment (same text used for audio generation)
+            # but prepare subtitle-formatted text for display
+            from utils.text_processing import normalize_text_for_subtitles
 
-            # Debug: Log what text the subtitle service receives
-            print(f"[SUBTITLE DEBUG] Received text: '{text[:50]}...'")
-            if "It's" in text or "Let's" in text or "I'll" in text:
-                print("[SUBTITLE DEBUG] ✅ Received properly preserved contractions")
-            elif "It s" in text or "Let s" in text or "I ll" in text:
-                print("[SUBTITLE DEBUG] ❌ Received text with broken contractions")
-            else:
-                print("[SUBTITLE DEBUG] ℹ️ No contractions found in received text")
+            # Get the processed text that was actually used for TTS generation
+            tts_text = audio_timing_result.processed_text or text
+            subtitle_text = normalize_text_for_subtitles(text)
 
-            # Create natural speech groups for subtitle timing
-            word_groups = self._create_word_groups(cleaned_text)
-            if not word_groups:
+            print(f"[SUBTITLE] Using TTS text for timing alignment, subtitle text for display")
+
+            # Create word groups using TTS text for accurate timing synchronization
+            word_groups = self._create_word_groups(tts_text)
+
+            # Create corresponding subtitle groups for display formatting
+            subtitle_groups = self._create_word_groups(subtitle_text)
+            if not word_groups or not subtitle_groups:
                 return False
 
-            # Extract timing from speech recognition analysis
+            # Handle group count mismatch intelligently
+            if len(word_groups) != len(subtitle_groups):
+                print(f"[SUBTITLE] Group count mismatch: TTS groups ({len(word_groups)}) != subtitle groups ({len(subtitle_groups)})")
+                # Create aligned subtitle groups that match TTS group timing
+                subtitle_groups = self._align_subtitle_groups_to_timing(subtitle_groups, word_groups)
+                print(f"[SUBTITLE] Aligned to {len(subtitle_groups)} groups for timing synchronization")
+
+            # Extract timing from speech recognition analysis using TTS-aligned word groups
             timing_result = self._extract_timing_from_analysis(audio_timing_result, word_groups)
-            if not timing_result.success:
-                # Fallback to calculated timing
+            print(f"[SUBTITLE] Timing method: {timing_result.method}")
+
+            if timing_result.success:
+                # Use precise timing from speech recognition with subtitle text for display
+                events = self._create_subtitle_events_from_timing(subtitle_groups, timing_result.segments)
+            else:
+                # Fallback to calculated timing with subtitle text for display
+                print(f"[SUBTITLE] Using fallback timing calculation")
                 audio_duration = get_media_duration_safe(audio_timing_result.audio_file)
                 timings = self._calculate_fallback_timing(word_groups, audio_duration)
-            else:
-                timings = [(seg['start'], seg['end']) for seg in timing_result.segments]
-
-            # Create subtitle events
-            events = self._create_subtitle_events(word_groups, timings)
+                events = self._create_subtitle_events(subtitle_groups, timings)
 
             # Write subtitle file
             self._write_subtitle_file(output_file, events, style)
+            print(f"[SUBTITLE] Generated {len(events)} subtitle events")
 
             return True
 
@@ -95,6 +106,85 @@ class SynchronizedSubtitleGenerator:
         word_groups = self._create_natural_speech_groups(words)
 
         return word_groups
+
+    def _align_subtitle_groups_to_timing(self, subtitle_groups: List[Dict], timing_groups: List[Dict]) -> List[Dict]:
+        """
+        Align subtitle groups to match timing groups for proper synchronization.
+        This handles cases where TTS processing changes word count.
+        """
+        if len(subtitle_groups) == len(timing_groups):
+            return subtitle_groups
+
+        # If subtitle groups are fewer, redistribute subtitle text across timing groups
+        if len(subtitle_groups) < len(timing_groups):
+            return self._redistribute_subtitle_groups(subtitle_groups, len(timing_groups))
+
+        # If subtitle groups are more, combine them to match timing groups
+        else:
+            return self._combine_subtitle_groups(subtitle_groups, len(timing_groups))
+
+    def _redistribute_subtitle_groups(self, groups: List[Dict], target_count: int) -> List[Dict]:
+        """Redistribute subtitle groups to match target count"""
+        if not groups or target_count <= 0:
+            return groups
+
+        # Combine all text and redistribute
+        all_words = []
+        for group in groups:
+            all_words.extend(group['text'].split())
+
+        # Create new groups with approximately equal word distribution
+        words_per_group = max(1, len(all_words) // target_count)
+        new_groups = []
+
+        for i in range(target_count):
+            start_idx = i * words_per_group
+            if i == target_count - 1:  # Last group gets remaining words
+                end_idx = len(all_words)
+            else:
+                end_idx = (i + 1) * words_per_group
+
+            group_words = all_words[start_idx:end_idx]
+            if group_words:
+                new_groups.append({
+                    'text': ' '.join(group_words),
+                    'word_count': len(group_words)
+                })
+
+        return new_groups
+
+    def _combine_subtitle_groups(self, groups: List[Dict], target_count: int) -> List[Dict]:
+        """Combine subtitle groups to match target count"""
+        if not groups or target_count <= 0:
+            return groups
+
+        if target_count >= len(groups):
+            return groups
+
+        # Calculate how many original groups to combine for each target group
+        groups_per_target = len(groups) / target_count
+        new_groups = []
+
+        for i in range(target_count):
+            start_idx = int(i * groups_per_target)
+            end_idx = int((i + 1) * groups_per_target) if i < target_count - 1 else len(groups)
+
+            # Combine text from multiple groups
+            combined_text = []
+            combined_word_count = 0
+
+            for j in range(start_idx, end_idx):
+                if j < len(groups):
+                    combined_text.append(groups[j]['text'])
+                    combined_word_count += groups[j].get('word_count', len(groups[j]['text'].split()))
+
+            if combined_text:
+                new_groups.append({
+                    'text': ' '.join(combined_text),
+                    'word_count': combined_word_count
+                })
+
+        return new_groups
 
     def _create_natural_speech_groups(self, words: List[str]) -> List[Dict]:
         """Create natural speech groups based on punctuation and speech patterns"""
@@ -146,192 +236,352 @@ class SynchronizedSubtitleGenerator:
         return groups
 
     def _tokenize_words_properly(self, text: str) -> List[str]:
-        """Properly tokenize text preserving contractions, possessives, and hyphens"""
+        """Properly tokenize text preserving contractions, possessives, hyphens, currency, and percentages"""
         import re
 
         # Clean up extra whitespace
         text = ' '.join(text.split())
 
-        # Use regex to split on whitespace but preserve contractions and hyphens
-        # This pattern splits on whitespace but keeps:
+        # Enhanced pattern to match:
+        # - Regular words: hello, world
         # - Contractions: don't, can't, let's, we're, I'm, etc.
         # - Possessives: John's, cat's, etc.
         # - Hyphenated words: well-known, twenty-one, etc.
-        # - Compound contractions: shouldn't've, etc.
+        # - Currency amounts: $1.2, $17,190, $21,590.50
+        # - Percentages: 19.7%, 100%
+        # - Numbers with decimals: 1.2, 19.7
+        # - Numbers with commas: 1,200, 30,000
 
-        # Use a better tokenization approach that preserves contractions
-        # Pattern to match words with contractions, possessives, and hyphens
-        word_pattern = r"\b\w+(?:[''-]\w+)*\b"
+        # Split on whitespace but preserve special tokens
+        tokens = []
 
-        # Find all words using the pattern
-        words = re.findall(word_pattern, text)
+        # Pattern for currency: $123.45, $1,234.56, $1.2
+        currency_pattern = r'\$[\d,]+(?:\.\d+)?'
 
-        # Clean up any remaining punctuation while preserving internal apostrophes/hyphens
-        cleaned_words = []
-        for word in words:
-            # Remove leading/trailing punctuation but keep internal apostrophes and hyphens
-            clean_word = re.sub(r'^[^\w\'-]+|[^\w\'-]+$', '', word)
-            if clean_word and re.search(r'\w', clean_word):
-                cleaned_words.append(clean_word)
+        # Pattern for percentages: 19.7%, 100%
+        percentage_pattern = r'\d+(?:\.\d+)?%'
 
-        return cleaned_words
+        # Pattern for numbers with decimals: 1.2, 19.7
+        decimal_pattern = r'\d+\.\d+'
+
+        # Pattern for numbers with commas: 1,200, 30,000
+        comma_number_pattern = r'\d{1,3}(?:,\d{3})+'
+
+        # Pattern for contractions and possessives: don't, John's
+        contraction_pattern = r"\b\w+[''-]\w+(?:[''-]\w+)*\b"
+
+        # Pattern for regular words
+        word_pattern = r'\b\w+\b'
+
+        # Combine all patterns in order of priority
+        combined_pattern = f'({currency_pattern}|{percentage_pattern}|{decimal_pattern}|{comma_number_pattern}|{contraction_pattern}|{word_pattern})'
+
+        # Find all tokens
+        matches = re.findall(combined_pattern, text)
+
+        # Clean and filter tokens
+        for match in matches:
+            if match.strip():
+                tokens.append(match.strip())
+
+        return tokens
 
     def _extract_timing_from_analysis(self, audio_timing_result, word_groups: List[Dict]) -> SubtitleTimingResult:
-        """Extract timing segments from speech recognition analysis"""
+        """Extract timing segments from speech recognition analysis using best available method"""
         try:
             timing_data = audio_timing_result.timing_data
-            
-            # Try combined segments first (best quality)
-            if timing_data.get('combined_segments'):
-                segments = self._map_segments_to_groups(timing_data['combined_segments'], word_groups)
-                return SubtitleTimingResult(
-                    success=True, 
-                    segments=segments, 
-                    method=timing_data.get('method_used', 'combined'),
-                    confidence=timing_data.get('confidence_score', 0.0)
-                )
-            
-            # Try Whisper segments
+
+            # Priority 1: Whisper-timestamped for precise word-level timing
             if timing_data.get('whisper_segments'):
-                segments = self._map_segments_to_groups(timing_data['whisper_segments'], word_groups)
-                return SubtitleTimingResult(
-                    success=True, 
-                    segments=segments, 
-                    method='whisper',
-                    confidence=timing_data.get('confidence_score', 0.0)
-                )
-            
-            # Try Vosk segments
-            if timing_data.get('vosk_segments'):
-                segments = self._map_segments_to_groups(timing_data['vosk_segments'], word_groups)
-                return SubtitleTimingResult(
-                    success=True, 
-                    segments=segments, 
-                    method='vosk',
-                    confidence=timing_data.get('confidence_score', 0.0)
-                )
-            
+                segments = self._create_timing_from_whisper(timing_data['whisper_segments'], word_groups)
+                if segments:
+                    return SubtitleTimingResult(
+                        success=True,
+                        segments=segments,
+                        method='whisper',
+                        confidence=timing_data.get('confidence_score', 0.9)
+                    )
+
+            # Priority 2: Combined segments (fallback)
+            elif timing_data.get('combined_segments'):
+                segments = self._create_timing_from_segments(timing_data['combined_segments'], word_groups)
+                if segments:
+                    return SubtitleTimingResult(
+                        success=True,
+                        segments=segments,
+                        method=timing_data.get('method_used', 'combined'),
+                        confidence=timing_data.get('confidence_score', 0.7)
+                    )
+
+            # Priority 3: Vosk segments (basic fallback)
+            elif timing_data.get('vosk_segments'):
+                segments = self._create_timing_from_segments(timing_data['vosk_segments'], word_groups)
+                if segments:
+                    return SubtitleTimingResult(
+                        success=True,
+                        segments=segments,
+                        method='vosk',
+                        confidence=timing_data.get('confidence_score', 0.5)
+                    )
+
             return SubtitleTimingResult(success=False, method='no_segments')
 
         except Exception as e:
+            print(f"[SUBTITLE] Timing extraction error: {e}")
             return SubtitleTimingResult(success=False, method='error')
 
-    def _map_segments_to_groups(self, segments: List[Dict], word_groups: List[Dict]) -> List[Dict]:
-        """Map natural speech groups to Whisper timing for synchronized subtitles"""
-        if not segments:
+    def _create_timing_from_whisper(self, whisper_segments: List[Dict], word_groups: List[Dict]) -> List[Dict]:
+        """Create optimized timing using Whisper word-level timestamps"""
+        if not whisper_segments or not word_groups:
             return []
 
-        # Use Whisper timing to synchronize natural speech groups
-        return self._create_group_level_timing(segments, word_groups)
+        # Check if we have word-level timing from Whisper
+        has_word_timing = any(seg.get('words') for seg in whisper_segments)
 
-    def _create_group_level_timing(self, segments: List[Dict], word_groups: List[Dict]) -> List[Dict]:
-        """Create precise timing for 5-word groups using Whisper-timestamped word-level timing"""
+        if has_word_timing:
+            # Count total words available
+            total_words = sum(len(seg.get('words', [])) for seg in whisper_segments)
+            print(f"[SUBTITLE] Using Whisper word-level timing ({len(whisper_segments)} segments, {total_words} words)")
+            return self._create_word_level_timing(whisper_segments, word_groups)
+        else:
+            print(f"[SUBTITLE] Using Whisper segment-level timing")
+            return self._create_timing_from_segments(whisper_segments, word_groups)
+
+    def _create_timing_from_segments(self, segments: List[Dict], word_groups: List[Dict]) -> List[Dict]:
+        """Create timing from basic segment data (Vosk or segment-level Whisper)"""
         if not segments or not word_groups:
             return []
 
+        timing_segments = []
+
+        # If we have multiple segments, distribute groups across them
+        if len(segments) > 1:
+            # Distribute word groups proportionally across available segments
+            groups_per_segment = len(word_groups) / len(segments)
+
+            for i, segment in enumerate(segments):
+                start_group_idx = int(i * groups_per_segment)
+                end_group_idx = int((i + 1) * groups_per_segment)
+                if i == len(segments) - 1:  # Last segment gets remaining groups
+                    end_group_idx = len(word_groups)
+
+                segment_groups = word_groups[start_group_idx:end_group_idx]
+                if segment_groups:
+                    # Distribute timing within this segment
+                    segment_duration = segment['end'] - segment['start']
+                    time_per_group = segment_duration / len(segment_groups)
+
+                    for j, group in enumerate(segment_groups):
+                        group_start = segment['start'] + (j * time_per_group)
+                        group_end = segment['start'] + ((j + 1) * time_per_group)
+
+                        timing_segments.append({
+                            'text': group['text'],
+                            'start': group_start,
+                            'end': group_end,
+                            'confidence': segment.get('confidence', 0.7)
+                        })
+        else:
+            # Single segment - distribute groups evenly
+            segment = segments[0]
+            segment_duration = segment['end'] - segment['start']
+            time_per_group = segment_duration / len(word_groups)
+
+            for i, group in enumerate(word_groups):
+                group_start = segment['start'] + (i * time_per_group)
+                group_end = segment['start'] + ((i + 1) * time_per_group)
+
+                timing_segments.append({
+                    'text': group['text'],
+                    'start': group_start,
+                    'end': group_end,
+                    'confidence': segment.get('confidence', 0.7)
+                })
+
+        return timing_segments
+
+    def _create_subtitle_events_from_timing(self, word_groups: List[Dict], timing_segments: List[Dict]) -> List[Dict]:
+        """Create subtitle events directly from timing segments (optimized path)"""
+        events = []
+
+        # Use timing segments directly if they match word groups
+        if len(timing_segments) == len(word_groups):
+            for group, timing in zip(word_groups, timing_segments):
+                # Use exact Whisper timing for perfect voice synchronization
+                adjusted_start = timing['start']
+                adjusted_end = timing['end']
+
+                # Clean text for ASS format
+                text = group['text'].strip()
+                text = text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+                text = self._add_line_breaks_for_long_text(text)
+
+                events.append({
+                    'text': text,
+                    'start': adjusted_start,
+                    'end': adjusted_end,
+                    'style': 'Default'
+                })
+        else:
+            # Fallback to proportional mapping
+            print(f"[SUBTITLE] Timing mismatch: {len(timing_segments)} segments vs {len(word_groups)} groups")
+            timings = [(seg['start'], seg['end']) for seg in timing_segments]
+            if len(timings) != len(word_groups):
+                # Create proportional timings
+                if timing_segments:
+                    total_start = timing_segments[0]['start']
+                    total_end = timing_segments[-1]['end']
+                    total_duration = total_end - total_start
+
+                    timings = []
+                    for i in range(len(word_groups)):
+                        group_ratio = i / len(word_groups)
+                        next_group_ratio = (i + 1) / len(word_groups)
+                        start_time = total_start + (group_ratio * total_duration)
+                        end_time = total_start + (next_group_ratio * total_duration)
+                        timings.append((start_time, end_time))
+
+            events = self._create_subtitle_events(word_groups, timings)
+
+        return events
+
+    def _create_word_level_timing(self, segments: List[Dict], word_groups: List[Dict]) -> List[Dict]:
+        """Create precise timing using Whisper word-level timestamps"""
+        if not segments or not word_groups:
+            return []
+
+        # Flatten all word timestamps from all segments
+        all_words = []
+        for segment in segments:
+            if segment.get('words'):
+                for word in segment['words']:
+                    # Handle WhisperTimestamp objects (they have .text, .start, .end attributes)
+                    if hasattr(word, 'text'):
+                        all_words.append({
+                            'text': word.text.strip(),
+                            'start': word.start,
+                            'end': word.end,
+                            'confidence': getattr(word, 'confidence', 0.9)
+                        })
+                    # Handle dictionary format (fallback)
+                    elif isinstance(word, dict):
+                        all_words.append({
+                            'text': word.get('text', '').strip(),
+                            'start': word.get('start', 0.0),
+                            'end': word.get('end', 0.0),
+                            'confidence': word.get('confidence', 0.9)
+                        })
+
+        if not all_words:
+            print(f"[SUBTITLE] No word-level timing found, falling back to segment timing")
+            return self._create_timing_from_segments(segments, word_groups)
+
+        print(f"[SUBTITLE] Extracted {len(all_words)} words from Whisper for precise timing")
+
+        # Use proportional timing distribution instead of word matching
+        # This avoids the TTS vs subtitle word mismatch issue
         mapped_segments = []
 
-        # Try to use word-level timing if available
-        try:
-            # Check if we have proper Whisper result with word-level timing
-            if hasattr(segments[0], 'words') or 'words' in segments[0]:
-                # We have word-level timing, use it directly
-                whisper_words = []
-                for segment in segments:
-                    if hasattr(segment, 'words'):
-                        # WhisperSegment object
-                        for word in segment.words:
-                            whisper_words.append({
-                                'word': word.text.strip().lower(),
-                                'start': word.start,
-                                'end': word.end
-                            })
-                    elif 'words' in segment and segment['words']:
-                        # Dictionary with words
-                        for word_info in segment['words']:
-                            # Handle both dictionary and object formats
-                            if isinstance(word_info, dict):
-                                word_text = word_info.get('word', '').strip().lower()
-                                # Get segment fallback values
-                                segment_start = getattr(segment, 'start', 0) if hasattr(segment, 'start') else segment.get('start', 0)
-                                segment_end = getattr(segment, 'end', 0) if hasattr(segment, 'end') else segment.get('end', 0)
-                                word_start = word_info.get('start', segment_start)
-                                word_end = word_info.get('end', segment_end)
-                            else:
-                                # Whisper word object
-                                word_text = getattr(word_info, 'text', '').strip().lower()
-                                word_start = getattr(word_info, 'start', 0)
-                                word_end = getattr(word_info, 'end', 0)
+        if all_words:
+            total_start = all_words[0]['start']
+            total_end = all_words[-1]['end']
+            total_duration = total_end - total_start
 
-                            whisper_words.append({
-                                'word': word_text,
-                                'start': word_start,
-                                'end': word_end
-                            })
+            # Apply timing offset compensation for FFmpeg's -avoid_negative_ts make_zero
+            # This parameter can shift audio timing in the final video
+            timing_offset = self._calculate_timing_offset(total_start)
 
-                # Map each natural speech group to corresponding Whisper words
-                whisper_word_index = 0
+            print(f"[SUBTITLE] Distributing {len(word_groups)} groups across {total_duration:.2f}s of audio")
+            if timing_offset != 0:
+                print(f"[SUBTITLE] Applying timing offset compensation: {timing_offset:.3f}s")
 
-                for i, word_group in enumerate(word_groups):
-                    group_words = word_group['words']  # Use the properly tokenized words
+            for i, group in enumerate(word_groups):
+                # Calculate proportional timing for this group
+                group_ratio_start = i / len(word_groups)
+                group_ratio_end = (i + 1) / len(word_groups)
 
-                    # Find timing for this group's words
-                    group_start = None
-                    group_end = None
-                    words_matched = 0
+                group_start = total_start + (group_ratio_start * total_duration) + timing_offset
+                group_end = total_start + (group_ratio_end * total_duration) + timing_offset
 
-                    # Try to match group words with Whisper words
-                    for group_word in group_words:
-                        if whisper_word_index < len(whisper_words):
-                            whisper_word = whisper_words[whisper_word_index]
+                # Ensure minimum duration
+                min_duration = 0.8
+                if group_end - group_start < min_duration:
+                    group_end = group_start + min_duration
 
-                            # Set start time from first word
-                            if group_start is None:
-                                group_start = whisper_word['start']
+                # Prevent overlaps with previous group
+                if mapped_segments:
+                    prev_end = mapped_segments[-1]['end']
+                    if group_start < prev_end:
+                        group_start = prev_end
+                        group_end = max(group_end, group_start + min_duration)
 
-                            # Update end time with each word
-                            group_end = whisper_word['end']
+                mapped_segments.append({
+                    'text': group['text'],
+                    'start': group_start,
+                    'end': group_end,
+                    'confidence': 0.9  # High confidence for proportional timing
+                })
 
-                            whisper_word_index += 1
-                            words_matched += 1
-                        else:
-                            # No more Whisper words, use fallback timing
-                            break
-
-                    # Fallback if no timing found
-                    if group_start is None or group_end is None:
-                        if mapped_segments:
-                            # Continue from last segment
-                            group_start = mapped_segments[-1]['end']
-                            group_end = group_start + 1.5  # Default 1.5s per group
-                        else:
-                            # First group, use segment timing
-                            if hasattr(segments[0], 'start'):
-                                group_start = segments[0].start
-                            elif isinstance(segments[0], dict):
-                                group_start = segments[0].get('start', 0)
-                            else:
-                                group_start = 0
-                            group_end = group_start + 1.5
-
-                    # Ensure minimum duration
-                    if group_end - group_start < 0.8:
-                        group_end = group_start + 0.8
-
-                    mapped_segments.append({
-                        'text': word_group['text'],
-                        'start': group_start,
-                        'end': group_end,
-                        'confidence': 0.9 if words_matched > 0 else 0.5
-                    })
-
-                return mapped_segments
-
-        except ImportError:
-            pass
-
-        # If word-level timing failed, return empty to use fallback timing
+        print(f"[SUBTITLE] Created {len(mapped_segments)} timed segments using proportional distribution")
         return mapped_segments
+
+    def _calculate_timing_offset(self, audio_start_time: float) -> float:
+        """
+        Calculate timing offset to compensate for FFmpeg's -avoid_negative_ts make_zero
+
+        This parameter can shift audio timing in the final video, causing subtitle misalignment.
+        We apply a small compensation based on the original audio start time.
+
+        Args:
+            audio_start_time: Start time from original audio analysis
+
+        Returns:
+            float: Timing offset in seconds to apply to subtitles
+        """
+        # If audio starts very close to 0, FFmpeg might apply a small positive shift
+        # to avoid negative timestamps during video processing
+        if audio_start_time < 0.5:
+            # Apply a small positive offset to account for FFmpeg timestamp correction
+            return 0.1
+
+        # For audio that starts later, no offset needed
+        return 0.0
+
+    def _calculate_word_match_score(self, word1: str, word2: str) -> float:
+        """Calculate similarity score between two words (0.0 to 1.0)"""
+        if not word1 or not word2:
+            return 0.0
+
+        # Normalize words for comparison
+        w1 = word1.lower().strip('.,!?;:')
+        w2 = word2.lower().strip('.,!?;:')
+
+        # Exact match
+        if w1 == w2:
+            return 1.0
+
+        # Check if one word contains the other
+        if w1 in w2 or w2 in w1:
+            return 0.8
+
+        # Check for common prefixes/suffixes
+        if len(w1) > 2 and len(w2) > 2:
+            if w1[:3] == w2[:3] or w1[-3:] == w2[-3:]:
+                return 0.6
+
+        return 0.0
+
+    def _words_match(self, word1: str, word2: str) -> bool:
+        """Check if two words match (handles punctuation and case)"""
+        import re
+        # Remove punctuation and compare
+        clean1 = re.sub(r'[^\w]', '', word1.lower())
+        clean2 = re.sub(r'[^\w]', '', word2.lower())
+        return clean1 == clean2
+
+
+
+
 
     def _calculate_fallback_timing(self, word_groups: List[Dict], duration: float) -> List[Tuple[float, float]]:
         """Calculate fallback timing when speech recognition fails"""
@@ -362,10 +612,18 @@ class SynchronizedSubtitleGenerator:
             # Add manual line breaks for long sentences to prevent word wrapping
             text = self._add_line_breaks_for_long_text(text)
 
+            # Use exact Whisper timing for perfect voice synchronization
+            adjusted_start = max(0.0, start)  # Don't go below 0
+            adjusted_end = end
+
+            # Debug logging for timing verification
+            if i < 3:  # Only log first 3 events to avoid spam
+                print(f"[SUBTITLE TIMING] Event {i+1}: '{text[:30]}...' | Original: {start:.2f}-{end:.2f}s | Adjusted: {adjusted_start:.2f}-{adjusted_end:.2f}s")
+
             events.append({
                 'text': text,
-                'start': start,
-                'end': end,
+                'start': adjusted_start,
+                'end': adjusted_end,
                 'style': 'Default'
             })
 

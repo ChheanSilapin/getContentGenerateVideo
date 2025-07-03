@@ -54,7 +54,7 @@ Every morning, I start my day with a warm, freshly cooked egg. It is a simple ro
 The preprocessing is automatically applied in two key places:
 
 1. **Audio Generation** (`services/audio_service.py`)
-   - Text is preprocessed before being sent to gTTS
+   - Text is preprocessed before being sent to Edge TTS or Kokoro TTS
    - Results in cleaner, more natural speech synthesis
 
 2. **Speech Recognition** (`services/speech_recognition_core.py`)

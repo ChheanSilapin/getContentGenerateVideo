@@ -1,7 +1,7 @@
 """
 Settings Popup Component - Reusable settings dialog for any tab
 Leverages existing AudioSettings and UI Factory components to avoid duplication
-Includes gTTS and Vosk speech recognition settings
+Includes Edge TTS + Kokoro TTS and Vosk speech recognition settings
 """
 from utils.common_imports import tk, messagebox, ttk, filedialog
 from utils.settings_manager import SettingsManager
@@ -96,7 +96,7 @@ class SettingsPopup:
 
             # Set shared TTS settings
             self.tts_language.set(tab_settings.get('tts_language', 'en'))
-            self.tts_voice_actor.set(tab_settings.get('tts_voice_actor', 'Default'))
+            self.tts_voice_actor.set(tab_settings.get('tts_voice_actor', 'Guy'))  # Direct assignment - no mapping needed
             self.tts_speed.set(tab_settings.get('tts_speed', 1.0))
             self.tts_emotion.set(tab_settings.get('tts_emotion', 'neutral'))
 
@@ -283,7 +283,7 @@ class SettingsPopup:
 
     def _create_tts_section(self, parent):
         """Create TTS (Text-to-Speech) settings section"""
-        tts_frame = ttk.LabelFrame(parent, text="🗣️ Text-to-Speech (Hybrid TTS)", padding=15)
+        tts_frame = ttk.LabelFrame(parent, text="🎤 Text-to-Speech (Edge TTS + Kokoro TTS)", padding=15)
         tts_frame.pack(fill="x", pady=(0, 15))
 
         # Language selection
@@ -295,26 +295,32 @@ class SettingsPopup:
         language_combo = ttk.Combobox(
             lang_row,
             textvariable=self.tts_language,
-            values=["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "hi", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+            values=["en", "en-us", "en-uk", "en-au"],  # Simplified to essential English variants
             state="readonly",
             width=15
         )
         language_combo.pack(side="left", padx=(10, 0))
 
+        # Auto-save when language changes
+        language_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
+
         # Voice actor selection
         voice_row = ttk.Frame(tts_frame)
         voice_row.pack(fill="x", pady=(0, 10))
 
-        ttk.Label(voice_row, text="Voice Style:", font=("Cascadia Code", 10)).pack(side="left")
+        ttk.Label(voice_row, text="Voice Actor:", font=("Cascadia Code", 10)).pack(side="left")
 
         voice_combo = ttk.Combobox(
             voice_row,
             textvariable=self.tts_voice_actor,
-            values=["Default", "British", "American", "Australian", "Canadian", "Indian", "French", "German", "Spanish", "Italian", "Portuguese", "Hindi"],
+            values=["Guy", "Connor", "Aria", "Michael", "Adam", "Heart"],
             state="readonly",
-            width=15
+            width=25
         )
         voice_combo.pack(side="left", padx=(10, 0))
+
+        # Auto-save when voice changes
+        voice_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
 
         # Speed control
         speed_row = ttk.Frame(tts_frame)
@@ -335,10 +341,11 @@ class SettingsPopup:
         speed_label = ttk.Label(speed_row, text="1.0x", font=("Cascadia Code", 9))
         speed_label.pack(side="left")
 
-        # Update speed label when scale changes
+        # Update speed label when scale changes and auto-save
         def update_speed_label(*args):
             speed_label.config(text=f"{self.tts_speed.get():.1f}x")
-        self.tts_speed.trace("w", update_speed_label)
+            self._on_setting_changed()  # Auto-save when speed changes
+        self.tts_speed.trace_add("write", update_speed_label)
 
         # Emotion selection
         emotion_row = ttk.Frame(tts_frame)
@@ -354,6 +361,9 @@ class SettingsPopup:
             width=15
         )
         emotion_combo.pack(side="left", padx=(10, 0))
+
+        # Auto-save when emotion changes
+        emotion_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
 
         # Audio controls section (only for video tab) - compact layout
         if self.include_audio_controls:
@@ -373,7 +383,7 @@ class SettingsPopup:
                 audio_row,
                 text="Mute Audio",
                 variable=self.mute_audio,
-                command=self._on_mute_change
+                command=lambda: [self._on_mute_change(), self._on_setting_changed()]
             )
             mute_checkbox.pack(side="left")
 
@@ -419,6 +429,9 @@ class SettingsPopup:
         )
         fit_combo.pack(side="left", padx=(10, 0))
 
+        # Auto-save when image fit method changes
+        fit_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
+
         # Aspect ratio presets
         aspect_row = ttk.Frame(img_frame)
         aspect_row.pack(fill="x", pady=(10, 0))
@@ -434,6 +447,9 @@ class SettingsPopup:
         )
         aspect_combo.pack(side="left", padx=(10, 0))
 
+        # Auto-save when aspect ratio changes
+        aspect_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
+
     def _create_speech_recognition_section(self, parent):
         """Create speech recognition settings section"""
         sr_frame = ttk.LabelFrame(parent, text="🎤 Speech Recognition (Vosk)", padding=15)
@@ -447,7 +463,7 @@ class SettingsPopup:
             enable_row,
             text="Enable Speech Recognition",
             variable=self.sr_enabled,
-            command=self._toggle_speech_recognition
+            command=lambda: [self._toggle_speech_recognition(), self._on_setting_changed()]
         )
         enable_check.pack(side="left")
 
@@ -460,11 +476,14 @@ class SettingsPopup:
         sr_language_combo = ttk.Combobox(
             lang_row,
             textvariable=self.sr_language,
-            values=["en-us", "en-uk", "en-in", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
+            values=["en-us", "en-uk", "en-in"],  # Simplified to essential English variants
             state="readonly",
             width=15
         )
         sr_language_combo.pack(side="left", padx=(10, 0))
+
+        # Auto-save when speech recognition language changes
+        sr_language_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
 
         # Model path selection
         model_row = ttk.Frame(sr_frame)
@@ -642,7 +661,7 @@ class SettingsPopup:
 
         if self.include_tts:
             self.tts_language.set(default_settings.get('tts_language', 'en'))
-            self.tts_voice_actor.set(default_settings.get('tts_voice_actor', 'Default'))
+            self.tts_voice_actor.set(default_settings.get('tts_voice_actor', 'Guy'))  # Direct assignment - no mapping needed
             self.tts_speed.set(default_settings.get('tts_speed', 1.0))
             self.tts_emotion.set(default_settings.get('tts_emotion', 'neutral'))
             # Reset audio controls only if included (video tab)
@@ -677,7 +696,7 @@ class SettingsPopup:
 
         if self.include_tts:
             settings['tts_language'] = self.tts_language.get()
-            settings['tts_voice_actor'] = self.tts_voice_actor.get()
+            settings['tts_voice_actor'] = self.tts_voice_actor.get()  # Direct assignment - no mapping needed
             settings['tts_speed'] = self.tts_speed.get()
             settings['tts_emotion'] = self.tts_emotion.get()
             # Include audio controls only if included (video tab)
@@ -697,7 +716,35 @@ class SettingsPopup:
         # Content sync settings are now automatic - handled by defaults
 
         return settings
-    
+
+    def _map_display_voice_to_actual(self, display_voice: str) -> str:
+        """Map display voice names to actual voice names for TTS (now simplified - no mapping needed)"""
+        # Since we simplified the display names, they match the actual names
+        return display_voice if display_voice in ["Guy", "Connor", "Aria", "Michael", "Adam", "Heart"] else "Guy"
+
+    def _map_actual_voice_to_display(self, actual_voice: str) -> str:
+        """Map actual voice names to display names for UI (now simplified - no mapping needed)"""
+        # Since we simplified the display names, they match the actual names
+        return actual_voice if actual_voice in ["Guy", "Connor", "Aria", "Michael", "Adam", "Heart"] else "Guy"
+
+    def _on_setting_changed(self, event=None):
+        """Auto-save settings when any setting changes"""
+        try:
+            # Get current settings
+            current_settings = self.get_settings()
+
+            # Save to settings manager
+            self.settings_manager.save_settings(current_settings)
+
+            # Update the current tab's settings immediately
+            if hasattr(self, 'current_tab'):
+                self.settings_manager.save_tab_settings(self.current_tab, current_settings)
+
+            print(f"✅ Settings auto-saved: Voice={current_settings.get('tts_voice_actor', 'Guy')}")
+
+        except Exception as e:
+            print(f"❌ Failed to auto-save settings: {e}")
+
     def set_settings(self, settings=None):
         """Set settings from dictionary"""
         if settings is None:

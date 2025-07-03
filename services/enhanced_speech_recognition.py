@@ -9,7 +9,7 @@ from dataclasses import dataclass
 
 from services.speech_recognition_core import SpeechRecognitionService
 from services.speech_recognition_models import SpeechRecognitionResult
-from services.content_analysis import ContentType
+
 from config import WHISPER_TIMESTAMPED_CONFIG
 
 # Import whisper-timestamped service
@@ -47,20 +47,18 @@ class EnhancedSpeechRecognitionService:
         if not self.whisper_service:
             print("⚠️ Whisper-timestamped service not available")
     
-    def process_text_with_enhanced_validation(self, 
+    def process_text_with_enhanced_validation(self,
                                             text: str,
-                                            content_type: ContentType = None,
                                             voice_settings: Dict = None,
                                             cleanup_audio: bool = True) -> EnhancedSpeechResult:
         """
         Process text with enhanced validation using both Vosk and whisper-timestamped
-        
+
         Args:
             text: Original text to validate
-            content_type: Content type for optimization
             voice_settings: Voice generation settings
             cleanup_audio: Whether to cleanup audio files
-            
+
         Returns:
             EnhancedSpeechResult with validation from multiple methods
         """
@@ -68,7 +66,7 @@ class EnhancedSpeechRecognitionService:
         
         # Step 1: Run traditional Vosk validation
         vosk_result = self.vosk_service.process_text_to_speech_to_text_with_postprocessing(
-            text, content_type, voice_settings, cleanup_audio=False  # Keep audio for whisper
+            text, None, voice_settings, cleanup_audio=False  # Keep audio for whisper
         )
         
         whisper_result = None
@@ -80,7 +78,7 @@ class EnhancedSpeechRecognitionService:
             # Step 2: Run whisper-timestamped validation if available
             if self.whisper_service:
                 whisper_result = self._validate_with_whisper(
-                    vosk_result.audio_file_path, text, content_type
+                    vosk_result.audio_file_path, text
                 )
             
             # Step 3: Determine best result
@@ -107,16 +105,14 @@ class EnhancedSpeechRecognitionService:
     
     def validate_audio_with_enhanced_methods(self,
                                            audio_file: str,
-                                           original_text: str,
-                                           content_type: ContentType = None) -> EnhancedSpeechResult:
+                                           original_text: str) -> EnhancedSpeechResult:
         """
         Validate existing audio file using both Vosk and whisper-timestamped
-        
+
         Args:
             audio_file: Path to audio file
             original_text: Original text for comparison
-            content_type: Content type for optimization
-            
+
         Returns:
             EnhancedSpeechResult with validation from multiple methods
         """
@@ -124,13 +120,13 @@ class EnhancedSpeechRecognitionService:
         
         # Step 1: Run traditional Vosk validation
         vosk_result = self.vosk_service.recognize_speech_from_audio_with_postprocessing(
-            audio_file, original_text, content_type
+            audio_file, original_text, None
         )
-        
+
         # Step 2: Run whisper-timestamped validation if available
         whisper_result = None
         if self.whisper_service:
-            whisper_result = self._validate_with_whisper(audio_file, original_text, content_type)
+            whisper_result = self._validate_with_whisper(audio_file, original_text)
         
         # Step 3: Determine best result
         final_text, confidence_score, method_used = self._select_best_result(
@@ -147,10 +143,9 @@ class EnhancedSpeechRecognitionService:
             success=vosk_result.success or (whisper_result and whisper_result.success)
         )
     
-    def _validate_with_whisper(self, 
-                              audio_file: str, 
-                              original_text: str,
-                              content_type: ContentType = None) -> Optional[SpeechRecognitionResult]:
+    def _validate_with_whisper(self,
+                              audio_file: str,
+                              original_text: str) -> Optional[SpeechRecognitionResult]:
         """Validate audio using whisper-timestamped"""
         try:
             # Get language setting
@@ -161,8 +156,7 @@ class EnhancedSpeechRecognitionService:
             result = self.whisper_service.analyze_audio_with_timestamps(
                 audio_file=audio_file,
                 language=language,
-                use_vad=use_vad,
-                content_type=content_type
+                use_vad=use_vad
             )
             
             if not result.success:

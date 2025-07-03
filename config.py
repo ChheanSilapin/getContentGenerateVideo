@@ -132,7 +132,7 @@ SUBTITLE_CONFIG = {
     # Speech Analysis - ENABLED for precise subtitle-voice synchronization
     "use_speech_analysis": True,    # Enabled for accurate timing based on actual speech patterns
     "speech_analysis_max_duration": 60.0,  # Max audio length for speech analysis
-    "silence_threshold_db": 15,    # dB below average for silence detection (more sensitive for gTTS)
+    "silence_threshold_db": 15,    # dB below average for silence detection (optimized for neural TTS)
     "min_silence_length_ms": 100,  # Minimum silence length in milliseconds (detect natural pauses)
     
     # Dynamic Background Effects
@@ -244,20 +244,41 @@ SUBTITLE_CONFIG = {
     "default_style": "bold_outline"
 }
 
-AUTO_CLEANUP_AFTER_COMPLETION = True  
-ENABLE_CONTENT_ANALYSIS_CACHE = True
-CONTENT_CACHE_MAX_SIZE = 100  
-CONTENT_CACHE_TTL_HOURS = 24  
+AUTO_CLEANUP_AFTER_COMPLETION = True
 ENABLE_TTS_CACHE = True
 TTS_CACHE_MAX_SIZE = 50
 TTS_CACHE_TTL_HOURS = 48
 
-# Optimized TTS Configuration (gTTS only)
-GTTS_CONFIG = {
-    # gTTS Settings
-    "language_support": ["en", "en-uk", "en-us", "en-au", "en-ca", "en-in", "hi", "fr", "de", "es", "it", "pt", "ru", "ja", "ko", "zh"],
-    "emotion_processing": True,            # Maintain emotional text processing
-    "speed_adjustment": True               # Keep speed adjustment features
+# Professional TTS Configuration (Edge TTS + Kokoro TTS)
+TTS_CONFIG = {
+    # Edge TTS Voices (Microsoft Neural Voices)
+    "edge_voices": {
+        "Guy": "en-US-GuyNeural",           # US Male - Warm, friendly
+        "Connor": "en-IE-ConnorNeural",     # Irish Male - Authentic accent
+        "Aria": "en-US-AriaNeural"          # US Female - Natural, expressive
+    },
+
+    # Kokoro TTS Voices (82M Parameter Model)
+    "kokoro_voices": {
+        "Michael": "am_michael",            # Male - Friendly, warm
+        "Adam": "am_adam",                  # Male - Professional, clear
+        "Heart": "af_heart"                 # Female - Warm, expressive
+    },
+
+    # Provider Settings
+    "default_provider": "edge_tts",         # Prefer Edge TTS
+    "fallback_enabled": True,               # Enable provider fallback
+    "priority_order": ["edge_tts", "kokoro_tts"],
+
+    # Voice Quality Settings
+    "emotion_processing": True,             # Maintain emotional text processing
+    "speed_adjustment": True,               # Keep speed adjustment features
+    "default_voice": "Guy",                 # Default voice selection
+
+    # Audio Settings
+    "edge_audio_format": "wav",             # Edge TTS output format
+    "kokoro_sample_rate": 24000,            # Kokoro TTS sample rate
+    "auto_install_dependencies": True       # Auto-install TTS packages
 }
 
 FFMPEG_OPTIMIZATION = {
@@ -351,10 +372,9 @@ WHISPER_TIMESTAMPED_CONFIG = {
     "compute_confidence": True,     # Compute word-level confidence scores
     "temperature": 0.0,             # Temperature for deterministic output
 
-    # Language and Content Settings
+    # Language Settings
     "default_language": "en",       # Default language code
     "auto_detect_language": True,  # Auto-detect language (slower but more accurate)
-    "content_aware_prompts": True,  # Use content-type specific prompts
 
     # Subtitle Integration
     "replace_speech_analysis": True,    # Replace current speech analysis with whisper-timestamped
@@ -366,13 +386,4 @@ WHISPER_TIMESTAMPED_CONFIG = {
     "max_audio_duration": 300,      # Maximum audio duration for processing (seconds)
     "enable_caching": True,         # Cache whisper results for repeated content
     "cache_ttl_hours": 24,          # Cache time-to-live in hours
-
-    # Content Type Optimizations
-    "content_type_prompts": {
-        "historical": "This is historical content with names, dates, and places.",
-        "story_review": "This is a story review with descriptive and emotional language.",
-        "documentary": "This is documentary content with factual information.",
-        "educational": "This is educational content with clear explanations.",
-        "quote_reflection": "This is a quote with reflective commentary."
-    }
 }

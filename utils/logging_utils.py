@@ -89,10 +89,7 @@ def log_performance_status(message: str):
     cleaned_message = clean_log_message(message)
     log_if_enabled('performance_status', cleaned_message)
 
-def log_content_analysis(message: str):
-    """Log content analysis messages"""
-    cleaned_message = clean_log_message(message)
-    log_if_enabled('content_analysis', cleaned_message)
+
 
 def log_speech_recognition(message: str):
     """Log speech recognition messages"""

@@ -27,7 +27,6 @@ class VideoProcessor:
 
         # Processing state
         self.text_input = ""
-        self.content_analysis = None
         self.validated_text = None
         self.last_speech_validation_result = None
 
@@ -40,7 +39,6 @@ class VideoProcessor:
 
             # Load video-specific settings
             self.enable_speech_validation = video_tab_settings.get('enable_speech_validation', False)
-            self.content_analysis_enabled = video_tab_settings.get('content_analysis_enabled', True)
             self.auto_cleanup = video_tab_settings.get('auto_cleanup', True)
 
             # Load audio settings for video processing
@@ -51,7 +49,7 @@ class VideoProcessor:
 
             return {
                 'language': video_tab_settings.get('tts_language', 'en'),
-                'voice_actor': video_tab_settings.get('tts_voice_actor', 'Default'),
+                'voice_actor': video_tab_settings.get('tts_voice_actor', 'Guy'),
                 'speed': video_tab_settings.get('tts_speed', 1.0),
                 'emotion': video_tab_settings.get('tts_emotion', 'neutral')
             }
@@ -60,7 +58,7 @@ class VideoProcessor:
             # Return defaults if loading fails
             return {
                 'language': 'en',
-                'voice_actor': 'Default',
+                'voice_actor': 'Guy',
                 'speed': 1.0,
                 'emotion': 'neutral'
             }
@@ -161,56 +159,36 @@ class VideoProcessor:
         return output_dir
     
     def _generate_audio(self, text_input, output_dir, stop_event):
-        """Generate audio from text input using gTTS with content analysis and speech recognition"""
+        """Generate audio from text input using Edge TTS or Kokoro TTS with speech recognition"""
         if stop_event and stop_event.is_set():
             return None
 
         from utils.logging_utils import log_step, log_essential
-        log_step(1, 3, "Generating Audio with gTTS")
+        log_step(1, 3, "Generating Audio")
         self.update_progress(20, "Analyzing content and generating audio...")
 
-        # Perform content analysis for emotion-aware generation
-        from services.content_analysis import ContentAnalyzer
-        analyzer = ContentAnalyzer()
-        content_analysis = analyzer.analyze_content(text_input, title="", context="")
-
-        print(f"Content Analysis: Type={content_analysis.content_type.value}, "
-              f"Emotion={content_analysis.emotional_tone.value}, "
-              f"Confidence={content_analysis.confidence:.2f}")
-
-        # Store content analysis for later use
-        self.content_analysis = content_analysis
+        # Use default settings for all content types
 
         from services.audio_service import generate_audio_with_timing_analysis
         audio_file = os.path.join(output_dir, "voice.mp3")
 
-        # Get TTS settings from enhancement options or use defaults
+        # Reload TTS settings from current user settings to ensure we have the latest values
+        current_tts_settings = self._load_tts_settings()
+
+        # Get TTS settings from current settings, then enhancement options, then defaults
         tts_settings = getattr(self, 'tts_settings', {})
-        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Default'))
+        tts_settings.update(current_tts_settings)  # Update with latest settings
+        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Guy'))
         speed = tts_settings.get('speed', 1.0)
         emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
         language = tts_settings.get('language', 'en')
 
-        # Apply content-aware settings if content analysis is available
-        if content_analysis:
-            voice_settings = content_analysis.recommended_voice_settings
-            # Only override if user hasn't specified custom settings
-            if voice_actor == 'Default':
-                voice_actor = voice_settings.get('voice_actor', voice_actor)
-            if language == 'en':
-                language = voice_settings.get('language', language)
-            speed = voice_settings.get('speed', speed)
-            emotion = voice_settings.get('emotion', emotion)
-
-            print(f"Using content-aware settings: type={content_analysis.content_type.value}, "
-                  f"tone={content_analysis.emotional_tone.value}, speed={speed}, emotion={emotion}")
-
-        log_essential(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
+        log_essential(f"Using TTS settings: voice={voice_actor}, speed={speed:.1f}, emotion={emotion}, language={language}")
 
         # Generate audio with timing analysis for subtitle synchronization
         audio_timing_result = generate_audio_with_timing_analysis(
             text_input, audio_file, voice_actor=voice_actor, speed=speed,
-            emotion=emotion, language=language, content_analysis=content_analysis
+            emotion=emotion, language=language
         )
 
         if not audio_timing_result.success:
@@ -269,14 +247,11 @@ class VideoProcessor:
             }
 
             # Use enhanced speech recognition with multiple validation methods
-            content_analysis = getattr(self, 'content_analysis', None)
-            content_type = content_analysis.content_type if content_analysis else None
 
             # Use enhanced validation with both Vosk and whisper-timestamped
             enhanced_result = speech_service.validate_audio_with_enhanced_methods(
                 audio_file=audio_file,
-                original_text=self.text_input,
-                content_type=content_type
+                original_text=self.text_input
             )
 
             if not enhanced_result.success:
@@ -286,8 +261,8 @@ class VideoProcessor:
             confidence_score = enhanced_result.confidence_score
             method_used = enhanced_result.method_used
 
-            # Check if validation passes threshold (with content-type aware thresholds)
-            threshold = self._get_content_aware_threshold(content_type)
+            # Check if validation passes threshold
+            threshold = self._get_content_aware_threshold(None)
             passes_validation = confidence_score >= threshold
 
             # Store enhanced validation results
@@ -317,24 +292,8 @@ class VideoProcessor:
             return None
 
     def _get_content_aware_threshold(self, content_type):
-        """Get content-type specific validation threshold"""
-        try:
-            from services.content_analysis import ContentType
-
-            # Content-specific thresholds (lower for complex content)
-            thresholds = {
-                ContentType.EDUCATIONAL: 0.65,
-                ContentType.HISTORICAL: 0.60,
-                ContentType.TECHNICAL: 0.55,
-                ContentType.QUOTE_REFLECTION: 0.70,
-                ContentType.STORY: 0.75,
-                ContentType.GENERAL: 0.70
-            }
-
-            # Use content-specific threshold or fall back to default
-            return thresholds.get(content_type, 0.70)
-        except:
-            return 0.70
+        """Get default validation threshold (content analysis removed)"""
+        return 0.70
 
     def _add_voiceover(self, video_file, audio_file, output_dir, stop_event):
         """Add voice-over to video"""
@@ -390,21 +349,9 @@ class VideoProcessor:
             self.update_progress(0, "Failed to generate subtitles - no timing data")
             return None
 
-        # Use the same preprocessed text that was used for TTS generation
-        try:
-            from utils.text_processing import process_text_for_speech_recognition
-            print(f"[DEBUG] Successfully imported process_text_for_speech_recognition")
-
-            # Test the function with a simple contraction
-            test_result = process_text_for_speech_recognition("It's a test")
-            print(f"[DEBUG] Function test: 'It's a test' → '{test_result}'")
-
-            processed_text = process_text_for_speech_recognition(text_input)
-            print(f"[DEBUG] Function returned: {type(processed_text)}, length: {len(processed_text) if processed_text else 'None'}")
-
-        except Exception as e:
-            print(f"[DEBUG] ❌ Error importing or calling preprocessing function: {e}")
-            processed_text = text_input
+        # Pass original text to subtitle service - it will handle its own processing
+        # The subtitle service uses normalize_text_for_subtitles which preserves formatting
+        processed_text = text_input
 
         # Debug: Log the text being passed to subtitle generation
         print(f"[DEBUG] Original text: '{text_input[:100]}...'")
@@ -424,12 +371,10 @@ class VideoProcessor:
         else:
             print("[DEBUG] ℹ️ No contractions found in text")
 
-        if not generate_subtitles_with_timing_sync(processed_text, audio_timing_result, subtitle_file, subtitle_style):
+        if not generate_subtitles_with_timing_sync(text_input, audio_timing_result, subtitle_file, subtitle_style):
             print("ERROR: Failed to generate synchronized subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None
-
-
 
         self.update_progress(90, "Subtitles generated successfully")
         return subtitle_file

@@ -1,161 +1,186 @@
 """
-Optimized TTS Provider System - gTTS Only
-Simplified for speed and reliability
+Professional TTS Provider System - Edge TTS + Kokoro TTS
+High-quality voice generation with your selected voices
 """
 import os
 import tempfile
 import time
+import asyncio
+import subprocess
+import sys
 from typing import Optional, Dict, Any
 
 # Import logging utilities for emoji handling
 from utils.logging_utils import clean_log_message
 
-# Import gTTS
+# Import Edge TTS
 try:
-    from gtts import gTTS
-    GTTS_AVAILABLE = True
+    import edge_tts
+    EDGE_TTS_AVAILABLE = True
 except ImportError:
-    GTTS_AVAILABLE = False
-    print("❌ gTTS not available. Install with: pip install gtts")
+    EDGE_TTS_AVAILABLE = False
+    print("❌ Edge TTS not available. Install with: pip install edge-tts")
+
+# Import Kokoro TTS
+try:
+    from kokoro import KPipeline
+    import soundfile as sf
+    KOKORO_AVAILABLE = True
+except ImportError:
+    KOKORO_AVAILABLE = False
+    print("❌ Kokoro TTS not available. Install with: pip install kokoro soundfile")
 
 
-class GTTSProvider:
-    """Google Text-to-Speech Provider - Optimized for speed"""
-    
+class EdgeTTSProvider:
+    """Microsoft Edge Text-to-Speech Provider - High Quality Neural Voices"""
+
     def __init__(self):
-        self.name = "Google TTS"
-        self.available = GTTS_AVAILABLE
+        self.name = "Microsoft Edge TTS"
+        self.available = EDGE_TTS_AVAILABLE
         self.last_error = None
-    
+
+        # Your selected Edge TTS voices
+        self.voice_mapping = {
+            'Guy': 'en-US-GuyNeural',
+            'Connor': 'en-IE-ConnorNeural',
+            'Aria': 'en-US-AriaNeural'
+        }
+
     def check_availability(self) -> bool:
-        """Check if gTTS is available"""
-        return GTTS_AVAILABLE
-    
+        """Check if Edge TTS is available"""
+        return EDGE_TTS_AVAILABLE
+
     def generate_speech(self, text: str, output_file: str, **kwargs) -> bool:
-        """Generate speech using gTTS with proper accent mapping"""
+        """Generate speech using Edge TTS"""
         if not self.available:
-            self.last_error = "gTTS not available"
+            self.last_error = "Edge TTS not available"
             return False
 
         try:
-            # Get parameters
-            language = kwargs.get('language', 'en')
-            voice_actor = kwargs.get('voice_actor', 'Default')
-            emotion = kwargs.get('emotion', 'neutral')
+            # Get voice selection
+            voice_actor = kwargs.get('voice_actor', 'Guy')
 
-            # Map voice actor and language to actual gTTS language codes
-            gtts_lang = self._map_to_gtts_language(language, voice_actor)
+            # Map to Edge TTS voice
+            edge_voice = self.voice_mapping.get(voice_actor, 'en-US-GuyNeural')
 
-            # Create gTTS object with mapped language
-            tts = gTTS(text=text, lang=gtts_lang, slow=False)
+            # Generate audio asynchronously
+            success = asyncio.run(self._generate_async(text, output_file, edge_voice))
 
-            # Save to temporary file first
-            with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3') as temp_file:
-                temp_path = temp_file.name
-                tts.save(temp_path)
-                print(f"gTTS audio saved to temporary file: {temp_path}")
-
-            # Move to final location
-            if os.path.exists(temp_path):
-                os.rename(temp_path, output_file)
+            if success:
                 return True
             else:
-                self.last_error = "Failed to generate audio file"
+                self.last_error = "Failed to generate Edge TTS audio"
                 return False
 
         except Exception as e:
             self.last_error = str(e)
-            print(clean_log_message(f"❌ gTTS error: {e}"))
+            print(clean_log_message(f"❌ Edge TTS error: {e}"))
             return False
 
-    def _map_to_gtts_language(self, language: str, voice_actor: str) -> str:
-        """Map language and voice actor to actual gTTS language codes"""
+    async def _generate_async(self, text: str, output_file: str, voice: str) -> bool:
+        """Async generation for Edge TTS"""
+        try:
+            communicate = edge_tts.Communicate(text, voice)
+            await communicate.save(output_file)
+            return True
+        except Exception as e:
+            print(clean_log_message(f"❌ Edge TTS async error: {e}"))
+            return False
 
-        # Handle Hindi language specifically
-        if voice_actor == 'Hindi' or language == 'hi':
-            return 'hi'  # Hindi language
+    def get_supported_voices(self):
+        """Get supported voices for Edge TTS"""
+        return list(self.voice_mapping.keys())
 
-        # Handle other non-English languages by voice actor
-        voice_to_language = {
-            'French': 'fr',
-            'German': 'de',
-            'Spanish': 'es',
-            'Italian': 'it',
-            'Portuguese': 'pt',
-            'Russian': 'ru',
-            'Japanese': 'ja',
-            'Korean': 'ko',
-            'Chinese': 'zh'
+    def supports_voice(self, voice: str) -> bool:
+        """Check if voice is supported"""
+        return voice in self.voice_mapping
+
+
+class KokoroTTSProvider:
+    """Kokoro TTS Provider - Fast, High-Quality 82M Parameter Model"""
+
+    def __init__(self):
+        self.name = "Kokoro TTS"
+        self.available = KOKORO_AVAILABLE
+        self.last_error = None
+        self.pipeline = None
+
+        # Your selected Kokoro voices
+        self.voice_mapping = {
+            'Michael': 'am_michael',
+            'Adam': 'am_adam',
+            'Heart': 'af_heart'
         }
 
-        # Check if voice actor indicates a specific language
-        if voice_actor in voice_to_language:
-            return voice_to_language[voice_actor]
+    def check_availability(self) -> bool:
+        """Check if Kokoro TTS is available"""
+        return KOKORO_AVAILABLE
 
-        # English variants mapping
-        voice_mapping = {
-            # English variants
-            ('en', 'British'): 'en-uk',      # British English
-            ('en', 'American'): 'en-us',     # American English
-            ('en', 'Australian'): 'en-au',   # Australian English
-            ('en', 'Canadian'): 'en-ca',     # Canadian English
-            ('en', 'Indian'): 'en-in',       # Indian English
-            ('en-uk', 'British'): 'en-uk',
-            ('en-us', 'American'): 'en-us',
-            ('en-au', 'Australian'): 'en-au',
-            ('en-ca', 'Canadian'): 'en-ca',
-            ('en-in', 'Indian'): 'en-in',
-            # Direct language mappings
-            ('en-uk', 'Default'): 'en-uk',
-            ('en-us', 'Default'): 'en-us',
-            ('en-au', 'Default'): 'en-au',
-            ('en-ca', 'Default'): 'en-ca',
-            ('en-in', 'Default'): 'en-in',
-        }
+    def _initialize_pipeline(self):
+        """Initialize Kokoro pipeline if needed"""
+        if self.pipeline is None and self.available:
+            try:
+                self.pipeline = KPipeline(lang_code='a')  # American English
+                print(clean_log_message("🔥 Kokoro TTS pipeline initialized"))
+            except Exception as e:
+                print(clean_log_message(f"❌ Failed to initialize Kokoro: {e}"))
+                self.available = False
 
-        # Try to find specific mapping
-        mapped_lang = voice_mapping.get((language, voice_actor))
-        if mapped_lang:
-            return mapped_lang
+    def generate_speech(self, text: str, output_file: str, **kwargs) -> bool:
+        """Generate speech using Kokoro TTS"""
+        if not self.available:
+            self.last_error = "Kokoro TTS not available"
+            return False
 
-        # Fallback: use language as-is if it's already a specific variant
-        if language in ['en-uk', 'en-us', 'en-au', 'en-ca', 'en-in', 'hi', 'fr', 'de', 'es', 'it', 'pt', 'ru', 'ja', 'ko', 'zh']:
-            return language
+        try:
+            # Initialize pipeline if needed
+            self._initialize_pipeline()
+            if not self.pipeline:
+                return False
 
-        # Final fallback: generic English
-        return 'en'
-    
-    def get_supported_languages(self):
-        """Get supported languages for gTTS with actual accent support"""
-        return [
-            # English variants (these actually work in gTTS)
-            'en',      # Generic English
-            'en-uk',   # British English
-            'en-us',   # American English
-            'en-au',   # Australian English
-            'en-ca',   # Canadian English
-            'en-in',   # Indian English
-            # Other languages
-            'hi',      # Hindi
-            'fr',      # French
-            'de',      # German
-            'es',      # Spanish
-            'it',      # Italian
-            'pt',      # Portuguese
-            'ru',      # Russian
-            'ja',      # Japanese
-            'ko',      # Korean
-            'zh'       # Chinese
-        ]
-    
-    def supports_language(self, language: str) -> bool:
-        """Check if language is supported"""
-        return language in self.get_supported_languages()
+            # Get voice selection
+            voice_actor = kwargs.get('voice_actor', 'Michael')
+
+            # Map to Kokoro voice
+            kokoro_voice = self.voice_mapping.get(voice_actor, 'am_michael')
+
+            # Generate audio
+            generator = self.pipeline(text, voice=kokoro_voice, speed=1.0)
+
+            # Process the generator (Kokoro returns chunks)
+            audio_chunks = []
+            for i, (_, _, audio) in enumerate(generator):
+                audio_chunks.append(audio)
+
+            # Combine audio chunks if multiple
+            if len(audio_chunks) == 1:
+                final_audio = audio_chunks[0]
+            else:
+                import numpy as np
+                final_audio = np.concatenate(audio_chunks)
+
+            # Save audio file (Kokoro outputs WAV at 24kHz)
+            sf.write(output_file, final_audio, 24000)
+
+            return True
+
+        except Exception as e:
+            self.last_error = str(e)
+            print(clean_log_message(f"❌ Kokoro TTS error: {e}"))
+            return False
+
+    def get_supported_voices(self):
+        """Get supported voices for Kokoro TTS"""
+        return list(self.voice_mapping.keys())
+
+    def supports_voice(self, voice: str) -> bool:
+        """Check if voice is supported"""
+        return voice in self.voice_mapping
 
 
 class TTSManager:
-    """Simplified TTS Manager - gTTS only"""
-    
+    """Professional TTS Manager - Edge TTS + Kokoro TTS"""
+
     def __init__(self):
         self.providers = {}
         self.priority_order = []
@@ -164,40 +189,79 @@ class TTSManager:
         self._load_settings()
 
     def _initialize_providers(self):
-        """Initialize only gTTS provider (optimized for speed)"""
-        # Initialize only gTTS provider
-        gtts_provider = GTTSProvider()
-        
-        if gtts_provider.available:
-            self.providers['google_tts'] = gtts_provider
-            self.priority_order = ['google_tts']
+        """Initialize Edge TTS and Kokoro TTS providers"""
+        # Initialize Edge TTS provider
+        edge_provider = EdgeTTSProvider()
+        if edge_provider.available:
+            self.providers['edge_tts'] = edge_provider
+            self.priority_order.append('edge_tts')
+            print(clean_log_message("✅ Edge TTS provider initialized"))
         else:
-            print(clean_log_message(f"❌ gTTS not available: {gtts_provider.last_error}"))
+            print(clean_log_message(f"❌ Edge TTS not available: {edge_provider.last_error}"))
+
+        # Initialize Kokoro TTS provider
+        kokoro_provider = KokoroTTSProvider()
+        if kokoro_provider.available:
+            self.providers['kokoro_tts'] = kokoro_provider
+            self.priority_order.append('kokoro_tts')
+            print(clean_log_message("✅ Kokoro TTS provider initialized"))
+        else:
+            print(clean_log_message(f"❌ Kokoro TTS not available: {kokoro_provider.last_error}"))
+
+        if not self.providers:
+            print(clean_log_message("❌ No TTS providers available!"))
 
     def _load_settings(self):
         """Load TTS settings from config"""
         try:
-            from config import GTTS_CONFIG
-            self.settings = GTTS_CONFIG.copy()
+            from config import TTS_CONFIG
+            self.settings = TTS_CONFIG.copy()
         except ImportError:
             self.settings = {
-                "language_support": ["en", "en-au", "en-us"],
-                "emotion_processing": True,
-                "speed_adjustment": True
+                "edge_voices": ["Guy", "Connor", "Aria"],
+                "kokoro_voices": ["Michael", "Adam", "Heart"],
+                "default_provider": "edge_tts",
+                "fallback_enabled": True
             }
 
     def generate_speech(self, text: str, output_file: str, **kwargs) -> bool:
-        """Generate speech using gTTS (direct, no fallbacks)"""
-        # Direct gTTS generation (no provider checking overhead)
-        gtts_provider = self.providers.get('google_tts')
-        if not gtts_provider:
-            print(clean_log_message("❌ gTTS not available"))
-            return False
+        """Generate speech using Edge TTS or Kokoro TTS with smart routing"""
+        voice_actor = kwargs.get('voice_actor', 'Guy')
+
+        # Determine which provider to use based on voice
+        edge_voices = ['Guy', 'Connor', 'Aria']
+        kokoro_voices = ['Michael', 'Adam', 'Heart']
+
+        if voice_actor in edge_voices and 'edge_tts' in self.providers:
+            provider = self.providers['edge_tts']
+        elif voice_actor in kokoro_voices and 'kokoro_tts' in self.providers:
+            provider = self.providers['kokoro_tts']
+        else:
+            # Fallback to first available provider
+            if self.priority_order:
+                provider_name = self.priority_order[0]
+                provider = self.providers[provider_name]
+            else:
+                print(clean_log_message("❌ No TTS providers available"))
+                return False
 
         try:
-            return gtts_provider.generate_speech(text, output_file, **kwargs)
+            return provider.generate_speech(text, output_file, **kwargs)
         except Exception as e:
-            print(clean_log_message(f"❌ gTTS error: {e}"))
+            print(clean_log_message(f"❌ TTS error with {provider.name}: {e}"))
+
+            # Try fallback if enabled
+            if self.settings.get('fallback_enabled', True) and len(self.priority_order) > 1:
+                for fallback_name in self.priority_order[1:]:
+                    if fallback_name in self.providers:
+                        fallback_provider = self.providers[fallback_name]
+                        print(clean_log_message(f"🔄 Trying fallback: {fallback_provider.name}"))
+                        try:
+                            return fallback_provider.generate_speech(text, output_file, **kwargs)
+                        except Exception as fallback_error:
+                            print(clean_log_message(f"❌ Fallback failed: {fallback_error}"))
+                            continue
+
             return False
 
     def get_available_providers(self):
@@ -212,13 +276,28 @@ class TTSManager:
         """Get information about a specific provider"""
         if provider_name not in self.providers:
             return None
-        
+
         provider = self.providers[provider_name]
         return {
             'name': provider.name,
             'available': provider.available,
-            'supported_languages': provider.get_supported_languages()
+            'supported_voices': provider.get_supported_voices()
         }
+
+    def get_all_voices(self):
+        """Get all available voices from all providers"""
+        all_voices = []
+        for provider in self.providers.values():
+            if hasattr(provider, 'get_supported_voices'):
+                all_voices.extend(provider.get_supported_voices())
+        return all_voices
+
+    def get_voice_provider(self, voice: str) -> Optional[str]:
+        """Get which provider supports a specific voice"""
+        for provider_name, provider in self.providers.items():
+            if hasattr(provider, 'supports_voice') and provider.supports_voice(voice):
+                return provider_name
+        return None
 
 
 # Global TTS manager instance
@@ -232,6 +311,23 @@ def get_tts_manager() -> TTSManager:
     return _tts_manager
 
 def generate_speech_simple(text: str, output_file: str, **kwargs) -> bool:
-    """Simple function to generate speech"""
+    """Simple function to generate speech with Edge TTS or Kokoro TTS"""
     manager = get_tts_manager()
     return manager.generate_speech(text, output_file, **kwargs)
+
+def get_available_voices():
+    """Get all available voices"""
+    manager = get_tts_manager()
+    return manager.get_all_voices()
+
+def install_dependencies():
+    """Install required TTS dependencies"""
+    try:
+        print(clean_log_message("📦 Installing TTS dependencies..."))
+        subprocess.run([sys.executable, "-m", "pip", "install", "edge-tts>=6.1.0"], check=True, capture_output=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "kokoro>=0.9.4", "soundfile>=0.12.0"], check=True, capture_output=True)
+        print(clean_log_message("✅ TTS dependencies installed successfully"))
+        return True
+    except Exception as e:
+        print(clean_log_message(f"❌ Failed to install TTS dependencies: {e}"))
+        return False

@@ -13,18 +13,17 @@ from utils.helpers import (
 )
 
 def loop_video(video_file, target_duration, ffmpeg_path, output_file, method="seamless",
-               logger_func=None, content_analysis=None, sync_with_audio=True):
+               logger_func=None, sync_with_audio=True):
     """
-    Create a looped video using the specified method with content-aware enhancements
+    Create a looped video using the specified method
 
     Args:
         video_file: Path to input video
         target_duration: Target duration for the looped video
         ffmpeg_path: Path to FFmpeg executable
         output_file: Output file path for naming temporary file
-        method: Looping method ("direct", "crossfade", "seamless", "pingpong", or "content_aware")
+        method: Looping method ("direct", "crossfade", "seamless", "pingpong")
         logger_func: Optional logging function (e.g., main_gui.log)
-        content_analysis: Optional ContentAnalysis object for enhanced looping
         sync_with_audio: Whether to sync loop points with audio rhythm
 
     Returns:
@@ -54,10 +53,10 @@ def loop_video(video_file, target_duration, ffmpeg_path, output_file, method="se
         loops_needed = int(target_duration / video_duration) + 1
         timestamp = int(time.time() * 1000)
 
-        # Use content analysis to determine optimal looping method
-        if method == "content_aware" and content_analysis:
-            method = _determine_optimal_loop_method(content_analysis, video_duration, logger_func)
-            log_message(f"Content analysis suggests {method} loop method", "INFO", logger_func)
+        # Default to seamless method if content_aware was requested
+        if method == "content_aware":
+            method = "seamless"
+            log_message(f"Using seamless loop method", "INFO", logger_func)
 
         # Method routing using dictionary for cleaner dispatch
         method_handlers = {
@@ -78,28 +77,7 @@ def loop_video(video_file, target_duration, ffmpeg_path, output_file, method="se
         log_message(f"Video looping error: {e}", "ERROR", logger_func)
         return None
 
-def _determine_optimal_loop_method(content_analysis, video_duration, _=None):
-    """Determine optimal looping method based on content analysis"""
-    content_type = content_analysis.content_type.value
-    emotional_tone = content_analysis.emotional_tone.value
 
-    # Historical content often benefits from seamless loops
-    if content_type == 'historical':
-        return 'seamless'
-
-    # Dramatic content works well with crossfade
-    elif emotional_tone in ['dramatic', 'mysterious']:
-        return 'crossfade'
-
-    # Reflective content benefits from ping-pong for natural flow
-    elif emotional_tone in ['reflective', 'melancholic']:
-        return 'pingpong'
-
-    # For short videos, use seamless; for longer videos, use direct
-    elif video_duration < 10:
-        return 'seamless'
-    else:
-        return 'direct'
 
 def _handle_crossfade_method(video_file, target_duration, ffmpeg_path, loops_needed, timestamp, output_file, video_duration, logger_func):
     """Helper function to handle crossfade method selection based on video duration"""

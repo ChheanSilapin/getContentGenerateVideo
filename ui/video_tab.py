@@ -213,6 +213,9 @@ class VideoTab:
         # Update info label with current settings
         self._update_settings_info_label()
 
+        # Refresh settings from file to ensure sync
+        self._refresh_settings_from_file()
+
     def _show_settings_popup(self):
         """Show the settings popup dialog"""
         if self.settings_popup and hasattr(self.settings_popup, 'popup_window') and self.settings_popup.popup_window and self.settings_popup.popup_window.winfo_exists():
@@ -241,7 +244,16 @@ class VideoTab:
         """Handle when settings are applied from the popup"""
         # Update current settings
         self.current_settings.update(settings)
-        
+
+        # Apply TTS settings to model immediately
+        if hasattr(self.main_gui, 'model'):
+            self.main_gui.model.tts_settings = {
+                'language': self.current_settings.get('tts_language', 'en'),
+                'voice_actor': self.current_settings.get('tts_voice_actor', 'Guy'),
+                'speed': self.current_settings.get('tts_speed', 1.0),
+                'emotion': self.current_settings.get('tts_emotion', 'neutral')
+            }
+
         # Settings are already saved by the popup's settings manager
         
         # Sync output folder with the model
@@ -263,31 +275,64 @@ class VideoTab:
         # Update the info label
         self._update_settings_info_label()
 
+        # Notify other tabs about shared settings changes
+        self._notify_other_tabs_of_settings_change(settings)
+
     def _update_settings_info_label(self):
         """Update the settings info label with current settings"""
-        # Audio info (legacy)
-        voice = self.current_settings.get('voice_actor', 'Default')
-        speed = int(self.current_settings.get('speed', 0.8) * 100)
-        # Check both new and legacy mute setting names
-        is_muted = self.current_settings.get('mute_original_audio', self.current_settings.get('mute', False))
-        volume_value = self.current_settings.get('original_audio_volume', self.current_settings.get('volume', 0.7))
-        volume = "Muted" if is_muted else f"{int(volume_value * 100)}%"
-
-        # TTS info (new)
+        # TTS info (primary - matches image tab style)
         tts_voice = self.current_settings.get('tts_voice_actor', 'Default')
         tts_speed = f"{self.current_settings.get('tts_speed', 1.0):.1f}x"
         tts_emotion = self.current_settings.get('tts_emotion', 'neutral').title()
-
-        # Speech recognition info
-        sr_enabled = "On" if self.current_settings.get('sr_enabled', False) else "Off"
 
         # Output info
         output_folder = self.current_settings.get('output_folder', 'Default (Auto)')
         output_name = "Default" if output_folder == "Default (Auto)" else "Custom"
 
-        # Update label with comprehensive info
-        info_text = f"Audio: {voice}, {speed}% Speed, {volume} | TTS: {tts_voice}, {tts_speed}, {tts_emotion} | SR: {sr_enabled} | Output: {output_name}"
+        # Clean label matching image tab style
+        info_text = f"TTS: {tts_voice}, {tts_speed} Speed, {tts_emotion} | Output: {output_name}"
         self.settings_info_label.config(text=info_text)
+
+    def _notify_other_tabs_of_settings_change(self, settings):
+        """Notify other tabs when shared settings change"""
+        try:
+            # Check if settings contain shared TTS settings
+            shared_keys = ['tts_language', 'tts_voice_actor', 'tts_speed', 'tts_emotion', 'output_folder']
+            has_shared_changes = any(key in settings for key in shared_keys)
+
+            if has_shared_changes and hasattr(self.main_gui, 'image_tab_component'):
+                # Check if image tab component is properly initialized with current_settings
+                if hasattr(self.main_gui.image_tab_component, 'current_settings') and hasattr(self.main_gui.image_tab_component, '_update_settings_info_label'):
+                    # Update image tab's current settings and refresh its label
+                    self.main_gui.image_tab_component.current_settings.update(settings)
+                    self.main_gui.image_tab_component._update_settings_info_label()
+
+                # Apply TTS settings to model from image tab perspective too
+                if hasattr(self.main_gui, 'model'):
+                    self.main_gui.model.tts_settings = {
+                        'language': settings.get('tts_language', self.main_gui.model.tts_settings.get('language', 'en')),
+                        'voice_actor': settings.get('tts_voice_actor', self.main_gui.model.tts_settings.get('voice_actor', 'Guy')),
+                        'speed': settings.get('tts_speed', self.main_gui.model.tts_settings.get('speed', 1.0)),
+                        'emotion': settings.get('tts_emotion', self.main_gui.model.tts_settings.get('emotion', 'neutral'))
+                    }
+        except Exception as e:
+            print(f"Warning: Could not notify other tabs of settings change: {e}")
+
+    def _refresh_settings_from_file(self):
+        """Refresh current settings from the settings file to ensure sync"""
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            tab_settings = settings_manager.get_tab_settings('video_tab')
+
+            # Update current settings with latest from file
+            self.current_settings.update(tab_settings)
+
+            # Update the label to reflect any changes
+            self._update_settings_info_label()
+
+        except Exception as e:
+            print(f"Warning: Could not refresh settings from file: {e}")
 
     def setup_scrollable_area(self, parent):
         """Set up scrollable area for video entries"""
@@ -943,6 +988,14 @@ class VideoTab:
             self._add_grouped_batch_jobs(valid_entries)
         else:
             self._add_individual_batch_jobs(valid_entries)
+
+        # Apply current TTS settings to model before generation
+        self.main_gui.model.tts_settings = {
+            'language': self.current_settings.get('tts_language', 'en'),
+            'voice_actor': self.current_settings.get('tts_voice_actor', 'Guy'),
+            'speed': self.current_settings.get('tts_speed', 1.0),
+            'emotion': self.current_settings.get('tts_emotion', 'neutral')
+        }
 
         # Set up progress callback
         self.main_gui.model.set_progress_callback(self.update_video_progress)

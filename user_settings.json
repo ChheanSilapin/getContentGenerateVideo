@@ -1,46 +1,42 @@
 {
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
   "_migration_completed": true,
+  "tts_language": "en",
+  "tts_voice_actor": "Adam",
+  "tts_speed": 0.8441176470588235,
+  "tts_emotion": "neutral",
+  "sr_enabled": true,
+  "sr_language": "en-us",
+  "sr_model_path": "",
+  "enabled_tts_providers": [
+    "edge_tts",
+    "kokoro_tts"
+  ],
+  "tts_provider_priority": [
+    "edge_tts",
+    "kokoro_tts"
+  ],
+  "prefer_offline_tts": false,
+  "tts_quality_threshold": 8,
+  "tts_fallback_enabled": true,
+  "timing_mode": "balanced",
+  "min_image_duration": 0.8,
+  "max_image_duration": 8.0,
+  "optimal_image_duration": 3.0,
+  "image_fit_method": "contain",
+  "aspect_ratio": "1:1 (Square)",
+  "mute": false,
+  "volume": 0.7,
   "shared_settings": {
-    "tts_language": "hi",
-    "tts_voice_actor": "Hindi",
-    "tts_speed": 0.8352941176470589,
-    "tts_emotion": "neutral",
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
-    "enabled_tts_providers": [
-      "google_tts",
-      "pyttsx3",
-      "windows_sapi"
-    ],
-    "tts_provider_priority": [
-      "google_tts",
-      "pyttsx3",
-      "windows_sapi"
-    ],
-    "prefer_offline_tts": false,
-    "tts_quality_threshold": 7,
-    "tts_fallback_enabled": true
+    "tts_language": "en",
+    "tts_voice_actor": "Adam",
+    "tts_speed": 0.8441176470588235,
+    "tts_emotion": "neutral"
   },
-  "image_tab_settings": {
-    "image_fit_method": "contain",
-    "aspect_ratio": "9:16 (Portrait)"
-  },
+  "image_tab_settings": {},
   "video_tab_settings": {
-    "mute_original_audio": true,
-    "original_audio_volume": 0.7,
-    "subtitle_style": "modern_glow",
-    "mute": true,
+    "mute": false,
     "volume": 0.7
-  },
-  "speech_recognition": {
-    "sr_enabled": true,
-    "sr_language": "en-us",
-    "sr_model_path": ""
-  },
-  "content_timing": {
-    "timing_mode": "balanced",
-    "min_image_duration": 0.8,
-    "max_image_duration": 8.0,
-    "optimal_image_duration": 3.0
   }
 }

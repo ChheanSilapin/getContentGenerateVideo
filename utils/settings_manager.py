@@ -25,17 +25,10 @@ class SettingsManager:
             # Migration tracking (internal use)
             '_migration_completed': False,
 
-            # Legacy audio settings (for backward compatibility)
-            'voice_actor': 'American',
-            'speed': 0.8352941176470589,
-            'emotion': 'neutral',
-            'mute': False,
-            'volume': 0.7,
-
-            # New TTS settings (gTTS)
-            'tts_language': 'en-us',
-            'tts_voice_actor': 'American',
-            'tts_speed': 0.8352941176470589,
+            # Modern TTS settings (Edge TTS + Kokoro TTS)
+            'tts_language': 'en',
+            'tts_voice_actor': 'Guy',
+            'tts_speed': 1.0,
             'tts_emotion': 'neutral',
 
             # Speech recognition settings (Vosk) - Auto-enabled
@@ -43,11 +36,11 @@ class SettingsManager:
             'sr_language': 'en-us',
             'sr_model_path': '',  # Auto-detected
 
-            # Hybrid TTS settings (maintains backward compatibility)
-            'enabled_tts_providers': ['google_tts', 'pyttsx3', 'windows_sapi'],
-            'tts_provider_priority': ['google_tts', 'pyttsx3', 'windows_sapi'],
-            'prefer_offline_tts': False,
-            'tts_quality_threshold': 7,
+            # Professional TTS settings (Edge TTS + Kokoro TTS)
+            'enabled_tts_providers': ['edge_tts', 'kokoro_tts'],
+            'tts_provider_priority': ['edge_tts', 'kokoro_tts'],
+            'prefer_offline_tts': False,  # Edge TTS requires internet, Kokoro is offline
+            'tts_quality_threshold': 8,   # Higher quality threshold for neural voices
             'tts_fallback_enabled': True,
 
             # Content synchronization settings
@@ -345,9 +338,9 @@ class SettingsManager:
         if not tab_settings or len(tab_settings) < 2:
             # Use defaults from default_settings
             tab_settings = {
-                'tts_language': 'en-us',
-                'tts_voice_actor': 'American',
-                'tts_speed': 0.8352941176470589,
+                'tts_language': 'en',
+                'tts_voice_actor': 'Guy',
+                'tts_speed': 1.0,
                 'tts_emotion': 'neutral',
                 'output_folder': self.default_settings.get('output_folder', self._get_default_output_folder())
             }
@@ -367,18 +360,18 @@ class SettingsManager:
         return tab_settings
 
     def get_shared_settings(self):
-        """Get shared settings (for backward compatibility with hybrid TTS)"""
+        """Get shared settings (for Edge TTS + Kokoro TTS system)"""
         try:
             settings = self.load_settings()
             shared_settings = settings.get('shared_settings', {})
 
-            # Add hybrid TTS defaults if not present
+            # Add modern TTS defaults if not present
             if 'enabled_tts_providers' not in shared_settings:
                 shared_settings.update({
-                    'enabled_tts_providers': ['google_tts', 'pyttsx3', 'windows_sapi'],
-                    'tts_provider_priority': ['google_tts', 'pyttsx3', 'windows_sapi'],
-                    'prefer_offline_tts': False,
-                    'tts_quality_threshold': 7,
+                    'enabled_tts_providers': ['edge_tts', 'kokoro_tts'],
+                    'tts_provider_priority': ['edge_tts', 'kokoro_tts'],
+                    'prefer_offline_tts': False,  # Edge TTS requires internet, Kokoro is offline
+                    'tts_quality_threshold': 8,   # Higher quality threshold for neural voices
                     'tts_fallback_enabled': True
                 })
 

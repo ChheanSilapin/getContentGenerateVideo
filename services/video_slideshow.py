@@ -199,39 +199,13 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             print(f"Error loading audio: {e}")
             return False
 
-        # Use intelligent content synchronization with user settings
-        from utils.content_sync import ContentSyncManager
+        # Calculate simple timing based on audio duration
+        duration_per_image = audio_duration / len(image_files) if len(image_files) > 0 else 0
+        image_sequence = list(range(len(image_files)))
+        effects_recommended = []
 
-        # Load user settings for content synchronization
-        try:
-            from utils.settings_manager import SettingsManager
-            settings_manager = SettingsManager()
-            user_settings = settings_manager.load_settings()
-        except Exception:
-            user_settings = None
-
-        content_sync_manager = ContentSyncManager(user_settings)
-        timing_mode = user_settings.get('timing_mode', 'balanced') if user_settings else 'balanced'
-
-        timing_result = content_sync_manager.calculate_optimized_timing(
-            content, len(image_files), audio_duration, timing_mode=timing_mode
-        )
-
-        from utils.logging_utils import log_content_analysis
-        log_content_analysis("\n" + "="*50)
-        log_content_analysis("CONTENT SYNCHRONIZATION ANALYSIS")
-        log_content_analysis("="*50)
-        log_content_analysis(content_sync_manager.get_timing_summary(timing_result))
-        log_content_analysis("="*50 + "\n")
-
-        # Get optimized timing parameters
-        duration_per_image = timing_result['duration_per_image']
-        image_sequence = timing_result['image_sequence']
-        effects_recommended = timing_result.get('effects_recommended', [])
-
-        from utils.logging_utils import log_content_analysis
-        log_content_analysis(f"Optimized duration per image: {duration_per_image:.2f} seconds")
-        log_content_analysis(f"Using {len(image_sequence)} image slots from {len(image_files)} available images")
+        print(f"Duration per image: {duration_per_image:.2f} seconds")
+        print(f"Using {len(image_sequence)} images")
         
         # Process images into clips using optimized sequence
         clips = []

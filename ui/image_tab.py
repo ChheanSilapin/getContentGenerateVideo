@@ -184,6 +184,9 @@ class ImageTab:
         # Update info label with current settings
         self._update_settings_info_label()
 
+        # Refresh settings from file to ensure sync
+        self._refresh_settings_from_file()
+
     def setup_scrollable_area(self, parent):
         """Set up scrollable area for image entries"""
         # Image entries section header
@@ -1107,7 +1110,7 @@ class ImageTab:
             # Apply TTS settings to model (from shared settings)
             self.main_gui.model.tts_settings = {
                 'language': image_tab_settings.get('tts_language', 'en'),
-                'voice_actor': image_tab_settings.get('tts_voice_actor', 'Default'),
+                'voice_actor': image_tab_settings.get('tts_voice_actor', 'Guy'),
                 'speed': image_tab_settings.get('tts_speed', 1.0),
                 'emotion': image_tab_settings.get('tts_emotion', 'neutral')
             }
@@ -1244,12 +1247,24 @@ class ImageTab:
         # Update current settings
         self.current_settings.update(settings)
 
+        # Apply TTS settings to model immediately
+        if hasattr(self.main_gui, 'model'):
+            self.main_gui.model.tts_settings = {
+                'language': self.current_settings.get('tts_language', 'en'),
+                'voice_actor': self.current_settings.get('tts_voice_actor', 'Guy'),
+                'speed': self.current_settings.get('tts_speed', 1.0),
+                'emotion': self.current_settings.get('tts_emotion', 'neutral')
+            }
+
         # Sync output folder with the model
         if 'output_folder' in settings:
             self.main_gui.model.output_folder = settings['output_folder']
 
         # Update the info label
         self._update_settings_info_label()
+
+        # Notify other tabs about shared settings changes
+        self._notify_other_tabs_of_settings_change(settings)
 
     def _update_settings_info_label(self):
         """Update the settings info label with current settings"""
@@ -1265,4 +1280,45 @@ class ImageTab:
         # Update label
         info_text = f"TTS: {voice}, {speed} Speed, {emotion} | Output: {output_name} Folder"
         self.settings_info_label.config(text=info_text)
+
+    def _notify_other_tabs_of_settings_change(self, settings):
+        """Notify other tabs when shared settings change"""
+        try:
+            # Check if settings contain shared TTS settings
+            shared_keys = ['tts_language', 'tts_voice_actor', 'tts_speed', 'tts_emotion', 'output_folder']
+            has_shared_changes = any(key in settings for key in shared_keys)
+
+            if has_shared_changes and hasattr(self.main_gui, 'video_tab_component'):
+                # Check if video tab component is properly initialized with current_settings
+                if hasattr(self.main_gui.video_tab_component, 'current_settings') and hasattr(self.main_gui.video_tab_component, '_update_settings_info_label'):
+                    # Update video tab's current settings and refresh its label
+                    self.main_gui.video_tab_component.current_settings.update(settings)
+                    self.main_gui.video_tab_component._update_settings_info_label()
+
+                # Apply TTS settings to model from video tab perspective too
+                if hasattr(self.main_gui, 'model'):
+                    self.main_gui.model.tts_settings = {
+                        'language': settings.get('tts_language', self.main_gui.model.tts_settings.get('language', 'en')),
+                        'voice_actor': settings.get('tts_voice_actor', self.main_gui.model.tts_settings.get('voice_actor', 'Guy')),
+                        'speed': settings.get('tts_speed', self.main_gui.model.tts_settings.get('speed', 1.0)),
+                        'emotion': settings.get('tts_emotion', self.main_gui.model.tts_settings.get('emotion', 'neutral'))
+                    }
+        except Exception as e:
+            print(f"Warning: Could not notify other tabs of settings change: {e}")
+
+    def _refresh_settings_from_file(self):
+        """Refresh current settings from the settings file to ensure sync"""
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            tab_settings = settings_manager.get_tab_settings('image_tab')
+
+            # Update current settings with latest from file
+            self.current_settings.update(tab_settings)
+
+            # Update the label to reflect any changes
+            self._update_settings_info_label()
+
+        except Exception as e:
+            print(f"Warning: Could not refresh settings from file: {e}")
 

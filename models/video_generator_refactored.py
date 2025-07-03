@@ -48,7 +48,7 @@ class VideoGeneratorModel:
         # TTS settings (initialized with defaults)
         self.tts_settings = {
             'language': 'en',
-            'voice_actor': 'Default',
+            'voice_actor': 'Guy',
             'speed': 1.0,
             'emotion': 'neutral'
         }
@@ -395,40 +395,46 @@ class VideoGeneratorModel:
         return self.local_folder
 
     def _generate_audio(self, output_dir, stop_event):
-        """Generate audio from text input using gTTS with settings"""
+        """Generate audio from text input using Edge TTS or Kokoro TTS with settings"""
         if stop_event and stop_event.is_set():
             return None
 
         self.update_progress(30, "Analyzing content and generating audio...")
 
-        # Perform content analysis for emotion-aware generation
-        from services.content_analysis import ContentAnalyzer
-        analyzer = ContentAnalyzer()
-        content_analysis = analyzer.analyze_content(self.text_input, title="", context="")
-
-        print(f"Content Analysis: Type={content_analysis.content_type.value}, "
-              f"Emotion={content_analysis.emotional_tone.value}, "
-              f"Confidence={content_analysis.confidence:.2f}")
+        # Use default settings for all content types
 
         from services.audio_service import generate_audio_with_timing_analysis
         audio_file = os.path.join(output_dir, "voice.mp3")
 
-        # Get TTS settings from enhancement options or use defaults
+        # Reload TTS settings from current user settings to ensure we have the latest values
+        try:
+            from utils.settings_manager import SettingsManager
+            settings_manager = SettingsManager()
+            video_tab_settings = settings_manager.get_tab_settings('video_tab')
+            current_tts_settings = {
+                'language': video_tab_settings.get('tts_language', 'en'),
+                'voice_actor': video_tab_settings.get('tts_voice_actor', 'Guy'),
+                'speed': video_tab_settings.get('tts_speed', 1.0),
+                'emotion': video_tab_settings.get('tts_emotion', 'neutral')
+            }
+        except Exception as e:
+            print(f"Warning: Could not reload TTS settings: {e}")
+            current_tts_settings = {}
+
+        # Get TTS settings from current settings, then enhancement options, then defaults
         tts_settings = getattr(self, 'tts_settings', {})
-        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Default'))
+        tts_settings.update(current_tts_settings)  # Update with latest settings
+        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Guy'))
         speed = tts_settings.get('speed', 1.0)
         emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
         language = tts_settings.get('language', 'en')
 
-        print(f"Using TTS settings: voice={voice_actor}, speed={speed}, emotion={emotion}, language={language}")
-
-        # Store content analysis for later use
-        self.content_analysis = content_analysis
+        print(f"Using TTS settings: voice={voice_actor}, speed={speed:.1f}, emotion={emotion}, language={language}")
 
         # Generate audio with timing analysis for subtitle synchronization
         audio_timing_result = generate_audio_with_timing_analysis(
             self.text_input, audio_file, voice_actor=voice_actor, speed=speed,
-            emotion=emotion, language=language, content_analysis=content_analysis
+            emotion=emotion, language=language
         )
 
         if not audio_timing_result.success:
@@ -535,10 +541,7 @@ class VideoGeneratorModel:
         except Exception:
             pass  # Use default
 
-        # Add content analysis to enhancement options if available
-        if hasattr(self, 'content_analysis'):
-            enhancement_options['content_analysis'] = self.content_analysis
-            # Reduced logging: print(f"Using emotion-aware video generation for {self.content_analysis.content_type.value} content")
+        # Use default enhancement options
 
         success = create_slideshow(
             images_dir,
@@ -582,12 +585,10 @@ class VideoGeneratorModel:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # Use the same preprocessed text that was used for TTS generation
-        from utils.text_processing import process_text_for_speech_recognition
+        # Pass the original text - the subtitle service will use the processed text from audio_timing_result
         text_for_subtitles = getattr(self, 'validated_text', self.text_input)
-        processed_text = process_text_for_speech_recognition(text_for_subtitles)
 
-        if generate_subtitles_with_timing_sync(processed_text, audio_timing_result, subtitle_file, subtitle_style):
+        if generate_subtitles_with_timing_sync(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
             self.update_progress(90, "Subtitles generated successfully with TTS-to-Text timing synchronization")
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
                 from utils.logging_utils import log_speech_recognition
@@ -598,6 +599,7 @@ class VideoGeneratorModel:
             print("ERROR: Failed to generate synchronized subtitles.")
             self.update_progress(0, "Failed to generate subtitles")
             return None
+
 
     def _validate_speech_recognition(self, audio_file, stop_event=None):
         """
@@ -637,15 +639,12 @@ class VideoGeneratorModel:
             # Update voice settings with any speech validation specific settings
             voice_settings.update(self.speech_validation_settings)
 
-            # Use content-type aware speech recognition with post-processing
-            content_analysis = getattr(self, 'content_analysis', None)
-            content_type = content_analysis.content_type if content_analysis else None
+            # Use speech recognition with post-processing
 
             # Use enhanced speech recognition with multiple validation methods
             enhanced_result = speech_service.validate_audio_with_enhanced_methods(
                 audio_file=audio_file,
-                original_text=self.text_input,
-                content_type=content_type
+                original_text=self.text_input
             )
 
             if not enhanced_result.success:
@@ -656,8 +655,8 @@ class VideoGeneratorModel:
             confidence_score = enhanced_result.confidence_score
             method_used = enhanced_result.method_used
 
-            # Check if validation passes threshold (with content-type aware thresholds)
-            threshold = self._get_content_aware_threshold(content_type)
+            # Check if validation passes threshold
+            threshold = self._get_content_aware_threshold(None)
             passes_validation = confidence_score >= threshold
 
             # Log validation results with method information
@@ -691,7 +690,7 @@ class VideoGeneratorModel:
                 self.validated_text = recognized_text
                 # Log the change for transparency (condensed)
                 if recognized_text != self.text_input:
-                    log_speech_recognition(f"📝 Text refined for better accuracy using {method_used}")
+                    log_speech_recognition(f" Text refined for better accuracy using {method_used}")
             else:
                 # Keep original text if validation fails or confidence is low
                 self.validated_text = self.text_input
@@ -709,23 +708,8 @@ class VideoGeneratorModel:
             return None
 
     def _get_content_aware_threshold(self, content_type):
-        """Get content-type specific validation threshold"""
-        from services.content_analysis import ContentType
-
-        # Content-type specific thresholds
-        thresholds = {
-            ContentType.HISTORICAL: 0.75,      # Higher threshold for historical content (more proper nouns)
-            ContentType.STORY_REVIEW: 0.70,    # Standard threshold for stories
-            ContentType.QUOTE_REFLECTION: 0.65, # Lower threshold for philosophical content
-            ContentType.EDUCATIONAL: 0.72,     # Slightly higher for educational content
-            ContentType.ENTERTAINMENT: 0.68,   # Lower for entertainment (more casual language)
-            ContentType.DOCUMENTARY: 0.74,     # Higher for documentary (technical terms)
-            ContentType.PERSONAL: 0.66,        # Lower for personal content (informal language)
-            ContentType.UNKNOWN: 0.70          # Default threshold
-        }
-
-        # Use content-specific threshold or fall back to configured threshold
-        return thresholds.get(content_type, self.speech_validation_threshold)
+        """Get default validation threshold"""
+        return getattr(self, 'speech_validation_threshold', 0.70)
 
     def set_speech_validation_settings(self, enable=False, threshold=0.7, voice_settings=None):
         """

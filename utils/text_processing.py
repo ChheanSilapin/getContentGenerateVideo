@@ -84,8 +84,11 @@ def process_text_for_subtitles(text):
     # AGGRESSIVE: Remove numbered list patterns first (before protecting content)
     # Remove patterns like "150)," or "150)" at the beginning or anywhere
     text = re.sub(r'\b\d+\)[,\s]*', '', text)  # Remove "150)," or "150) "
-    text = re.sub(r'^\s*\d+[.)\]]\s*', '', text)  # Remove "150." or "150)" at start
-    text = re.sub(r'\(\d+\)[,\s]*', '', text)  # Remove "(150)," 
+    # Only remove numbered lists at start of line, not decimal numbers
+    text = re.sub(r'^\s*\d+\.\s+', '', text)  # Remove "150. " at start (with space after dot)
+    text = re.sub(r'^\s*\d+\)\s*', '', text)  # Remove "150)" at start
+    text = re.sub(r'^\s*\d+\]\s*', '', text)  # Remove "150]" at start
+    text = re.sub(r'\(\d+\)[,\s]*', '', text)  # Remove "(150),"
     
     # Preserve important patterns AFTER removing numbering
     # Protect currency amounts like $17,190 and $21,590
@@ -171,6 +174,248 @@ def get_title_content(text):
     return title, content
 
 
+def normalize_text_for_natural_speech(text, mode="tts"):
+    """
+    Convert complex formatted text into clean text for TTS or subtitles.
+    Preserves contractions throughout the entire processing pipeline.
+
+    Args:
+        text: Raw text input (may contain complex formatting, special chars, etc.)
+        mode: "tts" for spoken format, "subtitle" for visual format
+
+    Returns:
+        str: Clean text ready for TTS or subtitles
+    """
+    if not text:
+        return ""
+
+    # Step 1: Protect existing contractions FIRST before any other processing
+    # This prevents them from being broken by subsequent steps
+    # Enhanced pattern to catch contractions even when adjacent to complex punctuation
+    contraction_pattern = r"\b\w+[''](?:s|ll|ve|re|t|d|m)\b"
+    contraction_matches = re.findall(contraction_pattern, text, re.IGNORECASE)
+    contraction_placeholders = {}
+
+    # Optional debug logging (can be enabled for troubleshooting)
+    # if contraction_matches:
+    #     print(f"[DEBUG] Contractions detected: {contraction_matches}")
+
+    for i, match in enumerate(contraction_matches):
+        placeholder = f"__CONTRACTION_{i}__"
+        contraction_placeholders[placeholder] = match
+        text = text.replace(match, placeholder, 1)
+
+    # Step 2: Handle paragraph breaks and line endings
+    text = re.sub(r'\n\s*\n+', '. ', text)  # Double line breaks become sentence breaks
+    text = re.sub(r'\n+', ' ', text)  # Single line breaks become spaces
+
+    # Step 3: Convert complex formatting based on mode
+    if mode == "tts":
+        # TTS mode: Handle dates and years for natural speech
+        def convert_date_tts(match):
+            month, day, year = match.groups()
+            day_num = int(day.replace('th', '').replace('st', '').replace('nd', '').replace('rd', ''))
+            day_ordinal = f"{day_num}th" if 11 <= day_num <= 13 else {
+                1: "first", 2: "second", 3: "third", 21: "twenty-first", 22: "twenty-second", 23: "twenty-third"
+            }.get(day_num, f"{day_num}th")
+            # Convert year to natural speech: 2025 -> twenty twenty-five
+            year_int = int(year)
+            if 2000 <= year_int <= 2099:
+                decade = year_int - 2000
+                if decade == 0:
+                    year_spoken = "two thousand"
+                elif decade < 10:
+                    year_spoken = f"two thousand {decade}"
+                else:
+                    # Convert 25 to "twenty twenty-five", 24 to "twenty twenty-four", etc.
+                    # For 2020-2029: "twenty twenty", "twenty twenty-one", etc.
+                    # For 2030-2099: "twenty thirty", "twenty thirty-one", etc.
+                    tens = decade // 10
+                    ones = decade % 10
+                    if tens == 2:  # 2020-2029
+                        if ones == 0:
+                            year_spoken = "twenty twenty"
+                        else:
+                            ones_word = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][ones]
+                            year_spoken = f"twenty twenty-{ones_word}"
+                    else:  # 2030+
+                        tens_word = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"][tens]
+                        if ones == 0:
+                            year_spoken = f"twenty {tens_word}"
+                        else:
+                            ones_word = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][ones]
+                            year_spoken = f"twenty {tens_word}-{ones_word}"
+            else:
+                year_spoken = " ".join(str(int(year[i:i+1])) for i in range(0, 4))
+            return f"{month} {day_ordinal}, {year_spoken}"
+
+        text = re.sub(r'(\w+)\s+(\d{1,2}(?:st|nd|rd|th)?),\s+(\d{4})', convert_date_tts, text, flags=re.IGNORECASE)
+
+        # Also handle standalone years: 2025 -> twenty twenty-five
+        def convert_year_tts(match):
+            year = int(match.group(1))
+            if 2000 <= year <= 2099:
+                decade = year - 2000
+                if decade == 0:
+                    return "two thousand"
+                elif decade < 10:
+                    return f"two thousand {decade}"
+                else:
+                    # Convert 25 to "twenty twenty-five", 24 to "twenty twenty-four", etc.
+                    # For 2020-2029: "twenty twenty", "twenty twenty-one", etc.
+                    # For 2030-2099: "twenty thirty", "twenty thirty-one", etc.
+                    tens = decade // 10
+                    ones = decade % 10
+                    if tens == 2:  # 2020-2029
+                        if ones == 0:
+                            return "twenty twenty"
+                        else:
+                            ones_word = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][ones]
+                            return f"twenty twenty-{ones_word}"
+                    else:  # 2030+
+                        tens_word = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"][tens]
+                        if ones == 0:
+                            return f"twenty {tens_word}"
+                        else:
+                            ones_word = ["", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"][ones]
+                            return f"twenty {tens_word}-{ones_word}"
+            return match.group(1)
+
+        text = re.sub(r'\b(20\d{2})\b', convert_year_tts, text)
+    # Subtitle mode: preserve date formatting as-is
+
+    # Handle currency amounts first (before number processing)
+    # This prevents currency numbers from being processed as regular numbers
+    if mode == "tts":
+        # TTS mode: $1.2 trillion -> one point two trillion dollars
+        def convert_currency_tts(match):
+            amount = match.group(1).replace(',', ' ')  # Replace commas with spaces for TTS
+            unit = match.group(2) or ""
+            if '.' in amount:
+                whole, decimal = amount.split('.')
+                if unit:
+                    return f"{whole} point {decimal} {unit} dollars"
+                else:
+                    return f"{whole} point {decimal} dollars"
+            return f"{amount} {unit} dollars" if unit else f"{amount} dollars"
+
+        text = re.sub(r'\$([\d,]+(?:\.\d+)?)\s*(trillion|billion|million)?(?=\s|,|\.|\?|!|$)', convert_currency_tts, text)
+    else:
+        # Subtitle mode: preserve currency formatting but clean up spacing
+        text = re.sub(r'\$\s*(\d)', r'$\1', text)  # Remove space after $
+
+    # Handle numbers with commas based on mode (after currency processing)
+    if mode == "tts":
+        # TTS mode: remove commas for better pronunciation: 1,200 -> 1 200
+        # But skip numbers that are part of currency (already processed above)
+        text = re.sub(r'(?<!\$)(\d{1,3}),(\d{3})(?!\s*(trillion|billion|million))', r'\1 \2', text)  # 1,200 -> 1 200
+        text = re.sub(r'(?<!\$)(\d{1,3}),(\d{3}),(\d{3})(?!\s*(trillion|billion|million))', r'\1 \2 \3', text)  # 1,000,000 -> 1 000 000
+    # Subtitle mode: preserve comma formatting for readability
+
+    # Handle percentages based on mode
+    if mode == "tts":
+        # TTS mode: 19.7% -> nineteen point seven percent
+        def convert_percent_tts(match):
+            num = match.group(1).replace('%', '')
+            if '.' in num:
+                whole, decimal = num.split('.')
+                return f"{whole} point {decimal} percent"
+            return f"{num} percent"
+
+        text = re.sub(r'(\d+\.?\d*)%', convert_percent_tts, text)
+    # Subtitle mode: preserve % symbol as-is
+
+    # Handle emphasized text: THIRTY. THOUSAND! -> thirty thousand
+    text = re.sub(r'\b([A-Z]+)\.\s*([A-Z]+)!?', r'\1 \2', text)  # THIRTY. THOUSAND! -> THIRTY THOUSAND
+    text = re.sub(r'\b([A-Z]+)!\s*([A-Z]+)!?', r'\1 \2', text)  # THIRTY! THOUSAND! -> THIRTY THOUSAND
+    text = re.sub(r'\b[A-Z]{2,}\b', lambda m: m.group().lower(), text)  # Convert ALL CAPS to lowercase
+
+    # Handle common abbreviations for better TTS pronunciation
+    text = re.sub(r'\bQ(\d)\b', r'quarter \1', text, flags=re.IGNORECASE)  # Q2 -> quarter 2
+    text = re.sub(r'\bUSA\b', 'United States', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bUK\b', 'United Kingdom', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bCEO\b', 'C E O', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bFBI\b', 'F B I', text, flags=re.IGNORECASE)
+    text = re.sub(r'\bNASA\b', 'N A S A', text, flags=re.IGNORECASE)
+
+    # Step 4: Simplify punctuation for natural speech
+    text = re.sub(r'[—–]', ' - ', text)  # Em/en dashes to simple dash
+    text = re.sub(r'[?!]{2,}', '!', text)  # Multiple ?! to single !
+
+    # Handle ellipsis carefully to avoid spacing issues
+    text = re.sub(r'\.{3,}', ' ELLIPSIS_PLACEHOLDER ', text)  # Protect ellipsis temporarily
+    text = re.sub(r'\.{2}', '.', text)  # Double dots to single period
+
+    # Handle other common symbols based on mode
+    if mode == "tts":
+        text = re.sub(r'&', ' and ', text)  # & -> and for TTS
+    # Subtitle mode: preserve & symbol as-is
+
+    # Improve spacing around punctuation based on mode
+    if mode == "tts":
+        # TTS mode: normalize spacing for natural speech
+        text = re.sub(r'\s*([.!?])\s*', r'\1 ', text)  # Normalize spacing after punctuation
+        text = re.sub(r'\s*([,;:])\s*', r'\1 ', text)  # Normalize spacing after commas, semicolons, colons
+    else:
+        # Subtitle mode: preserve tight formatting for numbers and currency
+        text = re.sub(r'\s*([!?])\s*', r'\1 ', text)  # Only normalize spacing after ! and ?
+        text = re.sub(r'\s*([;:])\s*', r'\1 ', text)  # Normalize spacing after semicolons and colons
+        # Don't normalize periods and commas to preserve number/currency formatting
+
+    # Step 5: Remove emojis
+    text = emoji.replace_emoji(text, replace='')
+
+    # Step 6: Fix apostrophe encoding (but contractions are already protected)
+    text = re.sub(r'[''`´]', "'", text)  # Replace smart apostrophes with standard ASCII
+
+    # Step 7: Clean up whitespace and remove non-ASCII characters (preserve placeholders)
+    text = re.sub(r'[^\x00-\x7F\'\"_]+', ' ', text)  # Keep apostrophes, quotes, and underscores for placeholders
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    # Step 8: Restore protected contractions and ellipsis
+    for placeholder, original in contraction_placeholders.items():
+        text = text.replace(placeholder, original)
+
+    # Restore ellipsis (handle both with and without spaces)
+    text = text.replace(' ELLIPSIS_PLACEHOLDER ', '...')
+    text = text.replace('ELLIPSIS_PLACEHOLDER', '...')
+
+    # Step 9: Only fix genuinely broken contractions (not already correct ones)
+    # This step only applies to contractions that were actually broken, not existing ones
+    broken_contraction_fixes = {
+        r'\b(\w+) s\b(?=\s|$)': lambda m: f"{m.group(1)}'s" if m.group(1).lower() in ['that', 'it', 'let', 'there', 'here', 'what', 'who', 'he', 'she'] else m.group(0),
+        r'\b(\w+) ll\b(?=\s|$)': lambda m: f"{m.group(1)}'ll" if m.group(1).lower() in ['i', 'you', 'he', 'she', 'it', 'we', 'they'] else m.group(0),
+        r'\b(\w+) re\b(?=\s|$)': lambda m: f"{m.group(1)}'re" if m.group(1).lower() in ['you', 'we', 'they'] else m.group(0),
+        r'\b(\w+) ve\b(?=\s|$)': lambda m: f"{m.group(1)}'ve" if m.group(1).lower() in ['i', 'you', 'we', 'they'] else m.group(0),
+        r'\b(\w+) d\b(?=\s|$)': lambda m: f"{m.group(1)}'d" if m.group(1).lower() in ['i', 'you', 'he', 'she', 'it', 'we', 'they'] else m.group(0),
+        r'\b(\w+) m\b(?=\s|$)': lambda m: f"{m.group(1)}'m" if m.group(1).lower() == 'i' else m.group(0),
+        r'\b(\w+) t\b(?=\s|$)': lambda m: f"{m.group(1)}'t" if m.group(1).lower() in ['don', 'can', 'won', 'shouldn', 'wouldn', 'couldn', 'isn', 'aren', 'wasn', 'weren'] else m.group(0)
+    }
+
+    for pattern, replacement_func in broken_contraction_fixes.items():
+        text = re.sub(pattern, replacement_func, text, flags=re.IGNORECASE)
+
+    # Final cleanup
+    text = re.sub(r'\s+', ' ', text).strip()
+
+    return text
+
+
+def normalize_text_for_subtitles(text):
+    """
+    Normalize text specifically for subtitle display.
+    Preserves visual formatting (currency symbols, percentages, commas in numbers)
+    while cleaning up for readability and maintaining synchronization with TTS.
+
+    Args:
+        text: Raw text input
+
+    Returns:
+        str: Clean text optimized for subtitle display
+    """
+    return normalize_text_for_natural_speech(text, mode="subtitle")
+
+
 def clean_text_basic(text):
     """
     Basic text cleaning for general purposes
@@ -223,8 +468,9 @@ def process_text_for_speech_recognition(text):
     # Step 4: Fix apostrophe encoding issues while preserving contractions and possessives
     # Replace various apostrophe characters with standard ASCII apostrophe
     text = re.sub(r'[’`´]', "'", text)  # Replace smart apostrophes with standard ASCII
-    # Fix split possessives (e.g., "pig s" -> "pig's")
-    text = re.sub(r'\b(\w+) s\b(?!\w)', r"\1's", text, flags=re.IGNORECASE)
+    # REMOVED: The problematic regex that was breaking contractions
+    # The overly broad pattern r'\b(\w+) s\b(?!\w)' was incorrectly matching contractions
+    # Contractions should be preserved, not reconstructed from broken parts
 
     # Step 5: Normalize quotation marks for speech
     text = re.sub(r'["""]', '"', text)

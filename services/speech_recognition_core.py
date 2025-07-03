@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 from difflib import SequenceMatcher
 
 from services.speech_recognition_models import SpeechRecognitionResult, TextComparisonMetrics
-from services.content_analysis import ContentType
+# Content analysis removed
 
 # Check for Vosk availability
 try:
@@ -20,12 +20,9 @@ try:
 except ImportError:
     VOSK_AVAILABLE = False
 
-# Check for gTTS availability
-try:
-    from gtts import gTTS
-    GTTS_AVAILABLE = True
-except ImportError:
-    GTTS_AVAILABLE = False
+# TTS is now handled by dedicated TTS providers (Edge TTS + Kokoro TTS)
+# This module focuses on speech recognition only
+GTTS_AVAILABLE = False  # Legacy - TTS moved to services/tts_providers.py
 
 # Import logging utilities for emoji handling
 from utils.logging_utils import clean_log_message
@@ -41,7 +38,7 @@ def initialize_speech_recognition(model_path: str):
         recognizer = vosk.KaldiRecognizer(model, 16000)
         return model, recognizer
     except Exception as e:
-        print(clean_log_message(f"❌ Failed to initialize Vosk: {e}"))
+        print(clean_log_message(f" Failed to initialize Vosk: {e}"))
         return None, None
 
 
@@ -61,7 +58,7 @@ def recognize_speech_from_file(audio_file: str, model, recognizer):
 
         # Check audio format
         if wf.getnchannels() != 1 or wf.getsampwidth() != 2 or wf.getcomptype() != "NONE":
-            print(clean_log_message("❌ Audio file must be WAV format mono PCM."))
+            print(clean_log_message(" Audio file must be WAV format mono PCM."))
             wf.close()
             # Clean up temporary file if created
             if wav_file != audio_file and os.path.exists(wav_file):
@@ -93,7 +90,7 @@ def recognize_speech_from_file(audio_file: str, model, recognizer):
         return ' '.join(results).strip()
 
     except Exception as e:
-        print(clean_log_message(f"❌ Speech recognition error: {e}"))
+        print(clean_log_message(f" Speech recognition error: {e}"))
         return ""
 
 
@@ -108,7 +105,7 @@ def _convert_to_wav_if_needed(audio_file: str) -> str:
         try:
             from pydub import AudioSegment
         except ImportError:
-            print(clean_log_message("⚠️ pydub not available for MP3 conversion. Install with: pip install pydub"))
+            print(clean_log_message(" pydub not available for MP3 conversion. Install with: pip install pydub"))
             return None
 
         # Convert MP3 to WAV
@@ -126,48 +123,41 @@ def _convert_to_wav_if_needed(audio_file: str) -> str:
         return wav_file
 
     except Exception as e:
-        print(clean_log_message(f"❌ Audio conversion error: {e}"))
+        print(clean_log_message(f" Audio conversion error: {e}"))
         return None
 
 
-def generate_audio(text: str, output_file: str, voice_actor: str = "American",
-                  speed: float = 0.8, emotion: str = "neutral", language: str = 'en',
-                  content_analysis=None, title: str = "") -> bool:
-    """Generate audio using gTTS"""
+def generate_audio(text: str, output_file: str, voice_actor: str = "Guy",
+                  speed: float = 1.0, emotion: str = "neutral", language: str = 'en',
+                  title: str = "") -> bool:
+    """Generate audio using Edge TTS or Kokoro TTS (redirects to new TTS system)"""
     try:
-        if not GTTS_AVAILABLE:
+        # Import the new TTS manager
+        from services.tts_providers import get_tts_manager
+
+        tts_manager = get_tts_manager()
+        if not tts_manager:
+            print(clean_log_message(" TTS manager not available"))
             return False
 
-        # Map language codes - preserve specific English variants for gTTS
-        lang_map = {
-            'en': 'en',
-            'en-us': 'en-us',    # Keep specific variants
-            'en-uk': 'en-uk',    # Keep specific variants
-            'en-au': 'en-au',    # Keep specific variants
-            'en-ca': 'en-ca',    # Keep specific variants
-            'en-in': 'en-in',    # Keep specific variants
-            'es': 'es',
-            'fr': 'fr',
-            'de': 'de',
-            'it': 'it',
-            'pt': 'pt',
-            'ru': 'ru',
-            'ja': 'ja',
-            'ko': 'ko',
-            'zh': 'zh'
+        # Use new TTS system with parameters
+        tts_params = {
+            'language': language,
+            'emotion': emotion,
+            'speed': speed,
+            'voice_actor': voice_actor
         }
 
-        gtts_lang = lang_map.get(language, 'en')
+        success = tts_manager.generate_speech(text, output_file, **tts_params)
+        if success:
+            print(clean_log_message(f" Audio generated with new TTS system: {output_file}"))
+        else:
+            print(clean_log_message(" Failed to generate audio with new TTS system"))
 
-        # Create gTTS object
-        tts = gTTS(text=text, lang=gtts_lang, slow=False)
-
-        # Save to file
-        tts.save(output_file)
-        return True
+        return success
 
     except Exception as e:
-        print(clean_log_message(f"❌ gTTS error: {e}"))
+        print(clean_log_message(f" TTS error: {e}"))
         return False
 
 
@@ -187,11 +177,11 @@ class SpeechRecognitionService:
             self.vosk_model, self.vosk_recognizer = initialize_speech_recognition(self.model_path)
             if self.vosk_model and self.vosk_recognizer:
                 from utils.logging_utils import log_speech_recognition
-                log_speech_recognition(f"✅ Speech recognition ready")
+                log_speech_recognition(f" Speech recognition ready")
             else:
-                print(clean_log_message("⚠️ Speech recognition initialization failed"))
+                print(clean_log_message(" Speech recognition initialization failed"))
         else:
-            print(clean_log_message("⚠️ Speech recognition unavailable"))
+            print(clean_log_message(" Speech recognition unavailable"))
     
     def _find_vosk_model(self) -> Optional[str]:
         """Find available Vosk model in the models directory"""
@@ -205,7 +195,7 @@ class SpeechRecognitionService:
                 bundled_model = os.path.join(sys._MEIPASS, 'vosk-model')
                 if os.path.exists(bundled_model) and self._is_valid_vosk_model(bundled_model):
                     from utils.logging_utils import log_speech_recognition
-                    log_speech_recognition(f"✅ Found bundled Vosk model: {bundled_model}")
+                    log_speech_recognition(f" Found bundled Vosk model: {bundled_model}")
                     return bundled_model
 
         # Fallback: check in models directory (for development)
@@ -218,7 +208,7 @@ class SpeechRecognitionService:
             if os.path.isdir(item_path) and "vosk-model" in item.lower():
                 if self._is_valid_vosk_model(item_path):
                     from utils.logging_utils import log_speech_recognition
-                    log_speech_recognition(f"✅ Found development Vosk model: {item_path}")
+                    log_speech_recognition(f" Found development Vosk model: {item_path}")
                     return item_path
         return None
     
@@ -227,9 +217,9 @@ class SpeechRecognitionService:
         required_files = ["am", "graph", "conf"]
         return all(os.path.exists(os.path.join(model_path, f)) for f in required_files)
     
-    def process_text_to_speech_to_text_with_postprocessing(self, 
-                                                         text: str, 
-                                                         content_type: ContentType = None,
+    def process_text_to_speech_to_text_with_postprocessing(self,
+                                                         text: str,
+                                                         content_type = None,
                                                          voice_settings: Dict = None,
                                                          cleanup_audio: bool = True) -> SpeechRecognitionResult:
         """
@@ -270,7 +260,7 @@ class SpeechRecognitionService:
     def recognize_speech_from_audio_with_postprocessing(self,
                                                        audio_file: str,
                                                        original_text: str,
-                                                       content_type: ContentType = None) -> SpeechRecognitionResult:
+                                                       content_type = None) -> SpeechRecognitionResult:
         """
         Recognize speech from existing audio file with post-processing
         This avoids redundant TTS generation when we already have the audio
@@ -336,15 +326,15 @@ class SpeechRecognitionService:
         if not text or not text.strip():
             return self._create_error_result("", "Empty text provided", start_time)
 
-        if not GTTS_AVAILABLE:
-            return self._create_error_result(text, "gTTS not available", start_time)
+        # TTS availability is now checked by the TTS manager
+        # Legacy check removed - TTS handled by services/tts_providers.py
 
         if not self.vosk_model or not self.vosk_recognizer:
             return self._create_error_result(text, "Vosk speech recognition not available", start_time)
 
-        # Preprocess text for better speech recognition
-        from utils.text_processing import process_text_for_speech_recognition
-        processed_text = process_text_for_speech_recognition(text)
+        # Preprocess text for better speech recognition (use same function as TTS pipeline)
+        from utils.text_processing import normalize_text_for_natural_speech
+        processed_text = normalize_text_for_natural_speech(text)
 
         # Log preprocessing if significant changes were made
         if len(processed_text) != len(text) or processed_text != text:
@@ -357,7 +347,7 @@ class SpeechRecognitionService:
                 print(clean_log_message(f"   Processed: '{processed_text}'"))
         
         try:
-            # Step 1: Generate audio from processed text using gTTS
+            # Step 1: Generate audio from processed text using Edge TTS or Kokoro TTS
             audio_file = self._generate_audio_file(processed_text, voice_settings)
             if not audio_file:
                 return self._create_error_result(text, "Failed to generate audio", start_time)
@@ -409,7 +399,7 @@ class SpeechRecognitionService:
         )
     
     def _generate_audio_file(self, text: str, voice_settings: Dict = None) -> Optional[str]:
-        """Generate audio file from text using gTTS"""
+        """Generate audio file from text using Edge TTS or Kokoro TTS"""
         try:
             audio_file = os.path.join(self.temp_dir, f"speech_recognition_{int(time.time())}.mp3")
             
@@ -424,21 +414,21 @@ class SpeechRecognitionService:
             )
             
             if success and os.path.exists(audio_file):
-                print(clean_log_message(f"✅ Audio generated: {audio_file}"))
+                print(clean_log_message(f" Audio generated: {audio_file}"))
                 return audio_file
             else:
-                print(clean_log_message("❌ Failed to generate audio"))
+                print(clean_log_message(" Failed to generate audio"))
                 return None
 
         except Exception as e:
-            print(clean_log_message(f"❌ Error generating audio: {e}"))
+            print(clean_log_message(f" Error generating audio: {e}"))
             return None
     
     def _recognize_speech_from_audio(self, audio_file: str) -> str:
         """Recognize speech from audio file using Vosk"""
         try:
             if not os.path.exists(audio_file):
-                print(clean_log_message(f"❌ Audio file not found: {audio_file}"))
+                print(clean_log_message(f" Audio file not found: {audio_file}"))
                 return ""
 
             recognized_text = recognize_speech_from_file(
@@ -450,7 +440,7 @@ class SpeechRecognitionService:
             return recognized_text.strip()
 
         except Exception as e:
-            print(clean_log_message(f"❌ Speech recognition error: {e}"))
+            print(clean_log_message(f" Speech recognition error: {e}"))
             return ""
     
     def _compare_texts(self, original: str, recognized: str) -> TextComparisonMetrics:
@@ -485,7 +475,7 @@ class SpeechRecognitionService:
             )
             
         except Exception as e:
-            print(clean_log_message(f"❌ Error comparing texts: {e}"))
+            print(clean_log_message(f" Error comparing texts: {e}"))
             return TextComparisonMetrics(0, 0, 0, 0.0, 0.0, 0.0, 0, [])
     
     def _normalize_text(self, text: str) -> str:
