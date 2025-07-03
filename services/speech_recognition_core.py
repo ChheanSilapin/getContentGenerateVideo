@@ -29,13 +29,17 @@ from utils.logging_utils import clean_log_message
 
 
 def initialize_speech_recognition(model_path: str):
-    """Initialize Vosk speech recognition model and recognizer"""
+    """Initialize Vosk speech recognition model and recognizer with word-level timestamps"""
     try:
         if not VOSK_AVAILABLE:
             return None, None
 
         model = vosk.Model(model_path)
         recognizer = vosk.KaldiRecognizer(model, 16000)
+
+        # Enable word-level timestamps - this is the key fix!
+        recognizer.SetWords(True)
+
         return model, recognizer
     except Exception as e:
         print(clean_log_message(f" Failed to initialize Vosk: {e}"))
@@ -43,15 +47,15 @@ def initialize_speech_recognition(model_path: str):
 
 
 def recognize_speech_from_file(audio_file: str, model, recognizer):
-    """Recognize speech from audio file using Vosk"""
+    """Recognize speech from audio file using Vosk with word-level timestamps"""
     try:
         if not VOSK_AVAILABLE or not model or not recognizer:
-            return ""
+            return {"text": "", "words": []}
 
         # Convert MP3 to WAV if needed
         wav_file = _convert_to_wav_if_needed(audio_file)
         if not wav_file:
-            return ""
+            return {"text": "", "words": []}
 
         # Open audio file
         wf = wave.open(wav_file, 'rb')
@@ -63,23 +67,43 @@ def recognize_speech_from_file(audio_file: str, model, recognizer):
             # Clean up temporary file if created
             if wav_file != audio_file and os.path.exists(wav_file):
                 os.remove(wav_file)
-            return ""
+            return {"text": "", "words": []}
 
-        # Process audio
-        results = []
+        # Process audio and collect word-level timing data
+        all_words = []
+        text_parts = []
+
         while True:
             data = wf.readframes(4000)
             if len(data) == 0:
                 break
             if recognizer.AcceptWaveform(data):
                 result = json.loads(recognizer.Result())
-                if 'text' in result:
-                    results.append(result['text'])
+                if 'result' in result:
+                    # Extract word-level timing data
+                    for word_data in result['result']:
+                        all_words.append({
+                            'word': word_data.get('word', ''),
+                            'start': word_data.get('start', 0.0),
+                            'end': word_data.get('end', 0.0),
+                            'conf': word_data.get('conf', 0.0)
+                        })
+                if 'text' in result and result['text'].strip():
+                    text_parts.append(result['text'])
 
         # Get final result
         final_result = json.loads(recognizer.FinalResult())
-        if 'text' in final_result:
-            results.append(final_result['text'])
+        if 'result' in final_result:
+            # Extract word-level timing data from final result
+            for word_data in final_result['result']:
+                all_words.append({
+                    'word': word_data.get('word', ''),
+                    'start': word_data.get('start', 0.0),
+                    'end': word_data.get('end', 0.0),
+                    'conf': word_data.get('conf', 0.0)
+                })
+        if 'text' in final_result and final_result['text'].strip():
+            text_parts.append(final_result['text'])
 
         wf.close()
 
@@ -87,11 +111,16 @@ def recognize_speech_from_file(audio_file: str, model, recognizer):
         if wav_file != audio_file and os.path.exists(wav_file):
             os.remove(wav_file)
 
-        return ' '.join(results).strip()
+        # Return both text and word-level timing data
+        full_text = ' '.join(text_parts).strip()
+        return {
+            "text": full_text,
+            "words": all_words
+        }
 
     except Exception as e:
         print(clean_log_message(f" Speech recognition error: {e}"))
-        return ""
+        return {"text": "", "words": []}
 
 
 def _convert_to_wav_if_needed(audio_file: str) -> str:
@@ -332,19 +361,9 @@ class SpeechRecognitionService:
         if not self.vosk_model or not self.vosk_recognizer:
             return self._create_error_result(text, "Vosk speech recognition not available", start_time)
 
-        # Preprocess text for better speech recognition (use same function as TTS pipeline)
-        from utils.text_processing import normalize_text_for_natural_speech
-        processed_text = normalize_text_for_natural_speech(text)
-
-        # Log preprocessing if significant changes were made
-        if len(processed_text) != len(text) or processed_text != text:
-            print(clean_log_message(f"📝 Text preprocessed for speech recognition (length: {len(text)} → {len(processed_text)})"))
-            if len(text) > 100:  # Only show preview for longer texts
-                print(clean_log_message(f"   Original: '{text[:50]}...'"))
-                print(clean_log_message(f"   Processed: '{processed_text[:50]}...'"))
-            else:
-                print(clean_log_message(f"   Original: '{text}'"))
-                print(clean_log_message(f"   Processed: '{processed_text}'"))
+        # Use raw text directly - no preprocessing needed for modern TTS
+        # Edge TTS and Kokoro TTS can handle complex formatting naturally
+        processed_text = text
         
         try:
             # Step 1: Generate audio from processed text using Edge TTS or Kokoro TTS
@@ -431,13 +450,18 @@ class SpeechRecognitionService:
                 print(clean_log_message(f" Audio file not found: {audio_file}"))
                 return ""
 
-            recognized_text = recognize_speech_from_file(
+            result = recognize_speech_from_file(
                 audio_file,
                 self.vosk_model,
                 self.vosk_recognizer
             )
 
-            return recognized_text.strip()
+            # Extract text from the new format
+            if isinstance(result, dict):
+                return result.get('text', '').strip()
+            else:
+                # Fallback for old format
+                return str(result).strip()
 
         except Exception as e:
             print(clean_log_message(f" Speech recognition error: {e}"))

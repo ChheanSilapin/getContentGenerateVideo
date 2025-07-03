@@ -48,44 +48,28 @@ class SynchronizedSubtitleGenerator:
             # Create output directory
             ensure_directory_exists(os.path.dirname(output_file))
 
-            # Use TTS-processed text for timing alignment (same text used for audio generation)
-            # but prepare subtitle-formatted text for display
+            # Use actual voice timing data directly from speech recognition
+            # No more text preprocessing mismatches!
             from utils.text_processing import normalize_text_for_subtitles
 
-            # Get the processed text that was actually used for TTS generation
-            tts_text = audio_timing_result.processed_text or text
+            # Format text for subtitle display (preserve original formatting)
             subtitle_text = normalize_text_for_subtitles(text)
+            print(f"[SUBTITLE] Using direct voice timing from speech recognition")
 
-            print(f"[SUBTITLE] Using TTS text for timing alignment, subtitle text for display")
-
-            # Create word groups using TTS text for accurate timing synchronization
-            word_groups = self._create_word_groups(tts_text)
-
-            # Create corresponding subtitle groups for display formatting
-            subtitle_groups = self._create_word_groups(subtitle_text)
-            if not word_groups or not subtitle_groups:
-                return False
-
-            # Handle group count mismatch intelligently
-            if len(word_groups) != len(subtitle_groups):
-                print(f"[SUBTITLE] Group count mismatch: TTS groups ({len(word_groups)}) != subtitle groups ({len(subtitle_groups)})")
-                # Create aligned subtitle groups that match TTS group timing
-                subtitle_groups = self._align_subtitle_groups_to_timing(subtitle_groups, word_groups)
-                print(f"[SUBTITLE] Aligned to {len(subtitle_groups)} groups for timing synchronization")
-
-            # Extract timing from speech recognition analysis using TTS-aligned word groups
-            timing_result = self._extract_timing_from_analysis(audio_timing_result, word_groups)
+            # Extract timing directly from voice analysis (Vosk/Whisper word-level data)
+            timing_result = self._extract_timing_from_voice_analysis(audio_timing_result)
             print(f"[SUBTITLE] Timing method: {timing_result.method}")
 
-            if timing_result.success:
-                # Use precise timing from speech recognition with subtitle text for display
-                events = self._create_subtitle_events_from_timing(subtitle_groups, timing_result.segments)
+            if timing_result.success and timing_result.segments:
+                # Use actual voice timing with subtitle text for display
+                events = self._create_subtitle_events_from_voice_timing(subtitle_text, timing_result.segments)
             else:
-                # Fallback to calculated timing with subtitle text for display
+                # Fallback to calculated timing if voice analysis fails
                 print(f"[SUBTITLE] Using fallback timing calculation")
+                word_groups = self._create_word_groups(subtitle_text)
                 audio_duration = get_media_duration_safe(audio_timing_result.audio_file)
                 timings = self._calculate_fallback_timing(word_groups, audio_duration)
-                events = self._create_subtitle_events(subtitle_groups, timings)
+                events = self._create_subtitle_events(word_groups, timings)
 
             # Write subtitle file
             self._write_subtitle_file(output_file, events, style)
@@ -286,6 +270,37 @@ class SynchronizedSubtitleGenerator:
 
         return tokens
 
+    def _extract_timing_from_voice_analysis(self, audio_timing_result) -> SubtitleTimingResult:
+        """Extract timing directly from voice analysis (Vosk/Whisper word-level data)"""
+        try:
+            timing_data = audio_timing_result.timing_data
+            if not timing_data:
+                return SubtitleTimingResult(False, method="no_timing_data")
+
+            # Priority 1: Whisper-timestamped (most precise)
+            if timing_data.get('whisper_segments'):
+                segments = timing_data['whisper_segments']
+                print(f"[SUBTITLE] Using Whisper-timestamped data: {len(segments)} segments")
+                return SubtitleTimingResult(True, segments, "whisper", timing_data.get('confidence_score', 0.9))
+
+            # Priority 2: Vosk with word-level timing
+            if timing_data.get('vosk_segments'):
+                segments = timing_data['vosk_segments']
+                print(f"[SUBTITLE] Using Vosk word-level data: {len(segments)} segments")
+                return SubtitleTimingResult(True, segments, "vosk", timing_data.get('confidence_score', 0.8))
+
+            # Priority 3: Combined segments
+            if timing_data.get('combined_segments'):
+                segments = timing_data['combined_segments']
+                print(f"[SUBTITLE] Using combined timing data: {len(segments)} segments")
+                return SubtitleTimingResult(True, segments, "combined", timing_data.get('confidence_score', 0.7))
+
+            return SubtitleTimingResult(False, method="no_valid_segments")
+
+        except Exception as e:
+            print(f"[SUBTITLE] Error extracting voice timing: {e}")
+            return SubtitleTimingResult(False, method="error")
+
     def _extract_timing_from_analysis(self, audio_timing_result, word_groups: List[Dict]) -> SubtitleTimingResult:
         """Extract timing segments from speech recognition analysis using best available method"""
         try:
@@ -399,6 +414,90 @@ class SynchronizedSubtitleGenerator:
                 })
 
         return timing_segments
+
+    def _create_subtitle_events_from_voice_timing(self, subtitle_text: str, timing_segments: List[Dict]) -> List[Dict]:
+        """Create subtitle events using actual voice timing data with word-level precision"""
+        try:
+            events = []
+
+            if not timing_segments:
+                return []
+
+            # Extract all words with timing from all segments
+            all_words = []
+            for segment in timing_segments:
+                if 'words' in segment and segment['words']:
+                    # Use word-level timing for maximum precision
+                    for word_data in segment['words']:
+                        all_words.append({
+                            'text': word_data.get('word', '').strip(),
+                            'start': word_data.get('start', 0.0),
+                            'end': word_data.get('end', 0.0),
+                            'confidence': word_data.get('conf', 0.8)
+                        })
+                else:
+                    # Fallback: use segment text if no word-level data
+                    segment_text = segment.get('text', '').strip()
+                    if segment_text:
+                        all_words.extend([{
+                            'text': word.strip(),
+                            'start': segment.get('start', 0.0),
+                            'end': segment.get('end', 0.0),
+                            'confidence': segment.get('confidence', 0.8)
+                        } for word in segment_text.split()])
+
+            if not all_words:
+                return []
+
+            # Create natural subtitle groups from word-level timing
+            # Group words into 4-6 word chunks with natural breaks
+            current_group = []
+            current_start = None
+            current_end = None
+
+            for i, word in enumerate(all_words):
+                if not word['text']:
+                    continue
+
+                # Start new group
+                if not current_group:
+                    current_start = word['start']
+
+                current_group.append(word['text'])
+                current_end = word['end']
+
+                # Create subtitle event when we have 4-6 words or reach end
+                should_break = (
+                    len(current_group) >= 5 or  # Optimal length
+                    i == len(all_words) - 1 or  # Last word
+                    (len(current_group) >= 3 and word['text'].endswith(('.', '!', '?', ',')))  # Natural break
+                )
+
+                if should_break:
+                    # Apply subtitle formatting
+                    from utils.text_processing import normalize_text_for_subtitles
+                    group_text = ' '.join(current_group)
+                    formatted_text = normalize_text_for_subtitles(group_text)
+
+                    event = {
+                        'start': current_start,
+                        'end': current_end,
+                        'text': formatted_text,
+                        'confidence': sum(w.get('confidence', 0.8) for w in all_words[i-len(current_group)+1:i+1]) / len(current_group)
+                    }
+                    events.append(event)
+
+                    print(f"[SUBTITLE] Event {len(events)}: {current_start:.2f}-{current_end:.2f}s | '{formatted_text}'")
+
+                    # Reset for next group
+                    current_group = []
+                    current_start = None
+
+            return events
+
+        except Exception as e:
+            print(f"[SUBTITLE] Error creating events from voice timing: {e}")
+            return []
 
     def _create_subtitle_events_from_timing(self, word_groups: List[Dict], timing_segments: List[Dict]) -> List[Dict]:
         """Create subtitle events directly from timing segments (optimized path)"""
