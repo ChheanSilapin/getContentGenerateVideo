@@ -13,12 +13,7 @@ from utils.logging_utils import clean_log_message
 # Import TTS manager
 from services.tts_providers import get_tts_manager
 
-# Import speech recognition for timing analysis
-try:
-    from services.speech_recognition_core import SpeechRecognitionService
-    VOSK_AVAILABLE = True
-except ImportError:
-    VOSK_AVAILABLE = False
+# Speech recognition no longer needed - using only Whisper-timestamped
 
 try:
     from services.whisper_timestamped_service import WhisperTimestampedService
@@ -37,7 +32,6 @@ class AudioTimingResult:
         self.error = error
         self.original_text = original_text  # Text user typed
         self.processed_text = processed_text  # Text sent to TTS
-        self.vosk_segments = timing_data.get('vosk_segments', []) if timing_data else []
         self.whisper_segments = timing_data.get('whisper_segments', []) if timing_data else []
         self.processing_time = timing_data.get('processing_time', 0.0) if timing_data else 0.0
 
@@ -105,98 +99,72 @@ def generate_audio_with_timing_analysis(text: str, output_file: str, voice_actor
 
 def _analyze_audio_timing(audio_file: str, original_text: str) -> Dict[str, Any]:
     """
-    Analyze generated audio using Vosk + Whisper for subtitle timing synchronization
+    Analyze generated audio using cached speech recognition results
 
     Args:
         audio_file: Path to generated audio file
         original_text: Original text for reference
 
-
     Returns:
         Dictionary with timing analysis results
     """
+    from utils.speech_recognition_cache import get_speech_recognition_cache
+
+    # Check cache first
+    cache = get_speech_recognition_cache()
+    cached_result = cache.get_cached_result(audio_file, original_text)
+
+    if cached_result:
+        return {
+            'whisper_segments': cached_result.whisper_segments,
+            'combined_segments': cached_result.combined_segments,
+            'confidence_score': cached_result.confidence_score,
+            'method_used': cached_result.method_used
+        }
+
+    # Perform analysis if not cached
     timing_data = {
-        'vosk_segments': [],
         'whisper_segments': [],
         'combined_segments': [],
         'confidence_score': 0.0,
         'method_used': 'none'
     }
-    
-    try:
-        # Analyze with Vosk for fast sentence-level timing
-        if VOSK_AVAILABLE:
-            vosk_result = _analyze_with_vosk(audio_file, original_text)
-            if vosk_result:
-                timing_data['vosk_segments'] = vosk_result
-                timing_data['method_used'] = 'vosk'
 
-        # Analyze with Whisper for precise timing
+    start_time = time.time()
+
+    try:
+        # SIMPLIFIED: Use ONLY Whisper-timestamped for best accuracy and consistency
         if WHISPER_AVAILABLE:
             whisper_result = _analyze_with_whisper(audio_file)
             if whisper_result:
                 timing_data['whisper_segments'] = whisper_result
-                timing_data['method_used'] = 'whisper' if not timing_data['vosk_segments'] else 'vosk+whisper'
+                timing_data['method_used'] = 'whisper'
+                timing_data['confidence_score'] = _calculate_confidence_score(whisper_result)
+            else:
+                print(f"⚠️ Whisper-timestamped analysis failed")
+        else:
+            print(f"⚠️ Whisper-timestamped not available - required for subtitle timing")
 
-        # Combine results for optimal timing
-        combined_segments = _combine_timing_results(timing_data['vosk_segments'], timing_data['whisper_segments'])
-        timing_data['combined_segments'] = combined_segments
-        timing_data['confidence_score'] = _calculate_confidence_score(combined_segments)
-        
+        # Cache the result
+        processing_time = time.time() - start_time
+        cache.cache_result(
+            audio_file=audio_file,
+            original_text=original_text,
+            whisper_segments=timing_data['whisper_segments'],
+            combined_segments=timing_data['whisper_segments'],  # Same as whisper now
+            confidence_score=timing_data['confidence_score'],
+            method_used=timing_data['method_used'],
+            processing_time=processing_time
+        )
+
         return timing_data
-        
+
     except Exception as e:
         print(f"⚠️ Audio timing analysis error: {e}")
         return timing_data
 
 
-def _analyze_with_vosk(audio_file: str, original_text: str) -> list:
-    """Analyze audio with Vosk for word-level timing"""
-    try:
-        from services.speech_recognition_core import recognize_speech_from_file, initialize_speech_recognition
 
-        # Initialize Vosk directly for word-level timing
-        model_path = "models/vosk-model-small-en-us-0.15"
-        if not os.path.exists(model_path):
-            print(f"⚠️ Vosk model not found at {model_path}")
-            return []
-
-        model, recognizer = initialize_speech_recognition(model_path)
-        if not model or not recognizer:
-            return []
-
-        # Get word-level timing data from Vosk
-        result = recognize_speech_from_file(audio_file, model, recognizer)
-
-        if result and isinstance(result, dict) and result.get('words'):
-            # Get actual audio duration for validation
-            from utils.helpers import get_media_duration_safe
-            audio_duration = get_media_duration_safe(audio_file)
-
-            # Debug logging for timing verification
-            print(f"[VOSK TIMING] Audio file: {os.path.basename(audio_file)} | Duration: {audio_duration:.2f}s")
-            print(f"[VOSK TIMING] Extracted {len(result['words'])} words with timing data")
-
-            # Convert Vosk word data to segments format
-            segments = []
-            if result['words']:
-                # Create segments from word-level data
-                segments.append({
-                    'text': result.get('text', ''),
-                    'start': result['words'][0].get('start', 0.0),
-                    'end': result['words'][-1].get('end', audio_duration),
-                    'confidence': sum(w.get('conf', 0.0) for w in result['words']) / len(result['words']),
-                    'words': result['words']  # Include word-level timing data
-                })
-                print(f"[VOSK TIMING] Created segment with {len(result['words'])} words: {result['words'][0].get('start', 0.0):.2f}-{result['words'][-1].get('end', audio_duration):.2f}s")
-
-            return segments
-
-        return []
-
-    except Exception as e:
-        print(f"⚠️ Vosk analysis error: {e}")
-        return []
 
 
 def _analyze_with_whisper(audio_file: str) -> list:
@@ -204,7 +172,6 @@ def _analyze_with_whisper(audio_file: str) -> list:
     try:
         whisper_service = WhisperTimestampedService()
         if not whisper_service.is_available:
-            print(f"[DEBUG] Whisper service not available - falling back to Vosk only")
             return []
 
         # Analyze with Whisper
@@ -249,18 +216,7 @@ def _analyze_with_whisper(audio_file: str) -> list:
         return []
 
 
-def _combine_timing_results(vosk_segments: list, whisper_segments: list) -> list:
-    """Combine Vosk and Whisper timing results for optimal synchronization"""
-    if not vosk_segments and not whisper_segments:
-        return []
-    
-    # Prefer Whisper for precision, fallback to Vosk for speed
-    if whisper_segments:
-        return whisper_segments
-    elif vosk_segments:
-        return vosk_segments
-    
-    return []
+
 
 
 def _calculate_confidence_score(segments: list) -> float:
@@ -270,6 +226,56 @@ def _calculate_confidence_score(segments: list) -> float:
     
     total_confidence = sum(segment.get('confidence', 0.0) for segment in segments)
     return total_confidence / len(segments)
+
+
+def extract_timing_from_video(video_file: str, original_text: str) -> AudioTimingResult:
+    """
+    Extract timing from video file with audio for perfect subtitle synchronization
+
+    Args:
+        video_file: Path to video file with audio
+        original_text: Original text for reference
+
+    Returns:
+        AudioTimingResult with timing data extracted from video
+    """
+    try:
+        # Extract audio from video to temporary file
+        import tempfile
+        with tempfile.NamedTemporaryFile(suffix='.mp3', delete=False) as temp_audio:
+            temp_audio_path = temp_audio.name
+
+        # Extract audio from video using FFmpeg
+        from utils.helpers import get_ffmpeg_path
+        ffmpeg_path = get_ffmpeg_path()
+        if not ffmpeg_path:
+            return AudioTimingResult(False, "", error="FFmpeg not available")
+
+        import subprocess
+        cmd = [
+            ffmpeg_path, '-i', video_file,
+            '-vn', '-acodec', 'mp3', '-y', temp_audio_path
+        ]
+
+        result = subprocess.run(cmd, capture_output=True, text=False)
+        if result.returncode != 0:
+            os.unlink(temp_audio_path)
+            return AudioTimingResult(False, "", error="Failed to extract audio from video")
+
+        # Analyze extracted audio for timing
+        timing_data = _analyze_audio_timing(temp_audio_path, original_text)
+
+        # Clean up temporary file
+        os.unlink(temp_audio_path)
+
+        return AudioTimingResult(True, video_file, timing_data,
+                               original_text=original_text, processed_text=original_text)
+
+    except Exception as e:
+        error_msg = f"Video timing extraction failed: {e}"
+        print(clean_log_message(f"❌ {error_msg}"))
+        return AudioTimingResult(False, video_file, error=error_msg,
+                               original_text=original_text, processed_text="")
 
 
 # Legacy function for backward compatibility

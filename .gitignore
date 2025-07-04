@@ -5,8 +5,7 @@ ffmpeg.exe
 ffplay.exe
 ffprobe.exe
 
-# Vosk model (not tracked - users need to download separately)
-models/vosk-model-small-en-us-0.15/
+
 
 # Output directories
 output_*/

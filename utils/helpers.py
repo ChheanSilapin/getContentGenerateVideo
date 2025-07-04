@@ -191,9 +191,11 @@ def get_media_duration_safe(media_file):
                 '-of', 'csv=p=0',
                 media_file
             ]
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=10)
+            result = subprocess.run(cmd, capture_output=True, text=False, timeout=10)
+            # Decode output manually with proper error handling
+            stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
             if result.returncode == 0:
-                duration = float(result.stdout.strip())
+                duration = float(stdout.strip())
                 return duration
         except Exception as e2:
             pass  # Silent fallback
@@ -610,12 +612,15 @@ def execute_ffmpeg_command(cmd, operation_name="FFmpeg operation", timeout=None,
         elif timeout is None:
             timeout = 300  # Default 5 minutes
 
-        result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=timeout)
+        result = subprocess.run(cmd, capture_output=True, text=False, timeout=timeout)
+        # Decode output manually with proper error handling
+        stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
+        stderr = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
 
         if result.returncode == 0:
             return True, result, None
         else:
-            error_msg = f"{operation_name} failed: {result.stderr}"
+            error_msg = f"{operation_name} failed: {stderr}"
             return False, result, error_msg
 
     except subprocess.TimeoutExpired:

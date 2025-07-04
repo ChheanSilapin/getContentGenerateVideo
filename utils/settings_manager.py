@@ -31,10 +31,9 @@ class SettingsManager:
             'tts_speed': 1.0,
             'tts_emotion': 'neutral',
 
-            # Speech recognition settings (Vosk) - Auto-enabled
+            # Speech recognition settings (Whisper-timestamped only)
             'sr_enabled': True,  # Automatically enabled
             'sr_language': 'en-us',
-            'sr_model_path': '',  # Auto-detected
 
             # Professional TTS settings (Edge TTS + Kokoro TTS)
             'enabled_tts_providers': ['edge_tts', 'kokoro_tts'],

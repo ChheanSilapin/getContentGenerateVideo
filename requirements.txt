@@ -2,7 +2,6 @@
 edge-tts>=6.1.0
 kokoro>=0.9.4
 soundfile>=0.12.0
-vosk==0.3.45
 whisper-timestamped>=1.15.8
 # pyaudio==0.2.11  # Optional - may fail on Windows without PortAudio headers
 

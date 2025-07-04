@@ -60,7 +60,9 @@ def validate_video_file(video_file):
                 video_file
             ]
             
-            result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8', errors='ignore', timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=False, timeout=30)
+            # Decode output manually with proper error handling
+            stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
             
             if result.returncode == 0:
                 print(f"Video file validation successful")

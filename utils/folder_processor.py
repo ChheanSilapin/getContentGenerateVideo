@@ -74,11 +74,24 @@ class FolderProcessor:
                 "override_option": "Load as Individual Instead"
             }
         
-        # RULE 2: Multiple clear subfolders -> AUTO-GROUP BY SUBFOLDER  
+        # RULE 2: Multiple clear subfolders -> Check if grouping makes sense
         if len(groups) > 1:
             total_videos = sum(len(group['pairs']) for group in groups.values())
+
+            # RULE 2A: Multiple subfolders with 1 video each -> INDIVIDUAL (no merging needed)
+            single_video_groups = [g for g in groups.values() if len(g['pairs']) == 1]
+            if len(single_video_groups) == len(groups):
+                return {
+                    "processing_mode": "individual",
+                    "detection_reason": f"Multiple subfolders with 1 video each - no merging needed",
+                    "pairs": individual_pairs,
+                    "notification_message": f"Smart-loaded: {total_videos} individual videos from {len(groups)} folders",
+                    "override_option": "Load as Groups Instead"
+                }
+
+            # RULE 2B: Multiple subfolders with 2+ videos each -> GROUP BY SUBFOLDER
             return {
-                "processing_mode": "grouped", 
+                "processing_mode": "grouped",
                 "detection_reason": f"Clear subfolder structure - {len(groups)} groups detected",
                 "groups": groups,
                 "notification_message": f"Smart-loaded: {len(groups)} groups ({total_videos} videos total)",

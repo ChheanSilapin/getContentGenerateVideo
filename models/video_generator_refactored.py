@@ -35,7 +35,6 @@ class VideoGeneratorModel:
         self.text_input = ""
         self.image_source = "selected"
         self.selected_images = []
-        self.website_url = ""
         self.local_folder = ""
         self.processing_option = "cpu"
         self.enhancement_options = {}
@@ -84,18 +83,21 @@ class VideoGeneratorModel:
             tuple: (subtitle_path, video_path, output_dir)
         """
         try:
-            # Validate inputs
-            if not self._validate_inputs():
-                return None
-            
-            # Check if we should stop
-            if stop_event and stop_event.is_set():
-                self.update_progress(0, "Process stopped by user")
-                return None
+            from utils.memory_manager import memory_optimized_operation, get_memory_manager
 
-            # Create output directory
-            output_dir = self._create_output_directory()
-            self.current_output_dir = output_dir
+            with memory_optimized_operation("Complete Video Generation"):
+                # Validate inputs
+                if not self._validate_inputs():
+                    return None
+
+                # Check if we should stop
+                if stop_event and stop_event.is_set():
+                    self.update_progress(0, "Process stopped by user")
+                    return None
+
+                # Create output directory
+                output_dir = self._create_output_directory()
+                self.current_output_dir = output_dir
 
             # Step 1: Get images
             images_dir = self._get_images(output_dir, stop_event)
@@ -112,8 +114,10 @@ class VideoGeneratorModel:
             if not video_file:
                 return None
 
-            # Step 4: Generate subtitles
-            subtitle_file = self._generate_subtitles(video_file, audio_file, output_dir, stop_event)
+            # Step 4: Generate improved phrase-based subtitles
+            # Word-by-word option removed per user request
+            subtitle_type = "phrase"
+            subtitle_file = self._generate_subtitles(video_file, audio_file, output_dir, stop_event, subtitle_type)
             if not subtitle_file:
                 return None
 
@@ -278,10 +282,6 @@ class VideoGeneratorModel:
             self.update_progress(0, "Error: No images selected")
             return False
 
-        if self.image_source == "website" and not self.website_url.strip():
-            self.update_progress(0, "Error: No website URL provided")
-            return False
-
         if self.image_source == "folder" and not self.local_folder.strip():
             self.update_progress(0, "Error: No local folder provided")
             return False
@@ -329,8 +329,6 @@ class VideoGeneratorModel:
 
         if self.image_source == "selected":
             return self._handle_selected_images(output_dir)
-        elif self.image_source == "website":
-            return self._handle_website_images(output_dir, stop_event)
         elif self.image_source == "folder":
             return self._handle_folder_images(output_dir)
         else:
@@ -338,50 +336,25 @@ class VideoGeneratorModel:
             return None
 
     def _handle_selected_images(self, output_dir):
-        """Handle selected images"""
-        images_dir = os.path.join(output_dir, "images")
-        try:
-            os.makedirs(images_dir, exist_ok=True)
-        except OSError as e:
-            raise Exception(f"Failed to create images directory: {e}")
-
-        # Copy selected images to output directory
-        import shutil
-        for i, image_path in enumerate(self.selected_images):
+        """Handle selected images (optimized - use original paths instead of copying)"""
+        # Validate that all selected images exist
+        valid_images = []
+        for image_path in self.selected_images:
             if os.path.exists(image_path):
-                try:
-                    ext = os.path.splitext(image_path)[1]
-                    dest_path = os.path.join(images_dir, f"image_{i:03d}{ext}")
-                    shutil.copy2(image_path, dest_path)
-                except (OSError, shutil.Error) as e:
-                    print(f"Warning: Failed to copy image {image_path}: {e}")
-                    continue
+                valid_images.append(image_path)
+            else:
+                print(f"Warning: Image not found: {image_path}")
 
-        self.update_progress(20, f"Copied {len(self.selected_images)} selected images")
-        return images_dir
+        if not valid_images:
+            raise Exception("No valid images found in selection")
 
-    def _handle_website_images(self, output_dir, stop_event):
-        """Handle website image download"""
-        from services.image_service import download_images_from_website
+        self.update_progress(20, f"Using {len(valid_images)} selected images (no copying needed)")
 
-        images_dir = os.path.join(output_dir, "images")
-        try:
-            os.makedirs(images_dir, exist_ok=True)
-        except OSError as e:
-            raise Exception(f"Failed to create images directory: {e}")
+        # Return the directory containing the images for slideshow creation
+        # The slideshow service will use the original image paths directly
+        return valid_images
 
-        success = download_images_from_website(
-            self.website_url,
-            images_dir,
-            progress_callback=self.update_progress,
-            stop_event=stop_event
-        )
 
-        if success:
-            return images_dir
-        else:
-            self.update_progress(0, "Failed to download images from website")
-            return None
 
     def _handle_folder_images(self, output_dir):
         """Handle local folder images"""
@@ -563,12 +536,17 @@ class VideoGeneratorModel:
             self.update_progress(0, "Failed to create video slideshow")
             return None
 
-    def _generate_subtitles(self, video_file, audio_file, output_dir, stop_event):
-        """Generate subtitles for the video using TTS-to-Text timing synchronization"""
+    def _generate_subtitles(self, video_file, audio_file, output_dir, stop_event, subtitle_type="phrase"):
+        """
+        Generate improved phrase-based subtitles with smart mapping
+
+        Word-by-word subtitle option removed per user request.
+        Now always uses improved phrase-based subtitles with smart timing.
+        """
         if stop_event and stop_event.is_set():
             return None
 
-        self.update_progress(85, "Generating subtitles...")
+        self.update_progress(85, f"Generating improved phrase-based subtitles...")
 
         # Use audio timing result for synchronized subtitle generation
         audio_timing_result = getattr(self, 'audio_timing_result', None)
@@ -577,7 +555,11 @@ class VideoGeneratorModel:
             self.update_progress(0, "Failed to generate subtitles - no timing data")
             return None
 
+        # Always use improved phrase-based subtitle generation
         from services.subtitle_service import generate_subtitles_with_timing_sync
+        generate_function = generate_subtitles_with_timing_sync
+        print("[SUBTITLE] Using improved phrase-based subtitle generation with smart mapping")
+
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
         # Get subtitle style from enhancement options or config default
@@ -585,19 +567,20 @@ class VideoGeneratorModel:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # Pass the original text - the subtitle service will use the processed text from audio_timing_result
-        text_for_subtitles = getattr(self, 'validated_text', self.text_input)
+        # Always use original text for subtitles to preserve formatting ($1.2 trillion, June 28th, 2025, 19.7%)
+        # Speech validation is for quality assurance only, not for subtitle text
+        text_for_subtitles = self.text_input
 
-        if generate_subtitles_with_timing_sync(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
-            self.update_progress(90, "Subtitles generated successfully with TTS-to-Text timing synchronization")
+        if generate_function(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
+            self.update_progress(90, f"Improved phrase-based subtitles generated successfully with TTS-to-Text timing synchronization")
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
                 from utils.logging_utils import log_speech_recognition
-                log_speech_recognition(f"📝 Subtitles generated using validated text")
-            print("✅ Subtitles generated with TTS-to-Text timing synchronization")
+                log_speech_recognition(f"📝 Improved phrase-based subtitles generated using validated text")
+            print(f"✅ Improved phrase-based subtitles generated with TTS-to-Text timing synchronization")
             return subtitle_file
         else:
-            print("ERROR: Failed to generate synchronized subtitles.")
-            self.update_progress(0, "Failed to generate subtitles")
+            print(f"ERROR: Failed to generate improved phrase-based subtitles.")
+            self.update_progress(0, f"Failed to generate improved phrase-based subtitles")
             return None
 
 
@@ -665,9 +648,9 @@ class VideoGeneratorModel:
             # Log service status for transparency
             service_status = speech_service.get_service_status()
             if service_status['enhanced_mode']:
-                print(f"🔧 Enhanced mode: Vosk={service_status['vosk_available']}, Whisper={service_status['whisper_available']}")
+                print(f"🔧 Enhanced mode: Whisper={service_status['whisper_available']}")
             else:
-                print(f"🔧 Standard mode: Vosk={service_status['vosk_available']}")
+                print(f"🔧 Standard mode: Whisper={service_status['whisper_available']}")
 
             # Store enhanced validation results for potential use by UI
             self.last_speech_validation_result = {
@@ -677,7 +660,6 @@ class VideoGeneratorModel:
                 'method_used': method_used,
                 'passes_validation': passes_validation,
                 'threshold': threshold,
-                'vosk_available': service_status['vosk_available'],
                 'whisper_available': service_status['whisper_available'],
                 'enhanced_mode': service_status['enhanced_mode']
             }

@@ -302,24 +302,19 @@ class OutputManager:
             pass  # Silent failure - best effort cleanup
 
     def _cleanup_images_directory(self, output_dir):
-        """Clean up images directory"""
-        cleaned_count = 0
-        images_dir = os.path.join(output_dir, "images")
-        if os.path.exists(images_dir):
-            try:
-                shutil.rmtree(images_dir)
-                print(f" Cleaned up images directory: {images_dir}")
-                cleaned_count = 1
-            except Exception as e:
-                print(f"Could not clean up images directory: {e}")
-        return cleaned_count
+        """Clean up images directory (ELIMINATED - no longer created)"""
+        # images/ directory is no longer created anywhere in the optimized workflow:
+        # - Selected images: use original paths directly (no copying)
+        # - Folder images: use original folder directly (no copying)
+        # - Website images: download to temporary directory (auto-cleaned by OS)
+        return 0  # No cleanup needed
 
     def _cleanup_intermediate_files(self, output_dir, keep_debug_files):
         """Clean up intermediate files based on configuration"""
         # Core intermediate files (always remove)
         intermediate_files = [
             os.path.join(output_dir, "slideshow.mp4"),
-            os.path.join(output_dir, "video_with_audio.mp4"),
+            # video_with_audio.mp4 removed - no longer created (optimized workflow)
             os.path.join(output_dir, "original_video_backup.mp4"),
             os.path.join(output_dir, "slideshow_temp.mp4"),
             os.path.join(output_dir, "slideshow_enhanced_temp.mp4"),
@@ -332,7 +327,7 @@ class OutputManager:
             intermediate_files.extend([
                 os.path.join(output_dir, "subtitles.ass"),
                 os.path.join(output_dir, "voice.mp3"),
-                os.path.join(output_dir, "voice.mp3.txt"),
+                # voice.mp3.txt removed - no longer created by Whisper-timestamped
                 os.path.join(output_dir, "temp_audio_voiceover.m4a"),
                 os.path.join(output_dir, "temp-audio.m4a"),
             ])
@@ -478,20 +473,25 @@ class OutputManager:
         # Check if custom filename is provided and not placeholder text
         if custom_filename and custom_filename.strip():
             cleaned_custom = custom_filename.strip()
+            print(f"DEBUG: Custom filename provided: '{cleaned_custom}'")
             # Check if it's not placeholder text
             if cleaned_custom not in ["Custom filename (optional)", "Enter custom filename (optional)"]:
+                print(f"DEBUG: Using custom filename: '{cleaned_custom}'")
                 return cleaned_custom
 
         # Use intelligent default based on source files
         if source_files and len(source_files) > 0:
             # Get the first source file
             first_file = source_files[0]
+            print(f"DEBUG: Using first input file for naming: '{first_file}'")
             if first_file:
                 # Extract filename without extension (don't require file to exist for naming)
                 base_name = os.path.splitext(os.path.basename(first_file))[0]
+                print(f"DEBUG: Extracted base name: '{base_name}'")
                 if base_name:
                     # Sanitize the source filename to ensure compatibility
                     sanitized_base_name = sanitize_filename(base_name)
+                    print(f"DEBUG: Sanitized filename: '{sanitized_base_name}'")
                     if sanitized_base_name:
                         return sanitized_base_name
 

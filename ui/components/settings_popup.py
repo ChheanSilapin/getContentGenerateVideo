@@ -1,7 +1,7 @@
 """
 Settings Popup Component - Reusable settings dialog for any tab
 Leverages existing AudioSettings and UI Factory components to avoid duplication
-Includes Edge TTS + Kokoro TTS and Vosk speech recognition settings
+Includes Edge TTS + Kokoro TTS settings
 """
 from utils.common_imports import tk, messagebox, ttk, filedialog
 from utils.settings_manager import SettingsManager
@@ -451,65 +451,10 @@ class SettingsPopup:
         aspect_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
 
     def _create_speech_recognition_section(self, parent):
-        """Create speech recognition settings section"""
-        sr_frame = ttk.LabelFrame(parent, text="🎤 Speech Recognition (Vosk)", padding=15)
-        sr_frame.pack(fill="x", pady=(0, 15))
-
-        # Enable/disable checkbox
-        enable_row = ttk.Frame(sr_frame)
-        enable_row.pack(fill="x", pady=(0, 10))
-
-        enable_check = ttk.Checkbutton(
-            enable_row,
-            text="Enable Speech Recognition",
-            variable=self.sr_enabled,
-            command=lambda: [self._toggle_speech_recognition(), self._on_setting_changed()]
-        )
-        enable_check.pack(side="left")
-
-        # Language selection
-        lang_row = ttk.Frame(sr_frame)
-        lang_row.pack(fill="x", pady=(0, 10))
-
-        ttk.Label(lang_row, text="Language:", font=("Cascadia Code", 10)).pack(side="left")
-
-        sr_language_combo = ttk.Combobox(
-            lang_row,
-            textvariable=self.sr_language,
-            values=["en-us", "en-uk", "en-in"],  # Simplified to essential English variants
-            state="readonly",
-            width=15
-        )
-        sr_language_combo.pack(side="left", padx=(10, 0))
-
-        # Auto-save when speech recognition language changes
-        sr_language_combo.bind("<<ComboboxSelected>>", self._on_setting_changed)
-
-        # Model path selection
-        model_row = ttk.Frame(sr_frame)
-        model_row.pack(fill="x")
-
-        ttk.Label(model_row, text="Model Path:", font=("Cascadia Code", 10)).pack(side="left")
-
-        model_entry = ttk.Entry(
-            model_row,
-            textvariable=self.sr_model_path,
-            font=("Cascadia Code", 9),
-            width=30
-        )
-        model_entry.pack(side="left", padx=(10, 10), fill="x", expand=True)
-
-        browse_model_button = ttk.Button(
-            model_row,
-            text="📁 Browse",
-            command=self._browse_model_path,
-            width=10
-        )
-        browse_model_button.pack(side="right")
-
-        # Store references for enabling/disabling
-        self.sr_widgets = [sr_language_combo, model_entry, browse_model_button]
-        self._toggle_speech_recognition()  # Set initial state
+        """Speech recognition section removed - using only Whisper-timestamped"""
+        # Note: Speech recognition settings removed as we now use only Whisper-timestamped
+        # which is automatically configured and doesn't need user settings
+        pass
 
     def _create_buttons(self, parent):
         """Create OK and Cancel buttons"""
@@ -560,26 +505,7 @@ class SettingsPopup:
             if self.main_gui:
                 self.main_gui.log(f"Output folder changed to: {folder_path}")
 
-    def _toggle_speech_recognition(self):
-        """Enable/disable speech recognition widgets based on checkbox"""
-        if hasattr(self, 'sr_widgets'):
-            state = "normal" if self.sr_enabled.get() else "disabled"
-            for widget in self.sr_widgets:
-                widget.config(state=state)
-
-    def _browse_model_path(self):
-        """Browse for Vosk model directory"""
-        current_path = self.sr_model_path.get()
-        initial_dir = current_path if current_path and os.path.exists(current_path) else None
-
-        folder_path = filedialog.askdirectory(
-            title="Select Vosk Model Directory",
-            initialdir=initial_dir
-        )
-        if folder_path:
-            self.sr_model_path.set(folder_path)
-            if self.main_gui:
-                self.main_gui.log(f"Speech recognition model path set to: {folder_path}")
+    # Speech recognition methods removed - using only Whisper-timestamped
 
     def _on_mute_change(self):
         """Handle mute setting change"""
@@ -674,11 +600,7 @@ class SettingsPopup:
                 if hasattr(self, 'volume_scale'):
                     self._update_volume_state()
 
-        if self.include_speech_recognition:
-            self.sr_enabled.set(default_settings.get('sr_enabled', False))
-            self.sr_language.set(default_settings.get('sr_language', 'en-us'))
-            self.sr_model_path.set(default_settings.get('sr_model_path', ''))
-            self._toggle_speech_recognition()
+        # Speech recognition settings removed - using only Whisper-timestamped
 
         # Content sync settings are automatic - no reset needed
 
@@ -793,14 +715,7 @@ class SettingsPopup:
             if 'aspect_ratio' in settings:
                 self.aspect_ratio.set(settings['aspect_ratio'])
 
-        if self.include_speech_recognition:
-            if 'sr_enabled' in settings:
-                self.sr_enabled.set(settings['sr_enabled'])
-            if 'sr_language' in settings:
-                self.sr_language.set(settings['sr_language'])
-            if 'sr_model_path' in settings:
-                self.sr_model_path.set(settings['sr_model_path'])
-            self._toggle_speech_recognition()
+        # Speech recognition settings removed - using only Whisper-timestamped
 
         # Content sync settings are automatic - no UI controls to set
     

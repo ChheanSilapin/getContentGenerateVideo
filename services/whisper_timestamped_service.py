@@ -68,10 +68,11 @@ class WhisperTimestampedService:
         self.is_available = WHISPER_TIMESTAMPED_AVAILABLE
 
         # Debug logging for PyInstaller builds
-        print(f"[DEBUG] WhisperTimestampedService init: WHISPER_TIMESTAMPED_AVAILABLE={WHISPER_TIMESTAMPED_AVAILABLE}")
+        from utils.logging_utils import log_if_enabled
+        log_if_enabled('debug_messages', f"WhisperTimestampedService init: WHISPER_TIMESTAMPED_AVAILABLE={WHISPER_TIMESTAMPED_AVAILABLE}")
 
         if not self.is_available:
-            print(f"[DEBUG] Whisper not available - import failed")
+            log_if_enabled('debug_messages', "Whisper not available - import failed")
             return
 
         # Performance optimization: result caching
@@ -81,13 +82,33 @@ class WhisperTimestampedService:
         self._cache_misses = 0
 
         if self.is_available:
-            print(f"[DEBUG] Attempting to load Whisper model...")
-            self._load_model()
-            print(f"[DEBUG] After model loading: is_available={self.is_available}, model={self.model is not None}")
+            log_if_enabled('debug_messages', "Whisper-timestamped service initialized with cached model support")
+            log_speech_recognition(f" Whisper-timestamped service ready with model '{model_name}'")
         else:
             print(f"[DEBUG] Skipping model loading - whisper not available")
             log_speech_recognition(" Whisper-timestamped service unavailable")
     
+    def _get_model(self):
+        """Get cached Whisper model"""
+        if not self.is_available:
+            return None
+
+        try:
+            from utils.model_cache import get_model_cache
+            cache = get_model_cache()
+            model = cache.get_whisper_model(self.model_name)
+
+            if model is None:
+                self.is_available = False
+                log_speech_recognition(f"❌ Failed to load Whisper model '{self.model_name}'")
+
+            return model
+
+        except Exception as e:
+            log_speech_recognition(f"❌ Error getting Whisper model: {e}")
+            self.is_available = False
+            return None
+
     def _load_model(self):
         """Load the whisper model with enhanced error handling and fallbacks"""
         try:
@@ -136,7 +157,7 @@ class WhisperTimestampedService:
 
         except Exception as e:
             log_speech_recognition(f" Failed to load Whisper model: {e}")
-            log_speech_recognition(" Falling back to Vosk-only mode for speech recognition")
+            log_speech_recognition(" Whisper-timestamped is required for speech recognition")
             self.model = None
             self.is_available = False
 
@@ -166,11 +187,22 @@ class WhisperTimestampedService:
         """
         start_time = time.time()
         
-        if not self.is_available or not self.model:
+        if not self.is_available:
+            print(f"[DEBUG] Whisper not available: is_available={self.is_available}")
             return WhisperResult(
                 text="", language="", segments=[], processing_time=0,
                 success=False, error_message="Whisper-timestamped not available"
             )
+
+        if not self.model:
+            print(f"[DEBUG] Whisper model is None, attempting to load...")
+            self._load_model()
+            if not self.model:
+                print(f"[DEBUG] Whisper model loading failed")
+                return WhisperResult(
+                    text="", language="", segments=[], processing_time=0,
+                    success=False, error_message="Whisper model failed to load"
+                )
         
         if not os.path.exists(audio_file):
             return WhisperResult(
@@ -190,8 +222,12 @@ class WhisperTimestampedService:
             # Configure transcription options
             transcribe_options = self._get_transcription_options(language, use_vad)
 
-            # Run whisper-timestamped transcription
-            result = whisper.transcribe(self.model, audio_file, **transcribe_options)
+            # Get cached model and run whisper-timestamped transcription
+            model = self._get_model()
+            if not model:
+                return WhisperResult("", "", [], 0.0, False, "Model not available")
+
+            result = whisper.transcribe(model, audio_file, **transcribe_options)
 
             # Process results
             whisper_result = self._process_whisper_result(result, time.time() - start_time)

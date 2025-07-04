@@ -82,6 +82,9 @@ class VideoProcessor:
         Returns:
             str: Path to the generated video file
         """
+        # Store source files for intelligent filename generation
+        self.source_files = [video_file] if video_file else []
+
         try:
             # Check if we should stop
             if stop_event and stop_event.is_set():
@@ -104,30 +107,19 @@ class VideoProcessor:
                 if not audio_file:
                     return None
 
-                # Step 2: Add voice-over to original video
-                video_with_audio = self._add_voiceover(video_file, audio_file, output_dir, stop_event)
-                if not video_with_audio:
-                    return None
-            else:
-                # No text input - just copy the original video
-                self.update_progress(30, "No text prompt provided - processing video without voice-over")
-                import shutil
-                video_with_audio = os.path.join(output_dir, "video_with_audio.mp4")
-                shutil.copy2(video_file, video_with_audio)
-                audio_file = None  # No audio file when no text input
-
-            if has_text_input:
-                # Step 3: Generate subtitles
-                subtitle_file = self._generate_subtitles(text_input, video_with_audio, audio_file, output_dir, stop_event)
+                # Step 2: Generate subtitles (using original video and audio)
+                # Use improved phrase-based subtitles (word-by-word removed per user request)
+                subtitle_type = "phrase"
+                subtitle_file = self._generate_subtitles(text_input, video_file, audio_file, output_dir, stop_event, subtitle_type)
                 if not subtitle_file:
                     return None
 
-                # Step 4: Finalize video with subtitles
-                final_video = self._finalize_video(subtitle_file, video_with_audio, output_dir, stop_event, skip_auto_cleanup)
+                # Step 3: Finalize video with voice-over and subtitles in one step
+                final_video = self._finalize_video_with_voiceover_and_subtitles(video_file, audio_file, subtitle_file, output_dir, stop_event, skip_auto_cleanup)
             else:
-                # No text input - finalize video without subtitles
-                self.update_progress(80, "Finalizing video without subtitles")
-                final_video = self._finalize_video_without_subtitles(video_with_audio, output_dir, stop_event, skip_auto_cleanup)
+                # No text input - finalize video without subtitles or voice-over
+                self.update_progress(80, "Finalizing video without voice-over or subtitles")
+                final_video = self._finalize_video_without_subtitles(video_file, output_dir, stop_event, skip_auto_cleanup)
 
             return final_video
 
@@ -248,7 +240,7 @@ class VideoProcessor:
 
             # Use enhanced speech recognition with multiple validation methods
 
-            # Use enhanced validation with both Vosk and whisper-timestamped
+            # Use enhanced validation with whisper-timestamped
             enhanced_result = speech_service.validate_audio_with_enhanced_methods(
                 audio_file=audio_file,
                 original_text=self.text_input
@@ -274,7 +266,6 @@ class VideoProcessor:
                 'method_used': method_used,
                 'passes_validation': passes_validation,
                 'threshold': threshold,
-                'vosk_available': service_status['vosk_available'],
                 'whisper_available': service_status['whisper_available'],
                 'enhanced_mode': service_status['enhanced_mode']
             }
@@ -326,15 +317,24 @@ class VideoProcessor:
         self.update_progress(70, "Voice-over added successfully")
         return video_with_audio
     
-    def _generate_subtitles(self, text_input, video_file, audio_file, output_dir, stop_event):
-        """Generate subtitles for video"""
+    def _generate_subtitles(self, text_input, video_file, audio_file, output_dir, stop_event, subtitle_type="phrase"):
+        """
+        Generate improved phrase-based subtitles with smart mapping
+
+        Word-by-word subtitle option removed per user request.
+        Now always uses improved phrase-based subtitles with smart timing.
+        """
         if stop_event and stop_event.is_set():
             return None
-            
-        # Step 3: Generating Subtitles
-        self.update_progress(75, "Generating subtitles...")
-        
+
+        # Step 3: Generating Improved Phrase-Based Subtitles
+        self.update_progress(75, "Generating improved phrase-based subtitles...")
+
+        # Always use improved phrase-based subtitle generation
         from services.subtitle_service import generate_subtitles_with_timing_sync
+        generate_function = generate_subtitles_with_timing_sync
+        print("[SUBTITLE] Using improved phrase-based subtitle generation with smart mapping")
+
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
         # Get subtitle style from enhancement options or config default
@@ -342,48 +342,76 @@ class VideoProcessor:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # Use audio timing result for synchronized subtitle generation
-        audio_timing_result = getattr(self, 'audio_timing_result', None)
-        if not audio_timing_result:
-            print("ERROR: No audio timing result available for subtitle synchronization.")
-            self.update_progress(0, "Failed to generate subtitles - no timing data")
+        # For video processing, extract timing from the final video with audio
+        # This ensures perfect synchronization with the actual video timing
+        print("[SUBTITLE] Using original audio timing for perfect synchronization...")
+
+        # Use the original audio timing result instead of re-extracting from video
+        # This avoids timing offsets introduced by video processing (avoid_negative_ts, etc.)
+        if not hasattr(self, 'audio_timing_result') or not self.audio_timing_result or not self.audio_timing_result.success:
+            print("ERROR: Original audio timing not available.")
+            self.update_progress(0, "Failed to get original audio timing for subtitles")
             return None
 
-        # Pass original text to subtitle service - it will handle its own processing
-        # The subtitle service uses normalize_text_for_subtitles which preserves formatting
-        processed_text = text_input
+        video_timing_result = self.audio_timing_result
+        print(f"[SUBTITLE] Using original audio timing for perfect synchronization")
 
-        # Debug: Log the text being passed to subtitle generation
-        print(f"[DEBUG] Original text: '{text_input[:100]}...'")
-        print(f"[DEBUG] Processed text for subtitles: '{processed_text[:100]}...'")
+        # Always use original text for subtitles to preserve formatting ($1.2 trillion, June 28th, 2025, 19.7%)
+        # The subtitle service preserves original formatting while using timing from speech recognition
 
-        # Check for contractions - we want to preserve them, not expand them
-        preserved_contractions = ["It's", "That's", "Let's", "I'll", "I'm", "You're", "We're", "They're"]
-        broken_contractions = ["It s", "That s", "Let s", "I ll", "I m", "You re", "We re", "They re"]
-
-        print(f"[DEBUG] Original contains: {[c for c in preserved_contractions + broken_contractions if c in text_input]}")
-        print(f"[DEBUG] Processed contains: {[c for c in preserved_contractions + broken_contractions if c in processed_text]}")
-
-        if any(good in processed_text for good in preserved_contractions) and not any(bad in processed_text for bad in broken_contractions):
-            print("[DEBUG] ✅ Contractions properly preserved in subtitle text")
-        elif any(bad in processed_text for bad in broken_contractions):
-            print("[DEBUG] ❌ Broken contractions found in subtitle text")
-        else:
-            print("[DEBUG] ℹ️ No contractions found in text")
-
-        if not generate_subtitles_with_timing_sync(text_input, audio_timing_result, subtitle_file, subtitle_style):
-            print("ERROR: Failed to generate synchronized subtitles.")
-            self.update_progress(0, "Failed to generate subtitles")
+        if not generate_function(text_input, video_timing_result, subtitle_file, subtitle_style):
+            print(f"ERROR: Failed to generate improved phrase-based subtitles.")
+            self.update_progress(0, f"Failed to generate improved phrase-based subtitles")
             return None
 
-        self.update_progress(90, "Subtitles generated successfully")
+        self.update_progress(90, f"Improved phrase-based subtitles generated successfully")
         return subtitle_file
     
-    def _finalize_video(self, subtitle_file, video_file, output_dir, stop_event, skip_auto_cleanup=False):
-        """Finalize video by merging with subtitles"""
+    def _finalize_video_with_voiceover_and_subtitles(self, video_file, audio_file, subtitle_file, output_dir, stop_event, skip_auto_cleanup=False):
+        """Finalize video by adding voice-over and subtitles in one step (eliminates video_with_audio.mp4 intermediate)"""
         if stop_event and stop_event.is_set():
             return None
-            
+
+        self.update_progress(95, "Finalizing video with voice-over and subtitles...")
+
+        from services.video_finalization import merge_video_with_voiceover_and_subtitles
+        from utils.filename_validator import get_final_output_filename
+        from utils.output_manager import get_output_manager
+
+        # Use custom filename if provided, otherwise use default
+        custom_filename = getattr(self, 'custom_filename', '')
+        temp_filename = get_final_output_filename(custom_filename, "final_output")
+        temp_output = os.path.join(output_dir, temp_filename)
+
+        # Merge video with voice-over and subtitles in one step
+        result = merge_video_with_voiceover_and_subtitles(video_file, audio_file, subtitle_file, temp_output)
+
+        if result:
+            # Move to final output directory
+            output_manager = get_output_manager()
+            final_video_path = output_manager.move_final_video(result, custom_filename)
+
+            if final_video_path:
+                self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
+
+                # Clean up temporary directory if not skipping cleanup
+                if not skip_auto_cleanup:
+                    output_manager.cleanup_temp_directory(output_dir)
+
+                return final_video_path
+            else:
+                self.update_progress(0, "Failed to move video to output directory")
+                return result  # Return temp path as fallback
+        else:
+            print("Failed to finalize video with voice-over and subtitles")
+            self.update_progress(0, "Failed to finalize video")
+            return None
+
+    def _finalize_video(self, subtitle_file, video_file, output_dir, stop_event, skip_auto_cleanup=False):
+        """Finalize video by merging with subtitles (legacy method - kept for compatibility)"""
+        if stop_event and stop_event.is_set():
+            return None
+
         # Reduced logging: print("\n--- Step 4: Finalizing Video ---")
         self.update_progress(95, "Finalizing video...")
 

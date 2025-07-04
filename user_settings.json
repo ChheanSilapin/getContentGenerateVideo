@@ -7,7 +7,6 @@
   "tts_emotion": "neutral",
   "sr_enabled": true,
   "sr_language": "en-us",
-  "sr_model_path": "",
   "enabled_tts_providers": [
     "edge_tts",
     "kokoro_tts"
@@ -23,10 +22,8 @@
   "min_image_duration": 0.8,
   "max_image_duration": 8.0,
   "optimal_image_duration": 3.0,
-  "image_fit_method": "contain",
-  "aspect_ratio": "1:1 (Square)",
-  "mute": false,
-  "volume": 0.7,
+  "image_fit_method": "cover",
+  "aspect_ratio": "16:9 (Landscape)",
   "shared_settings": {
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
     "tts_language": "en",
@@ -34,9 +31,9 @@
     "tts_speed": 0.8441176470588235,
     "tts_emotion": "neutral"
   },
-  "image_tab_settings": {},
-  "video_tab_settings": {
-    "mute": false,
-    "volume": 0.7
-  }
+  "image_tab_settings": {
+    "image_fit_method": "contain",
+    "aspect_ratio": "1:1 (Square)"
+  },
+  "video_tab_settings": {}
 }

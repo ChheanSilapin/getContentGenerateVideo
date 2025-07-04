@@ -116,26 +116,38 @@ class KokoroTTSProvider:
         """Check if Kokoro TTS is available"""
         return KOKORO_AVAILABLE
 
-    def _initialize_pipeline(self):
-        """Initialize Kokoro pipeline if needed"""
-        if self.pipeline is None and self.available:
-            try:
-                self.pipeline = KPipeline(lang_code='a')  # American English
-                print(clean_log_message("🔥 Kokoro TTS pipeline initialized"))
-            except Exception as e:
-                print(clean_log_message(f"❌ Failed to initialize Kokoro: {e}"))
+    def _get_pipeline(self):
+        """Get cached Kokoro pipeline"""
+        if not self.available:
+            return None
+
+        try:
+            from utils.model_cache import get_model_cache
+            cache = get_model_cache()
+            pipeline = cache.get_kokoro_pipeline()
+
+            if pipeline is None:
                 self.available = False
+                self.last_error = "Failed to load Kokoro pipeline"
+
+            return pipeline
+
+        except Exception as e:
+            print(clean_log_message(f"❌ Error getting Kokoro pipeline: {e}"))
+            self.available = False
+            self.last_error = str(e)
+            return None
 
     def generate_speech(self, text: str, output_file: str, **kwargs) -> bool:
-        """Generate speech using Kokoro TTS"""
+        """Generate speech using Kokoro TTS with cached pipeline"""
         if not self.available:
             self.last_error = "Kokoro TTS not available"
             return False
 
         try:
-            # Initialize pipeline if needed
-            self._initialize_pipeline()
-            if not self.pipeline:
+            # Get cached pipeline
+            pipeline = self._get_pipeline()
+            if not pipeline:
                 return False
 
             # Get voice selection
@@ -144,8 +156,8 @@ class KokoroTTSProvider:
             # Map to Kokoro voice
             kokoro_voice = self.voice_mapping.get(voice_actor, 'am_michael')
 
-            # Generate audio
-            generator = self.pipeline(text, voice=kokoro_voice, speed=1.0)
+            # Generate audio using cached pipeline
+            generator = pipeline(text, voice=kokoro_voice, speed=1.0)
 
             # Process the generator (Kokoro returns chunks)
             audio_chunks = []
@@ -195,18 +207,14 @@ class TTSManager:
         if edge_provider.available:
             self.providers['edge_tts'] = edge_provider
             self.priority_order.append('edge_tts')
-            print(clean_log_message("✅ Edge TTS provider initialized"))
-        else:
-            print(clean_log_message(f"❌ Edge TTS not available: {edge_provider.last_error}"))
+            print(clean_log_message("[OK] Edge TTS provider initialized"))
 
         # Initialize Kokoro TTS provider
         kokoro_provider = KokoroTTSProvider()
         if kokoro_provider.available:
             self.providers['kokoro_tts'] = kokoro_provider
             self.priority_order.append('kokoro_tts')
-            print(clean_log_message("✅ Kokoro TTS provider initialized"))
-        else:
-            print(clean_log_message(f"❌ Kokoro TTS not available: {kokoro_provider.last_error}"))
+            print(clean_log_message("[OK] Kokoro TTS provider initialized"))
 
         if not self.providers:
             print(clean_log_message("❌ No TTS providers available!"))

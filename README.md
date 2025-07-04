@@ -11,7 +11,7 @@ A powerful, AI-enhanced application that creates professional videos with subtit
 
 - **🎤 Advanced Text-to-Speech**: Multi-language support with Hindi voice actors
 - **🧠 AI Content Analysis**: Automatic content type detection and emotion-aware settings
-- **🎯 Speech Recognition**: Vosk-powered validation for audio accuracy
+- **🎯 Speech Recognition**: Whisper-timestamped for precise subtitle synchronization
 - **🌍 Multi-language Support**: English, Hindi, and more with automatic language detection
 - **⚡ Real-time Processing**: Live progress tracking and background processing
 - **🎨 Professional Effects**: Content-aware transitions and visual enhancements

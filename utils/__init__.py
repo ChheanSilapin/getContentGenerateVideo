@@ -16,7 +16,17 @@ try:
         build_ffmpeg_command, create_temp_file_with_cleanup, execute_ffmpeg_command,
         validate_loop_count, validate_ffmpeg_path, TempVideoFile, log_message
     )
-    from .text_processing import get_title_content, process_text_for_tts
+    # Removed text_processing imports to prevent interference with word-by-word subtitles
+
+    # Simple replacement for get_title_content to prevent import errors
+    def get_title_content(text):
+        """Simple title/content extraction without text processing"""
+        if not text:
+            return "", ""
+        lines = text.strip().split('\n')
+        if len(lines) == 1:
+            return lines[0], lines[0]
+        return lines[0], '\n'.join(lines[1:])
     from .path_manager import setup_project_paths, get_base_path, add_utils_to_path
     from .fallback_manager import get_helpers_with_fallback
     from .dialog_helpers import (
@@ -86,7 +96,7 @@ def initialize_service():
 __all__ = [
     # Core helpers
     'get_app_data_dir', 'ensure_directory_exists', 'get_ffmpeg_path', 'get_ffprobe_path',
-    'check_ffmpeg_availability', 'get_title_content', 'process_text_for_tts',
+    'check_ffmpeg_availability', 'get_title_content',
     'setup_project_paths', 'get_base_path', 'add_utils_to_path',
     'get_helpers_with_fallback', 'initialize_service',
     'configure_ffmpeg_for_moviepy', 'setup_temp_directory_for_bundled_exe',

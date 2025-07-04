@@ -141,10 +141,10 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                   enhance=False, enhancement_options=None, stop_event=None,
                   aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover"):
     """
-    Create a slideshow video from images with optional enhancements
-    
+    Create a slideshow video from images with memory-optimized processing
+
     Args:
-        images_folder: Folder containing images
+        images_folder: Folder containing images OR list of image file paths (optimized mode)
         title: Title text (not used in current implementation)
         content: Content text (not used in current implementation)
         audio_file: Path to audio file
@@ -158,11 +158,16 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         stop_event: Threading event to stop the process
         aspect_ratio: Video aspect ratio (width, height)
         ffmpeg_timeout: Timeout for FFmpeg operations
-        
+
     Returns:
         bool: True if successful, False otherwise
     """
     try:
+        from utils.memory_manager import get_memory_manager
+
+        # Get memory manager for clip tracking
+        memory_manager = get_memory_manager()
+
         # Reduced logging: print(f"Creating slideshow from {images_folder}")
 
         # Configure FFmpeg and temp directory
@@ -174,21 +179,30 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             print("Process stopped by user before slideshow creation.")
             return False
         
-        # Get list of image files
+        # Get list of image files (support both folder path and list of image paths)
         image_files = []
         supported_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
-        
-        for file in os.listdir(images_folder):
-            if file.lower().endswith(supported_extensions):
-                image_files.append(os.path.join(images_folder, file))
-        
+
+        if isinstance(images_folder, list):
+            # images_folder is actually a list of image paths (optimized mode)
+            for image_path in images_folder:
+                if os.path.exists(image_path) and image_path.lower().endswith(supported_extensions):
+                    image_files.append(image_path)
+            print(f"Using {len(image_files)} image paths directly (no folder scanning)")
+        else:
+            # images_folder is a directory path (traditional mode)
+            for file in os.listdir(images_folder):
+                if file.lower().endswith(supported_extensions):
+                    image_files.append(os.path.join(images_folder, file))
+            print(f"Found {len(image_files)} images in folder")
+
         if not image_files:
-            print("No supported image files found in folder")
+            print("No supported image files found")
             return False
-        
+
         # Sort images by filename for consistent order
         image_files.sort()
-        print(f"Found {len(image_files)} images")
+        print(f"Processing {len(image_files)} images")
         
         # Load audio to get duration
         try:
@@ -353,11 +367,17 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
                 final_video.close()
                 return False
         
-        # Clean up
-        final_video.close()
-        audio_clip.close()
-        for clip in clips:
-            clip.close()
+        # Clean up with memory management
+        try:
+            final_video.close()
+            audio_clip.close()
+            for clip in clips:
+                clip.close()
+
+            # Force garbage collection
+            memory_manager.force_garbage_collection()
+        except Exception as cleanup_error:
+            print(f"⚠️ Cleanup error: {cleanup_error}")
         
         # Check if we should stop
         if stop_event and stop_event.is_set():

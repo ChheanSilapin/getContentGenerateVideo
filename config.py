@@ -152,7 +152,7 @@ SUBTITLE_CONFIG = {
             "name": "Modern Glow",
             "description": "White text with blue glow effect and dynamic background",
             "font": "Rubik",
-            "size": 48,
+            "size": 12,
             "primary_color": "&H00FFFFFF",  # White
             "outline_color": "&H00FF8000",  # Blue glow
             "outline_width": 3,
@@ -223,7 +223,7 @@ SUBTITLE_CONFIG = {
             "name": "Bold Outline",
             "description": "Gold text with thick black outline for maximum visibility",
             "font": "Rubik",
-            "size": 52,
+            "size": 12,
             "primary_color": "&H0000D7FF",  # Bright yellow/gold
             "secondary_color": "&H0000B8FF",  # Slightly darker gold for gradient
             "outline_color": "&H00000000",  # Black outline
@@ -336,6 +336,9 @@ LOGGING_CONFIG = {
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
     "show_speech_recognition": False,    # Show speech recognition results (essential info)
+    "show_cache_operations": False,      # Show model and speech recognition cache operations
+    "show_model_loading": False,         # Show model loading details
+    "show_debug_messages": False,        # Show debug messages from services
     "show_file_operations": False,       # Show file copy/move operations
     "show_cache_operations": False,      # Show cache hit/miss operations
     "show_ffmpeg_commands": False,       # Show FFmpeg command details
@@ -378,7 +381,6 @@ WHISPER_TIMESTAMPED_CONFIG = {
 
     # Subtitle Integration
     "replace_speech_analysis": True,    # Replace current speech analysis with whisper-timestamped
-    "fallback_to_vosk": True,          # Fallback to Vosk if whisper-timestamped fails
     "min_confidence_threshold": 0.7,   # Minimum confidence for using whisper timestamps
     "subtitle_sync_offset": 0.0,       # Fine-tune subtitle timing offset (seconds)
 
