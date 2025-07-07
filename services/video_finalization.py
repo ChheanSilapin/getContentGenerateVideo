@@ -153,16 +153,22 @@ def merge_video_with_voiceover_and_subtitles(video_path, audio_path, subtitle_pa
         shutil.copy2(subtitle_path, temp_subtitle_path)
 
         # Build FFmpeg command to combine video, audio, and subtitles in one step
+        # Use the longer duration - video will loop if shorter than audio
+        target_duration = max(video_duration, audio_duration)
+
         cmd = [
             ffmpeg_cmd, '-y',
             '-i', video_for_processing,  # Input video (potentially looped)
             '-i', audio_path,            # Input audio
+            '-t', str(target_duration),  # Limit output duration to prevent metadata issues
             '-vf', f'ass={os.path.basename(temp_subtitle_path)}',  # Subtitle filter
             '-map', '0:v',               # Map video from first input
             '-map', '1:a',               # Map audio from second input
             '-c:v', 'libx264',           # Video codec
             '-c:a', 'aac',               # Audio codec
             '-avoid_negative_ts', 'make_zero',
+            '-fflags', '+genpts',        # Generate presentation timestamps to fix metadata
+            '-movflags', '+faststart',   # Optimize for streaming/concatenation
             output_file
         ]
 
@@ -175,8 +181,11 @@ def merge_video_with_voiceover_and_subtitles(video_path, audio_path, subtitle_pa
             os.chdir(subtitle_dir)
 
         try:
-            # Execute FFmpeg command
-            subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=120)
+            # Execute FFmpeg command with proper Unicode handling
+            result = subprocess.run(cmd, check=True, capture_output=True, text=False, timeout=120)
+            # Decode output manually with proper error handling
+            stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
+            stderr = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
 
             # Restore original directory
             os.chdir(original_cwd)
@@ -363,11 +372,14 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         # Use the full path to the subtitle file for better reliability
         subtitle_dir = os.path.dirname(temp_subtitle_path)
 
-        # ENHANCED: Debug output file path to identify truncation issue
-        print(f"DEBUG: Expected output file: {output_file}")
-        print(f"DEBUG: Output file length: {len(output_file)} characters")
+        # Import logging utilities
+        from utils.logging_utils import log_if_enabled
 
-        # ENHANCED: Check for Windows path length issues
+        # Debug output file path to identify truncation issue
+        log_if_enabled('debug_messages', f"Expected output file: {output_file}")
+        log_if_enabled('debug_messages', f"Output file length: {len(output_file)} characters")
+
+        # Check for Windows path length issues
         if len(output_file) > 260:
             print(f"WARNING: Output path exceeds Windows limit ({len(output_file)} > 260 chars)")
             # Create shorter output path in temp directory
@@ -381,8 +393,8 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
         # Use centralized FFmpeg command builder for subtitle embedding
         cmd = build_ffmpeg_command(ffmpeg_cmd, video_path, actual_output_file, "subtitle", subtitle_file=temp_subtitle_path)
 
-        print(f"Using working method with local file: {' '.join(cmd)}")
-        print(f"DEBUG: Actual output file in command: {actual_output_file}")
+        log_if_enabled('ffmpeg_commands', f"Using working method with local file: {' '.join(cmd)}")
+        log_if_enabled('debug_messages', f"Actual output file in command: {actual_output_file}")
 
         # Change to the directory containing the subtitle file
         original_cwd = os.getcwd()
@@ -393,31 +405,34 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
             print(f"Warning: Subtitle directory not found, staying in: {original_cwd}")
 
         try:
-            # ENHANCED: Check if subtitle file exists before running FFmpeg
-            print(f"DEBUG: Checking subtitle file: {temp_subtitle_path}")
-            print(f"DEBUG: Subtitle file exists: {os.path.exists(temp_subtitle_path)}")
-            if os.path.exists(temp_subtitle_path):
-                print(f"DEBUG: Subtitle file size: {os.path.getsize(temp_subtitle_path)} bytes")
+            # Import logging utilities
+            from utils.logging_utils import log_if_enabled
 
-            # ENHANCED: Check if input video exists
-            print(f"DEBUG: Checking input video: {video_path}")
-            print(f"DEBUG: Input video exists: {os.path.exists(video_path)}")
+            # Check if subtitle file exists before running FFmpeg
+            log_if_enabled('debug_messages', f"Checking subtitle file: {temp_subtitle_path}")
+            log_if_enabled('debug_messages', f"Subtitle file exists: {os.path.exists(temp_subtitle_path)}")
+            if os.path.exists(temp_subtitle_path):
+                log_if_enabled('debug_messages', f"Subtitle file size: {os.path.getsize(temp_subtitle_path)} bytes")
+
+            # Check if input video exists
+            log_if_enabled('debug_messages', f"Checking input video: {video_path}")
+            log_if_enabled('debug_messages', f"Input video exists: {os.path.exists(video_path)}")
             if os.path.exists(video_path):
-                print(f"DEBUG: Input video size: {os.path.getsize(video_path)} bytes")
+                log_if_enabled('debug_messages', f"Input video size: {os.path.getsize(video_path)} bytes")
 
             # Enhanced encoding handling for Unicode file paths
-            print(f"DEBUG: Running FFmpeg command...")
+            log_if_enabled('ffmpeg_commands', f"Running FFmpeg command...")
             result = subprocess.run(cmd, check=True, capture_output=True, text=False, timeout=120)
             # Decode output manually with proper error handling
             stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
             stderr = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
 
-            # ENHANCED: Always show FFmpeg output for debugging
-            print(f"DEBUG: FFmpeg return code: {result.returncode}")
+            # Show FFmpeg output for debugging when enabled
+            log_if_enabled('ffmpeg_commands', f"FFmpeg return code: {result.returncode}")
             if stdout:
-                print(f"DEBUG: FFmpeg stdout: {stdout}")
+                log_if_enabled('ffmpeg_commands', f"FFmpeg stdout: {stdout}")
             if stderr:
-                print(f"DEBUG: FFmpeg stderr: {stderr}")
+                log_if_enabled('ffmpeg_commands', f"FFmpeg stderr: {stderr}")
 
             # Verify the output file exists and has content
             if os.path.exists(actual_output_file) and os.path.getsize(actual_output_file) > 1000:
@@ -437,18 +452,20 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                         # Optional: Check if video duration matches expected duration
                         try:
                             probe_duration_cmd = ['ffprobe', '-v', 'quiet', '-show_entries', 'format=duration', '-of', 'csv=p=0', actual_output_file]
-                            duration_result = subprocess.run(probe_duration_cmd, capture_output=True, text=True, timeout=10)
-                            if duration_result.stdout.strip():
-                                duration = float(duration_result.stdout.strip())
+                            duration_result = subprocess.run(probe_duration_cmd, capture_output=True, text=False, timeout=10)
+                            # Decode output manually with proper error handling
+                            stdout = duration_result.stdout.decode('utf-8', errors='ignore') if duration_result.stdout else ""
+                            if stdout.strip():
+                                duration = float(stdout.strip())
                                 print(f"   Video duration: {duration:.2f}s")
                         except:
                             pass
                     else:
                         print(f"❌ SUBTITLE VERIFICATION: Output file not created or too small")
                 except Exception as probe_e:
-                    print(f"DEBUG: Could not verify subtitles: {probe_e}")
+                    log_if_enabled('debug_messages', f"Could not verify subtitles: {probe_e}")
 
-                # ENHANCED: If we used a temp file, move it to the final location
+                # If we used a temp file, move it to the final location
                 if actual_output_file != output_file:
                     try:
                         # Ensure output directory exists
@@ -463,9 +480,9 @@ def merge_video_subtitle(video_path, subtitle_path, output_file="final_output.mp
                 success = True
             else:
                 print(f"WARNING: Method produced small or no output file")
-                print(f"DEBUG: File exists: {os.path.exists(actual_output_file)}")
+                log_if_enabled('debug_messages', f"File exists: {os.path.exists(actual_output_file)}")
                 if os.path.exists(actual_output_file):
-                    print(f"DEBUG: File size: {os.path.getsize(actual_output_file)} bytes")
+                    log_if_enabled('debug_messages', f"File size: {os.path.getsize(actual_output_file)} bytes")
 
         finally:
             # Always restore original working directory

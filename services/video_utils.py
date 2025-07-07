@@ -122,12 +122,14 @@ def convert_video_to_compatible_format(input_video, output_video=None):
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='ignore',
+            text=False,
             timeout=120,  # 2 minute timeout
             cwd=os.path.dirname(ffmpeg_path) if os.path.dirname(ffmpeg_path) else None
         )
+
+        # Decode output manually with proper error handling
+        stdout = result.stdout.decode('utf-8', errors='ignore') if result.stdout else ""
+        stderr = result.stderr.decode('utf-8', errors='ignore') if result.stderr else ""
         
         if result.returncode == 0:
             if os.path.exists(output_video) and os.path.getsize(output_video) > 0:
@@ -136,7 +138,7 @@ def convert_video_to_compatible_format(input_video, output_video=None):
             else:
                 return False, None, "Conversion completed but output file is invalid"
         else:
-            error_msg = result.stderr if result.stderr else "Unknown FFmpeg error"
+            error_msg = stderr if stderr else "Unknown FFmpeg error"
             return False, None, f"FFmpeg conversion failed: {error_msg}"
             
     except subprocess.TimeoutExpired:

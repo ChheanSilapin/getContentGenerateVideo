@@ -317,7 +317,7 @@ def get_output_directory(user_settings=None):
     # Priority 4: Fallback to app data directory
     app_data_dir = get_app_data_dir()
     output_dir = os.path.join(app_data_dir, "output")
-    print(f"Using default app data output folder: {output_dir}")
+    print(f"Set up fallback output directory: {output_dir}")
 
     # Ensure it exists
     try:
@@ -546,8 +546,28 @@ def build_ffmpeg_command(ffmpeg_path, input_file, output_file, command_type="bas
     elif command_type == "audio_mix":
         audio_file = kwargs.get('audio_file', '')
         target_duration = kwargs.get('target_duration', None)
-        cmd = base_cmd + ['-i', audio_file, '-c:v', 'copy', '-c:a', 'aac',
-                         '-map', '0:v:0', '-map', '1:a:0', '-avoid_negative_ts', 'make_zero']
+        mix_with_original = kwargs.get('mix_with_original', False)
+        original_volume = kwargs.get('original_volume', 0.3)
+
+        cmd = base_cmd + ['-i', audio_file, '-c:v', 'copy', '-c:a', 'aac']
+
+        if mix_with_original:
+            # Mix original audio with voice-over using filter_complex
+            # Use amix filter to combine both audio streams
+            cmd.extend([
+                '-filter_complex',
+                f'[0:a]volume={original_volume}[original];[1:a]volume=1.0[voiceover];[original][voiceover]amix=inputs=2:duration=longest[mixed]',
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '[mixed]'  # Map mixed audio
+            ])
+        else:
+            # Replace original audio with voice-over only
+            cmd.extend([
+                '-map', '0:v:0',  # Map video from first input
+                '-map', '1:a:0'   # Map audio from second input (voice-over)
+            ])
+
+        cmd.extend(['-avoid_negative_ts', 'make_zero'])
         if target_duration:
             cmd.extend(['-t', str(target_duration)])
         cmd.append(output_file)

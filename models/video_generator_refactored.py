@@ -296,21 +296,37 @@ class VideoGeneratorModel:
         milliseconds = int(time.time() * 1000) % 1000
         unique_timestamp = f"{timestamp}_{milliseconds:03d}"
 
+        # Create a safe video name for folder
+        safe_video_name = "".join([c if c.isalnum() or c in " _-" else "_" for c in self.text_input[:30]])
+        
         if self.output_folder and os.path.isdir(self.output_folder):
             output_dir = os.path.join(self.output_folder, f"video_{unique_timestamp}")
             print(f"Using specified output folder: {self.output_folder}")
         else:
-            from utils.helpers import get_output_directory
             # Load current user settings to respect output folder preference
             try:
                 from utils.settings_manager import SettingsManager
                 settings_manager = SettingsManager()
                 user_settings = settings_manager.load_settings()
+                
+                # Get output directory from settings
+                if user_settings and 'output_folder' in user_settings and os.path.isdir(user_settings['output_folder']):
+                    base_output_dir = user_settings['output_folder']
+                else:
+                    # Fallback to default
+                    base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
+                    if not os.path.isdir(base_output_dir):
+                        import tempfile
+                        base_output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
+                        os.makedirs(base_output_dir, exist_ok=True)
             except Exception as e:
                 print(f"Could not load user settings: {e}")
-                user_settings = None
-
-            base_output_dir = get_output_directory(user_settings)
+                base_output_dir = os.environ.get('VIDEO_GENERATOR_OUTPUT_DIR', 'output')
+                if not os.path.isdir(base_output_dir):
+                    import tempfile
+                    base_output_dir = os.path.join(tempfile.gettempdir(), "Video Generator", "output")
+                    os.makedirs(base_output_dir, exist_ok=True)
+                
             output_dir = os.path.join(base_output_dir, f"video_{unique_timestamp}")
 
         try:
@@ -402,7 +418,7 @@ class VideoGeneratorModel:
         emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
         language = tts_settings.get('language', 'en')
 
-        print(f"Using TTS settings: voice={voice_actor}, speed={speed:.1f}, emotion={emotion}, language={language}")
+
 
         # Generate audio with timing analysis for subtitle synchronization
         audio_timing_result = generate_audio_with_timing_analysis(
@@ -468,9 +484,8 @@ class VideoGeneratorModel:
             elif '21:9' in user_aspect_ratio:
                 aspect_ratio_str = '21:9'
 
-            print(f"Using user-selected aspect ratio: {user_aspect_ratio} -> {aspect_ratio_str}")
         except Exception:
-            print(f"Could not load user aspect ratio, using default: {aspect_ratio_str}")
+            pass
 
         # Convert aspect ratio string to dimensions tuple
         if isinstance(aspect_ratio_str, str) and ':' in aspect_ratio_str:
@@ -501,7 +516,7 @@ class VideoGeneratorModel:
         else:
             aspect_ratio = (1080, 1920)  # Default to 9:16
 
-        print(f"Using aspect ratio: {aspect_ratio} (from {aspect_ratio_str})")
+
 
         # Get fit method from settings
         fit_method = "cover"  # Default
@@ -516,6 +531,9 @@ class VideoGeneratorModel:
 
         # Use default enhancement options
 
+        # Pass audio timing result for content-aware image timing
+        audio_timing_result = getattr(self, 'audio_timing_result', None)
+
         success = create_slideshow(
             images_dir,
             title,
@@ -526,7 +544,8 @@ class VideoGeneratorModel:
             enhancement_options=enhancement_options,
             stop_event=stop_event,
             aspect_ratio=aspect_ratio,
-            fit_method=fit_method
+            fit_method=fit_method,
+            audio_timing_result=audio_timing_result
         )
 
         if success:
@@ -558,7 +577,7 @@ class VideoGeneratorModel:
         # Always use improved phrase-based subtitle generation
         from services.subtitle_service import generate_subtitles_with_timing_sync
         generate_function = generate_subtitles_with_timing_sync
-        print("[SUBTITLE] Using improved phrase-based subtitle generation with smart mapping")
+
 
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
@@ -576,7 +595,7 @@ class VideoGeneratorModel:
             if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
                 from utils.logging_utils import log_speech_recognition
                 log_speech_recognition(f"📝 Improved phrase-based subtitles generated using validated text")
-            print(f"✅ Improved phrase-based subtitles generated with TTS-to-Text timing synchronization")
+
             return subtitle_file
         else:
             print(f"ERROR: Failed to generate improved phrase-based subtitles.")
@@ -642,15 +661,8 @@ class VideoGeneratorModel:
             threshold = self._get_content_aware_threshold(None)
             passes_validation = confidence_score >= threshold
 
-            # Log validation results with method information
-            print(f"Enhanced Speech Recognition: {confidence_score:.1%} via {method_used} ({'✅ PASS' if passes_validation else '❌ FAIL'})")
-
             # Log service status for transparency
             service_status = speech_service.get_service_status()
-            if service_status['enhanced_mode']:
-                print(f"🔧 Enhanced mode: Whisper={service_status['whisper_available']}")
-            else:
-                print(f"🔧 Standard mode: Whisper={service_status['whisper_available']}")
 
             # Store enhanced validation results for potential use by UI
             self.last_speech_validation_result = {
@@ -707,7 +719,7 @@ class VideoGeneratorModel:
         if voice_settings:
             self.speech_validation_settings = voice_settings.copy()
 
-        print(f"Speech validation configured: enabled={enable}, threshold={threshold:.1%}")
+
 
     def get_last_speech_validation_result(self):
         """Get the results of the last speech validation"""
@@ -716,3 +728,4 @@ class VideoGeneratorModel:
 
 def show_version():
     return f"Video Generator v{__version__}"
+

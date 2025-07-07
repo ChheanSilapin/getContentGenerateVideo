@@ -185,7 +185,14 @@ class OutputManager:
 
             # Additional safety check: Only remove directories with timestamp patterns
             dir_name = os.path.basename(temp_dir)
-            if not (dir_name.startswith("video_") and "_" in dir_name):
+            # Match both "video_" and "video__" patterns with timestamps
+            is_temp_dir = (
+                (dir_name.startswith("video_") or dir_name.startswith("video__")) and
+                "_" in dir_name and
+                # Check for timestamp pattern (8 digits + underscore + 3 digits at the end)
+                any(part.isdigit() and len(part) >= 8 for part in dir_name.split("_"))
+            )
+            if not is_temp_dir:
                 print(f"⚠️ Skipping cleanup of non-temporary directory: {dir_name}")
                 return
 
@@ -470,28 +477,31 @@ class OutputManager:
         Returns:
             str: Determined filename (without extension)
         """
+        # Import logging utilities
+        from utils.logging_utils import log_if_enabled
+
         # Check if custom filename is provided and not placeholder text
         if custom_filename and custom_filename.strip():
             cleaned_custom = custom_filename.strip()
-            print(f"DEBUG: Custom filename provided: '{cleaned_custom}'")
+            log_if_enabled('debug_messages', f"Custom filename provided: '{cleaned_custom}'")
             # Check if it's not placeholder text
             if cleaned_custom not in ["Custom filename (optional)", "Enter custom filename (optional)"]:
-                print(f"DEBUG: Using custom filename: '{cleaned_custom}'")
+                log_if_enabled('debug_messages', f"Using custom filename: '{cleaned_custom}'")
                 return cleaned_custom
 
         # Use intelligent default based on source files
         if source_files and len(source_files) > 0:
             # Get the first source file
             first_file = source_files[0]
-            print(f"DEBUG: Using first input file for naming: '{first_file}'")
+            log_if_enabled('debug_messages', f"Using first input file for naming: '{first_file}'")
             if first_file:
                 # Extract filename without extension (don't require file to exist for naming)
                 base_name = os.path.splitext(os.path.basename(first_file))[0]
-                print(f"DEBUG: Extracted base name: '{base_name}'")
+                log_if_enabled('debug_messages', f"Extracted base name: '{base_name}'")
                 if base_name:
                     # Sanitize the source filename to ensure compatibility
                     sanitized_base_name = sanitize_filename(base_name)
-                    print(f"DEBUG: Sanitized filename: '{sanitized_base_name}'")
+                    log_if_enabled('debug_messages', f"Sanitized filename: '{sanitized_base_name}'")
                     if sanitized_base_name:
                         return sanitized_base_name
 

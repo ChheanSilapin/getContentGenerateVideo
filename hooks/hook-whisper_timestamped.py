@@ -1,59 +1,63 @@
-# PyInstaller hook for whisper-timestamped
-from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
+# PyInstaller hook for Whisper-timestamped - ENHANCED VERSION for v1.0.9
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules, collect_dynamic_libs
 import os
+import pathlib
 
-# Collect all whisper-timestamped data files and submodules
+# Collect all whisper-timestamped submodules
+hiddenimports = collect_submodules('whisper_timestamped')
 datas = collect_data_files('whisper_timestamped')
 binaries = collect_dynamic_libs('whisper_timestamped')
 
-# Collect all submodules
-hiddenimports = collect_submodules('whisper_timestamped')
-
-# Add openai-whisper dependencies
-try:
-    import whisper
-    whisper_datas = collect_data_files('whisper')
-    whisper_binaries = collect_dynamic_libs('whisper')
-    whisper_hiddenimports = collect_submodules('whisper')
-    
-    datas.extend(whisper_datas)
-    binaries.extend(whisper_binaries)
-    hiddenimports.extend(whisper_hiddenimports)
-except ImportError:
-    pass
-
-# Add PyTorch dependencies for whisper
+# Enhanced hidden imports for Whisper-timestamped
 hiddenimports.extend([
-    'torch',
-    'torch.nn',
-    'torch.nn.functional',
-    'torch.optim',
-    'torch.utils',
-    'torch.utils.data',
-    'torch.jit',
-    'torch.hub',
-    'torchaudio',
-    'torchaudio.transforms',
-    'torchaudio.functional',
-    'numba',
-    'numba.core',
-    'numba.typed',
-    'tiktoken',
-    'tiktoken.core',
-    'regex',
-    'ftfy',
-    'more_itertools'
+    # Core Whisper dependencies
+    'whisper', 'whisper.model', 'whisper.audio', 'whisper.decoding',
+    'whisper.tokenizer', 'whisper.normalizers',
+
+    # Transformers and tokenizers
+    'transformers', 'transformers.models', 'transformers.models.whisper',
+    'transformers.tokenization_utils', 'transformers.tokenization_utils_base',
+    'tokenizers', 'tokenizers.implementations',
+
+    # Audio processing
+    'torch', 'torch.nn', 'torch.nn.functional', 'torch.jit',
+    'torchaudio', 'torchaudio.transforms', 'torchaudio.functional',
+    'librosa', 'librosa.core', 'librosa.feature', 'librosa.filters',
+    'soundfile', '_soundfile', 'cffi', '_cffi_backend',
+
+    # VAD (Voice Activity Detection)
+    'silero_vad', 'onnxruntime', 'onnx',
+    'webrtcvad', 'auditok',
+
+    # Scientific computing
+    'numpy', 'scipy', 'scipy.signal', 'scipy.ndimage',
+    'numba', 'numba.core', 'numba.typed',
+
+    # Additional dependencies
+    'regex', 'ftfy', 'more_itertools',
+    'huggingface_hub', 'huggingface_hub.utils',
 ])
 
-# Ensure whisper models can be found
 try:
-    import whisper
-    whisper_dir = os.path.dirname(whisper.__file__)
-    
-    # Add whisper assets
-    assets_dir = os.path.join(whisper_dir, 'assets')
-    if os.path.exists(assets_dir):
-        datas.append((assets_dir, 'whisper/assets'))
-        
+    import whisper_timestamped
+    whisper_dir = os.path.dirname(whisper_timestamped.__file__)
+
+    # Add all data files from whisper_timestamped
+    for root, dirs, files in os.walk(whisper_dir):
+        for file in files:
+            if file.endswith(('.pt', '.pth', '.json', '.txt', '.yaml', '.yml')):
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(root, whisper_dir)
+                if rel_path == '.':
+                    datas.append((full_path, 'whisper_timestamped'))
+                else:
+                    datas.append((full_path, os.path.join('whisper_timestamped', rel_path)))
+
+    # Add Whisper models from cache
+    whisper_cache = pathlib.Path.home() / '.cache' / 'whisper'
+    if whisper_cache.exists():
+        for model_file in whisper_cache.glob('*.pt'):
+            datas.append((str(model_file), 'whisper_models'))
+
 except ImportError:
     pass

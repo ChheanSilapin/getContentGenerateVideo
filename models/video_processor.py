@@ -6,9 +6,6 @@ import os
 from datetime import datetime
 from utils.error_helpers import handle_operation_error
 
-# Import logging utilities for emoji handling
-from utils.logging_utils import clean_log_message
-
 
 class VideoProcessor:
     """Handles individual video processing operations"""
@@ -324,6 +321,10 @@ class VideoProcessor:
         Word-by-word subtitle option removed per user request.
         Now always uses improved phrase-based subtitles with smart timing.
         """
+        # Use global Whisper model - no need to copy to output directory
+        from utils.logging_utils import log_speech_recognition
+        log_speech_recognition("Using global Whisper model for subtitle generation")
+        
         if stop_event and stop_event.is_set():
             return None
 

@@ -57,14 +57,15 @@ class EdgeTTSProvider:
             return False
 
         try:
-            # Get voice selection
+            # Get voice selection and speed
             voice_actor = kwargs.get('voice_actor', 'Guy')
+            speed = kwargs.get('speed', 1.0)
 
             # Map to Edge TTS voice
             edge_voice = self.voice_mapping.get(voice_actor, 'en-US-GuyNeural')
 
-            # Generate audio asynchronously
-            success = asyncio.run(self._generate_async(text, output_file, edge_voice))
+            # Generate audio asynchronously with speed control
+            success = asyncio.run(self._generate_async(text, output_file, edge_voice, speed))
 
             if success:
                 return True
@@ -77,10 +78,20 @@ class EdgeTTSProvider:
             print(clean_log_message(f"❌ Edge TTS error: {e}"))
             return False
 
-    async def _generate_async(self, text: str, output_file: str, voice: str) -> bool:
-        """Async generation for Edge TTS"""
+    async def _generate_async(self, text: str, output_file: str, voice: str, speed: float = 1.0) -> bool:
+        """Async generation for Edge TTS with speed control"""
         try:
-            communicate = edge_tts.Communicate(text, voice)
+            # Apply speed control using SSML prosody rate
+            if speed != 1.0:
+                # Convert speed to percentage rate (0.8 -> "-20%", 1.2 -> "+20%")
+                rate_percentage = f"{(speed - 1) * 100:+.0f}%"
+                # Wrap text in SSML with prosody rate control
+                ssml_text = f'<speak><prosody rate="{rate_percentage}">{text}</prosody></speak>'
+                communicate = edge_tts.Communicate(ssml_text, voice)
+            else:
+                # Use normal text without SSML for default speed
+                communicate = edge_tts.Communicate(text, voice)
+
             await communicate.save(output_file)
             return True
         except Exception as e:
@@ -150,14 +161,15 @@ class KokoroTTSProvider:
             if not pipeline:
                 return False
 
-            # Get voice selection
+            # Get voice selection and speed
             voice_actor = kwargs.get('voice_actor', 'Michael')
+            speed = kwargs.get('speed', 1.0)
 
             # Map to Kokoro voice
             kokoro_voice = self.voice_mapping.get(voice_actor, 'am_michael')
 
-            # Generate audio using cached pipeline
-            generator = pipeline(text, voice=kokoro_voice, speed=1.0)
+            # Generate audio using cached pipeline with speed control
+            generator = pipeline(text, voice=kokoro_voice, speed=speed)
 
             # Process the generator (Kokoro returns chunks)
             audio_chunks = []

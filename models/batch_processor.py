@@ -442,14 +442,22 @@ class BatchProcessor:
                                     print(f" Cleaned: {os.path.basename(video_file)}")
 
                                     # Find corresponding temp directory
-                                    video_basename = os.path.splitext(os.path.basename(video_file))[0]
                                     output_dir = os.path.dirname(video_file)
 
-                                    # Look for temp directories matching this video
+                                    # Look for all temp directories with timestamp patterns (more reliable than basename matching)
                                     import glob
-                                    temp_pattern = os.path.join(output_dir, f"video_{video_basename}_*")
-                                    matching_dirs = glob.glob(temp_pattern)
-                                    temp_dirs_to_clean.extend(matching_dirs)
+                                    # Match any directory starting with video_ or video__ and containing timestamp patterns
+                                    temp_pattern = os.path.join(output_dir, "video*_*_*")
+                                    all_temp_dirs = glob.glob(temp_pattern)
+
+                                    # Filter to only include directories with proper timestamp patterns
+                                    for temp_dir in all_temp_dirs:
+                                        dir_name = os.path.basename(temp_dir)
+                                        # Check if it's a temporary directory with timestamp
+                                        if (dir_name.startswith("video_") or dir_name.startswith("video__")) and \
+                                           "_" in dir_name and \
+                                           any(part.isdigit() and len(part) >= 8 for part in dir_name.split("_")):
+                                            temp_dirs_to_clean.append(temp_dir)
 
                                 except Exception as e:
                                     print(f"⚠️ Could not remove {os.path.basename(video_file)}: {e}")

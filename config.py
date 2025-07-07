@@ -305,6 +305,30 @@ FFMPEG_OPTIMIZATION = {
         "fast_pskip": "1",      # Fast P-frame skip detection
         "aq_mode": "1",         # Adaptive quantization mode
         "aq_strength": "1.0"    # Adaptive quantization strength
+    },
+
+    # NEW: Advanced FFmpeg Optimizations
+    "hardware_acceleration": {
+        "enable_hwaccel": True,         # Enable hardware acceleration detection
+        "prefer_nvenc": True,           # Prefer NVIDIA NVENC if available
+        "prefer_qsv": True,             # Prefer Intel Quick Sync if available
+        "fallback_to_software": True,   # Fallback to software encoding if hardware fails
+    },
+
+    "operation_specific": {
+        "slideshow_creation": {
+            "preset": "ultrafast",
+            "crf": 30,                  # Higher CRF for slideshow (static images)
+            "tune": "stillimage",       # Optimize for still images
+        },
+        "video_merging": {
+            "use_stream_copy": True,    # Use stream copy when possible (no re-encoding)
+            "concat_demuxer": True,     # Use concat demuxer for fastest merging
+        },
+        "subtitle_embedding": {
+            "preset": "veryfast",       # Slightly better quality for subtitle embedding
+            "crf": 25,                  # Better quality for text readability
+        }
     }
 }
 
@@ -312,6 +336,17 @@ FFMPEG_OPTIMIZATION = {
 ENABLE_PARALLEL_PROCESSING = True  # Enable parallel video generation (experimental)
 MAX_PARALLEL_VIDEOS = 4            # Maximum videos to process simultaneously
 PARALLEL_PROCESSING_MEMORY_LIMIT = 8  # GB of RAM limit for parallel processing
+
+# NEW: Advanced Memory Management
+MEMORY_OPTIMIZATION = {
+    "enable_memory_monitoring": True,    # Monitor memory usage during processing
+    "memory_threshold_warning": 6.0,     # GB - warn when memory usage exceeds this
+    "memory_threshold_limit": 7.5,       # GB - pause processing when memory exceeds this
+    "force_gc_interval": 30,             # Seconds between forced garbage collection
+    "moviepy_clip_disposal": True,       # Aggressively dispose MoviePy clips
+    "temp_file_streaming": True,         # Stream temp files instead of loading to memory
+    "parallel_memory_per_job": 1.5,      # GB - estimated memory per parallel job
+}
 
 # Smart Duplicate Detection
 ENABLE_DUPLICATE_DETECTION = True
@@ -326,7 +361,20 @@ PROCESSING_OPTIMIZATIONS = {
     "optimize_image_loading": True,      # Keep image optimization
     "smart_temp_cleanup": True,          # Keep cleanup
     "memory_efficient_mode": False,      # Disable for speed - use direct processing
-    "fast_mode": True                    # Enable fast mode - skip non-essential processing
+    "fast_mode": True,                   # Enable fast mode - skip non-essential processing
+
+    # NEW: Image-to-Video Performance Optimizations
+    "parallel_image_processing": True,   # Process images in parallel batches
+    "image_batch_size": 8,               # Number of images to process simultaneously
+    "skip_intermediate_files": True,     # Stream directly to FFmpeg without temp files
+    "use_ffmpeg_image_sequence": True,   # Use FFmpeg's image sequence input for better performance
+    "optimize_image_pipeline": True,     # Use optimized PIL → FFmpeg pipeline
+
+    # NEW: Video Merging Performance Optimizations
+    "prefer_ffmpeg_concat": True,        # Use FFmpeg concat demuxer for fastest merging
+    "video_merge_batch_size": 10,        # Maximum videos to merge in one FFmpeg command
+    "enable_merge_streaming": True,      # Stream merge without loading all videos to memory
+    "optimize_merge_pipeline": True,     # Use optimized merge pipeline with minimal re-encoding
 }
 
 # Logging Configuration - Cleaner, less verbose output

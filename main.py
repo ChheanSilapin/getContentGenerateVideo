@@ -50,6 +50,28 @@ def setup_environment():
         print(f"Warning: Error in environment setup: {e}")
         # Continue execution - the application should handle missing setup gracefully
 
+def initialize_models():
+    """Initialize and pre-load models for performance optimization"""
+    try:
+        print("Initializing models for optimal performance...")
+
+        # Pre-load Whisper model through service manager
+        from services.whisper_service_manager import get_whisper_service
+        whisper_service = get_whisper_service()
+        if whisper_service and whisper_service.is_service_available():
+            print("✅ Whisper model pre-loaded successfully")
+        else:
+            print("⚠️ Whisper model not available (will use fallback)")
+
+        # Pre-load model cache
+        from utils.model_cache import get_model_cache
+        cache = get_model_cache()
+        print("✅ Model cache initialized")
+
+    except Exception as e:
+        print(f"Warning: Model initialization failed: {e}")
+        # Continue execution - models will load on-demand if pre-loading fails
+
 def check_ffmpeg_availability():
     """Check if FFmpeg is available (bundled or system-installed)"""
     try:
@@ -180,7 +202,10 @@ def main():
     
     # Setup environment for standalone operation
     setup_environment()
-    
+
+    # Initialize models for performance optimization
+    initialize_models()
+
     # Check FFmpeg availability (non-blocking)
     if not check_ffmpeg_availability():
         print("Warning: FFmpeg not detected")

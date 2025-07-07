@@ -932,17 +932,20 @@ class VideoTab:
 
     def start_video_generation(self):
         """Start the multi-video generation process"""
-        self.main_gui.log(f"DEBUG: start_video_generation called, current_mode={self.current_mode}")
-        
+        # Import logging utilities
+        from utils.logging_utils import log_if_enabled
+
+        log_if_enabled('debug_messages', f"start_video_generation called, current_mode={self.current_mode}")
+
         # Check if generation is already running
         if self.main_gui.generation_thread and self.main_gui.generation_thread.is_alive():
             messagebox.showwarning("Process Running", "Video generation is already in progress")
             return
 
         # Get valid entries
-        self.main_gui.log("DEBUG: About to call get_valid_entries()")
+        log_if_enabled('debug_messages', "About to call get_valid_entries()")
         valid_entries = self.get_valid_entries()
-        self.main_gui.log(f"DEBUG: get_valid_entries returned {len(valid_entries) if valid_entries else 0} entries")
+        log_if_enabled('debug_messages', f"get_valid_entries returned {len(valid_entries) if valid_entries else 0} entries")
 
         if not valid_entries:
             if self.current_mode == "grouped":

@@ -102,12 +102,30 @@ class ModelCache:
             import sys
             from io import StringIO
             from kokoro import KPipeline
+            import os
 
             # Temporarily suppress warnings during model loading
             old_stderr = sys.stderr
             sys.stderr = StringIO()
 
             try:
+                # Check if running as PyInstaller executable
+                if getattr(sys, 'frozen', False):
+                    # Running as PyInstaller executable
+                    # Set environment variable to use bundled models
+                    import pathlib
+                    
+                    # Find the bundled models directory
+                    base_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
+                    hf_cache_dir = os.path.join(base_dir, 'huggingface')
+                    
+                    # Set environment variable for huggingface to use bundled models
+                    os.environ['HF_HOME'] = hf_cache_dir
+                    os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
+                    
+                    from utils.logging_utils import log_cache_operations
+                    log_cache_operations(f"Using bundled Kokoro models from: {hf_cache_dir}")
+                
                 pipeline = KPipeline(lang_code='a')  # American English
                 return pipeline
             finally:
@@ -185,3 +203,4 @@ def get_model_cache() -> ModelCache:
             if _model_cache is None:
                 _model_cache = ModelCache()
     return _model_cache
+

@@ -44,14 +44,17 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
         video = None
         loading_success = False
 
+        # Import logging utilities
+        from utils.logging_utils import log_if_enabled
+
         # Strategy 1: Standard MoviePy loading
         try:
             video = VideoFileClip(video_file)
             loading_success = True
         except Exception as e:
-            print(f"DEBUG: Strategy 1 failed: {type(e).__name__}: {str(e)[:100]}")
+            log_if_enabled('debug_messages', f"Strategy 1 failed: {type(e).__name__}: {str(e)[:100]}")
             pass  # Try next strategy
-        
+
         # Strategy 2: MoviePy with specific codec parameters
         if not loading_success:
             try:
@@ -59,9 +62,9 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                 video = VideoFileClip(video_file, audio=True, target_resolution=None)
                 loading_success = True
             except Exception as e:
-                print(f"DEBUG: Strategy 2 failed: {type(e).__name__}: {str(e)[:100]}")
+                log_if_enabled('debug_messages', f"Strategy 2 failed: {type(e).__name__}: {str(e)[:100]}")
                 pass  # Try next strategy
-        
+
         # Strategy 3: MoviePy without audio first, then add audio separately
         if not loading_success:
             try:
@@ -74,7 +77,7 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                     pass  # Continue without original audio
                 loading_success = True
             except Exception as e:
-                print(f"DEBUG: Strategy 3 failed: {type(e).__name__}: {str(e)[:100]}")
+                log_if_enabled('debug_messages', f"Strategy 3 failed: {type(e).__name__}: {str(e)[:100]}")
                 pass  # Try next strategy
         
         # Strategy 4: Convert video to compatible format as last resort
@@ -102,16 +105,16 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
             # Additional debugging information
             if os.path.exists(video_file):
                 file_size = os.path.getsize(video_file)
-                print(f"DEBUG: File exists, size: {file_size} bytes")
+                log_if_enabled('debug_messages', f"File exists, size: {file_size} bytes")
 
                 # Try basic validation
                 from .video_utils import validate_video_file
                 is_valid, message, suggestion = validate_video_file(video_file)
-                print(f"DEBUG: Validation result: {is_valid}, {message}")
+                log_if_enabled('debug_messages', f"Validation result: {is_valid}, {message}")
                 if suggestion:
-                    print(f"DEBUG: Suggestion: {suggestion}")
+                    log_if_enabled('debug_messages', f"Suggestion: {suggestion}")
             else:
-                print(f"DEBUG: File does not exist at path: {video_file}")
+                log_if_enabled('debug_messages', f"File does not exist at path: {video_file}")
 
             return False
 
@@ -136,7 +139,9 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
                 new_audio.close()
 
                 # Use FFmpeg fallback
-                return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file)
+                return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file,
+                                                             target_duration=None, mix_with_original=mix_with_original,
+                                                             original_volume=original_volume)
         else:
             # Audio is longer than video - need looping, use FFmpeg directly
             # Get audio duration before cleanup
@@ -147,7 +152,8 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
             new_audio.close()
 
             # Use FFmpeg fallback which handles looping reliably
-            return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, audio_duration)
+            return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, audio_duration,
+                                                         mix_with_original=mix_with_original, original_volume=original_volume)
 
         # SIMPLIFIED VIDEO WRITING: Try once with MoviePy, fallback to FFmpeg if it fails
         try:
@@ -184,7 +190,9 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
             force_moviepy_cleanup()
 
             # Use FFmpeg fallback
-            return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file)
+            return add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file,
+                                                         target_duration=None, mix_with_original=mix_with_original,
+                                                         original_volume=original_volume)
 
     except Exception as e:
         print(f"Error adding voice-over to video: {e}")
@@ -192,17 +200,19 @@ def add_voiceover_to_video(video_file, audio_file, output_file, mix_with_origina
         traceback.print_exc()
         return False
 
-def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, target_duration=None):
+def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, target_duration=None, mix_with_original=True, original_volume=0.3):
     """
     FFmpeg-based fallback for adding voiceover when MoviePy fails
     Uses FFmpeg directly for video looping with seamless or ping-pong transitions
-    
+
     Args:
         video_file: Path to input video
-        audio_file: Path to audio file  
+        audio_file: Path to audio file
         output_file: Path to output video
         target_duration: Target duration for looping (None = use audio duration)
-    
+        mix_with_original: Whether to mix with original audio or replace it
+        original_volume: Volume level for original audio (0.0 to 1.0)
+
     Returns:
         bool: True if successful, False otherwise
     """
@@ -233,10 +243,11 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         else:
             video_for_mixing = video_file
         
-        # Step 2: Add audio using FFmpeg (replace original audio)
+        # Step 2: Add audio using FFmpeg with proper mute handling
         # Use centralized FFmpeg command builder for audio mixing
         mix_cmd = build_ffmpeg_command(ffmpeg_path, video_for_mixing, output_file, "audio_mix",
-                                      audio_file=audio_file, target_duration=target_duration)
+                                      audio_file=audio_file, target_duration=target_duration,
+                                      mix_with_original=mix_with_original, original_volume=original_volume)
 
         result = subprocess.run(mix_cmd, capture_output=True, text=False, timeout=180)
         # Decode output manually with proper error handling

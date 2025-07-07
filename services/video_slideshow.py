@@ -1,26 +1,280 @@
 """
 Video slideshow creation functionality
 Extracted from video_service.py for better organization
+Optimized with FFmpeg-based approach for better performance
 """
 import os
 import sys
 import shutil
 import traceback
 import tempfile
+import subprocess
 import numpy as np
 from PIL import Image, ImageFilter, ImageEnhance
 from moviepy.editor import (
-    ImageClip, ColorClip, AudioFileClip, VideoFileClip, 
+    ImageClip, ColorClip, AudioFileClip, VideoFileClip,
     CompositeAudioClip, concatenate_videoclips, CompositeVideoClip
 )
 
 # Import centralized utility functions
 from utils.helpers import (
     configure_ffmpeg_for_moviepy, setup_temp_directory_for_bundled_exe,
-    cleanup_temp_files
+    cleanup_temp_files, get_ffmpeg_path
 )
 # video_utils removed for performance optimization
 from config import DEFAULT_ASPECT_RATIO
+
+
+def _analyze_content_timing_for_images(audio_timing_result, image_count):
+    """
+    Analyze Whisper segments to create content-aware timing for images
+
+    Args:
+        audio_timing_result: AudioTimingResult with Whisper segments
+        image_count: Number of images to distribute timing across
+
+    Returns:
+        List of timing data for each image: [{'start': float, 'duration': float, 'content': str}, ...]
+    """
+    if not audio_timing_result or not audio_timing_result.whisper_segments:
+        print("⚠️ No Whisper timing data available, falling back to equal distribution")
+        return None
+
+    segments = audio_timing_result.whisper_segments
+    if len(segments) == 0:
+        print("⚠️ No Whisper segments found, falling back to equal distribution")
+        return None
+
+    # Calculate total audio duration
+    total_duration = segments[-1]['end'] if segments else 0
+
+    # Method 1: Distribute segments evenly among images with CONTINUOUS COVERAGE
+    if len(segments) >= image_count:
+        # Use full audio duration for continuous coverage (no gaps!)
+        audio_start = segments[0]['start']
+        audio_end = total_duration
+        full_duration = audio_end - audio_start
+        duration_per_image = full_duration / image_count
+
+        segments_per_image = len(segments) // image_count
+        remainder_segments = len(segments) % image_count
+
+        image_timings = []
+        segment_idx = 0
+
+        for i in range(image_count):
+            # Calculate continuous timing (no gaps)
+            start_time = audio_start + (i * duration_per_image)
+            end_time = start_time + duration_per_image
+
+            # Ensure last image goes exactly to audio end
+            if i == image_count - 1:
+                end_time = audio_end
+                duration_per_image = end_time - start_time
+
+            # Calculate how many segments this image gets for content mapping
+            segments_for_this_image = segments_per_image
+            if i < remainder_segments:
+                segments_for_this_image += 1
+
+            # Get the segments for content mapping
+            start_segment = segment_idx
+            end_segment = segment_idx + segments_for_this_image
+
+            # Collect content text for this image
+            content_parts = []
+            for seg_idx in range(start_segment, min(end_segment, len(segments))):
+                content_parts.append(segments[seg_idx]['text'].strip())
+
+            # If no content mapped, find content by time overlap
+            if not content_parts:
+                mid_time = (start_time + end_time) / 2
+                for segment in segments:
+                    if segment['start'] <= mid_time <= segment['end']:
+                        content_parts.append(segment['text'].strip())
+                        break
+
+                if not content_parts:
+                    content_parts.append(f"Content section {i+1}")
+
+            image_timings.append({
+                'start': start_time,
+                'duration': end_time - start_time,
+                'content': ' '.join(content_parts)
+            })
+
+            segment_idx = end_segment
+
+        # Final verification: ensure perfect coverage
+        calculated_end = image_timings[-1]['start'] + image_timings[-1]['duration']
+
+        if abs(calculated_end - total_duration) > 0.01:
+            image_timings[-1]['duration'] = total_duration - image_timings[-1]['start']
+
+        return image_timings
+
+    else:
+        # Method 2: When we have fewer segments than images, distribute images across full audio duration
+        # Use full audio duration to ensure no content is cut off
+        audio_start = segments[0]['start'] if segments else 0
+        audio_end = segments[-1]['end'] if segments else total_duration
+        full_duration = audio_end - audio_start
+
+        # Calculate equal distribution across full duration
+        duration_per_image = full_duration / image_count
+
+        image_timings = []
+
+        # Create segment content mapping for reference
+        segment_content = {}
+        for segment in segments:
+            for t in range(int(segment['start']), int(segment['end']) + 1):
+                segment_content[t] = segment['text'].strip()
+
+        for i in range(image_count):
+            start_time = audio_start + (i * duration_per_image)
+            end_time = start_time + duration_per_image
+
+            # Ensure last image goes to the very end of audio
+            if i == image_count - 1:
+                end_time = audio_end
+                duration_per_image = end_time - start_time
+
+            # Find the most relevant content for this time range
+            mid_time = int((start_time + end_time) / 2)
+            content = segment_content.get(mid_time, f"Content section {i+1}")
+
+            # If no content found, try to find nearest segment
+            if content == f"Content section {i+1}":
+                for segment in segments:
+                    if segment['start'] <= mid_time <= segment['end']:
+                        content = segment['text'].strip()
+                        break
+
+            image_timings.append({
+                'start': start_time,
+                'duration': end_time - start_time,
+                'content': content
+            })
+
+        # Verify total duration matches audio
+        calculated_total = image_timings[-1]['start'] + image_timings[-1]['duration']
+
+        if abs(calculated_total - audio_end) > 0.1:
+            image_timings[-1]['duration'] = audio_end - image_timings[-1]['start']
+
+        return image_timings
+
+
+def _create_content_aware_slideshow_ffmpeg(processed_images, content_timings, audio_file, output_file,
+                                          target_width, target_height, use_effects, zoom_effect, fade_effect, temp_dir):
+    """
+    Create slideshow with content-aware timing using FFmpeg
+
+    Args:
+        processed_images: List of processed image file paths
+        content_timings: List of timing data for each image
+        audio_file: Path to audio file
+        output_file: Path to output video file
+        target_width, target_height: Video dimensions
+        use_effects, zoom_effect, fade_effect: Effect settings
+        temp_dir: Temporary directory for processing
+
+    Returns:
+        bool: Success status
+    """
+    try:
+        ffmpeg_path = get_ffmpeg_path()
+        if not ffmpeg_path:
+            print("❌ FFmpeg not found for content-aware slideshow")
+            return False
+
+
+
+        # Create individual video clips for each image with custom duration
+        temp_clips = []
+        for i, (img_path, timing) in enumerate(zip(processed_images, content_timings)):
+            clip_output = os.path.join(temp_dir, f"clip_{i:03d}.mp4")
+            temp_clips.append(clip_output)
+
+            # Build video filters
+            filters = []
+
+            # Scale and fit
+            filters.append(f'scale={target_width}:{target_height}:force_original_aspect_ratio=decrease')
+            filters.append(f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black')
+
+            # Add zoom effect if requested
+            if use_effects and zoom_effect:
+                filters.append('scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05')
+
+            # Add fade effect if requested and duration is long enough
+            if use_effects and fade_effect and timing['duration'] > 1.5:
+                fade_duration = min(0.3, timing['duration'] * 0.15)
+                filters.append(f'fade=in:0:{int(fade_duration*24)}')
+                filters.append(f'fade=out:{int((timing["duration"]-fade_duration)*24)}:{int(fade_duration*24)}')
+
+            # Create individual clip with specific duration
+            clip_cmd = [
+                ffmpeg_path,
+                '-loop', '1',
+                '-i', img_path,
+                '-t', str(timing['duration']),  # Custom duration for this image
+                '-vf', ','.join(filters),
+                '-r', '24',  # Standard frame rate
+                '-pix_fmt', 'yuv420p',
+                '-c:v', 'libx264',
+                '-preset', 'medium',
+                '-crf', '23',
+                '-y',  # Overwrite output
+                clip_output
+            ]
+
+            print(f"📸 Creating clip {i+1}: {timing['duration']:.2f}s - {timing['content'][:50]}...")
+
+            result = subprocess.run(clip_cmd, capture_output=True, text=True, timeout=120)
+            if result.returncode != 0:
+                print(f"❌ Failed to create clip {i+1}: {result.stderr}")
+                return False
+
+        # Create concat file for FFmpeg
+        concat_file = os.path.join(temp_dir, "concat_list.txt")
+        with open(concat_file, 'w') as f:
+            for clip in temp_clips:
+                # Use forward slashes for FFmpeg compatibility
+                clip_path = clip.replace('\\', '/')
+                f.write(f"file '{clip_path}'\n")
+
+
+
+        # Concatenate all clips and add audio
+        final_cmd = [
+            ffmpeg_path,
+            '-f', 'concat',
+            '-safe', '0',
+            '-i', concat_file,
+            '-i', audio_file,
+            '-c:v', 'copy',  # Copy video (already encoded)
+            '-c:a', 'aac',
+            '-shortest',  # Match shortest stream (video or audio)
+            '-avoid_negative_ts', 'make_zero',
+            '-y',  # Overwrite output
+            output_file
+        ]
+
+        result = subprocess.run(final_cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode != 0:
+            print(f"❌ Failed to concatenate clips: {result.stderr}")
+            return False
+
+
+        return True
+
+    except Exception as e:
+        print(f"❌ Error in content-aware slideshow creation: {e}")
+        traceback.print_exc()
+        return False
+
 
 def process_image_for_slideshow(img, target_width, target_height, fit_method="cover", zoom_effect=True):
     """
@@ -136,12 +390,273 @@ def process_image_for_slideshow(img, target_width, target_height, fit_method="co
         fallback_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
         return ImageClip(np.array(fallback_img))
 
+def create_slideshow_ffmpeg(images_folder, audio_file, output_file,
+                           use_effects=True, zoom_effect=True, fade_effect=True,
+                           aspect_ratio=DEFAULT_ASPECT_RATIO, fit_method="cover",
+                           stop_event=None, audio_timing_result=None):
+    """
+    Create slideshow using FFmpeg for optimal performance
+
+    Args:
+        images_folder: Folder containing images OR list of image file paths
+        audio_file: Path to audio file
+        output_file: Path to output video file
+        use_effects: Whether to apply visual effects
+        zoom_effect: Whether to apply zoom effect to images
+        fade_effect: Whether to apply fade transitions
+        aspect_ratio: Video aspect ratio (width, height)
+        fit_method: How to fit images ("cover", "contain", "stretch")
+        stop_event: Threading event to stop the process
+
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+
+
+        # Get FFmpeg path
+        ffmpeg_path = get_ffmpeg_path()
+        if not ffmpeg_path:
+            print("FFmpeg not found, falling back to MoviePy")
+            return False
+
+        # Get image files
+        if isinstance(images_folder, list):
+            image_files = images_folder
+        else:
+            image_files = []
+            for ext in ['*.jpg', '*.jpeg', '*.png', '*.bmp', '*.tiff', '*.webp']:
+                import glob
+                image_files.extend(glob.glob(os.path.join(images_folder, ext)))
+                image_files.extend(glob.glob(os.path.join(images_folder, ext.upper())))
+            image_files.sort()
+
+        if not image_files:
+            print("No image files found")
+            return False
+
+        # Get audio duration
+        try:
+            audio_clip = AudioFileClip(audio_file)
+            audio_duration = audio_clip.duration
+            audio_clip.close()
+        except Exception as e:
+            print(f"Error reading audio file: {e}")
+            return False
+
+        # Calculate timing - use content-aware timing if available
+        content_timings = None
+        if audio_timing_result:
+
+            content_timings = _analyze_content_timing_for_images(audio_timing_result, len(image_files))
+
+        if content_timings:
+            pass
+        else:
+            duration_per_image = audio_duration / len(image_files) if len(image_files) > 0 else 0
+
+        # Check if we should stop
+        if stop_event and stop_event.is_set():
+            return False
+
+        # Create temporary directory for processed images
+        temp_dir = tempfile.mkdtemp(prefix="slideshow_")
+        processed_images = []
+
+        try:
+            target_width, target_height = aspect_ratio
+
+            # Process images with PIL (faster than MoviePy for static processing)
+            for i, img_path in enumerate(image_files):
+                if stop_event and stop_event.is_set():
+                    return False
+
+                try:
+                    # Load and process image
+                    pil_img = Image.open(img_path)
+                    processed_img = _process_image_for_ffmpeg(
+                        pil_img, target_width, target_height, fit_method
+                    )
+
+                    # Save processed image
+                    processed_path = os.path.join(temp_dir, f"img_{i:06d}.jpg")
+                    processed_img.save(processed_path, "JPEG", quality=95)
+                    processed_images.append(processed_path)
+
+                except Exception as e:
+                    print(f"Error processing image {img_path}: {e}")
+                    # Create black placeholder
+                    black_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+                    processed_path = os.path.join(temp_dir, f"img_{i:06d}.jpg")
+                    black_img.save(processed_path, "JPEG", quality=95)
+                    processed_images.append(processed_path)
+
+            if not processed_images:
+                return False
+
+            # Build FFmpeg command for slideshow creation
+            if content_timings:
+                # Content-aware timing: Create slideshow with custom timing per image
+
+                return _create_content_aware_slideshow_ffmpeg(
+                    processed_images, content_timings, audio_file, output_file,
+                    target_width, target_height, use_effects, zoom_effect, fade_effect, temp_dir
+                )
+
+            else:
+                # Traditional equal timing: use standard approach
+                cmd = [ffmpeg_path]
+                cmd.extend([
+                    '-framerate', f'{1/duration_per_image}',  # Frame rate based on duration
+                    '-i', os.path.join(temp_dir, 'img_%06d.jpg'),
+                    '-i', audio_file  # Audio input
+                ])
+
+            # Video filters for effects
+            filters = []
+
+            # Scale and fit
+            if fit_method == "cover":
+                filters.append(f'scale={target_width}:{target_height}:force_original_aspect_ratio=increase')
+                filters.append(f'crop={target_width}:{target_height}')
+            elif fit_method == "contain":
+                filters.append(f'scale={target_width}:{target_height}:force_original_aspect_ratio=decrease')
+                filters.append(f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black')
+            else:  # stretch
+                filters.append(f'scale={target_width}:{target_height}')
+
+            # Add zoom effect if requested
+            if use_effects and zoom_effect:
+                # Subtle zoom effect using scale filter
+                filters.append('scale=iw*1.1:ih*1.1,crop=iw/1.1:ih/1.1')
+
+            # Add fade effect if requested
+            if use_effects and fade_effect and duration_per_image > 1.5:
+                fade_duration = min(0.3, duration_per_image * 0.15)
+                filters.append(f'fade=in:0:{int(fade_duration*25)}:alpha=1')
+                filters.append(f'fade=out:{int((duration_per_image-fade_duration)*25)}:{int(fade_duration*25)}:alpha=1')
+
+            # Apply filters
+            if filters:
+                cmd.extend(['-vf', ','.join(filters)])
+
+            # Output settings
+            cmd.extend([
+                '-c:v', 'libx264',
+                '-c:a', 'aac',
+                '-pix_fmt', 'yuv420p',
+                '-crf', '23',
+                '-preset', 'medium',
+                '-shortest',  # Stop when shortest input ends
+                '-avoid_negative_ts', 'make_zero',
+                '-y',  # Overwrite output
+                output_file
+            ])
+
+            # For bundled executables, use faster settings
+            if getattr(sys, 'frozen', False):
+                # Replace preset and crf for faster encoding
+                cmd[cmd.index('-preset')+1] = 'ultrafast'
+                cmd[cmd.index('-crf')+1] = '28'
+
+
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+            if result.returncode != 0:
+                print(f"FFmpeg error: {result.stderr}")
+                return False
+
+
+            return True
+
+        finally:
+            # Clean up temporary files
+            try:
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"Warning: Could not clean up temp directory: {e}")
+
+    except Exception as e:
+        print(f"Error in FFmpeg slideshow creation: {e}")
+        return False
+
+def _process_image_for_ffmpeg(pil_img, target_width, target_height, fit_method="cover"):
+    """
+    Process image for FFmpeg slideshow (simplified version without MoviePy)
+    """
+    try:
+        orig_width, orig_height = pil_img.size
+        orig_ratio = orig_width / orig_height
+        target_ratio = target_width / target_height
+
+        if fit_method == "cover":
+            # Cover: crop to fill frame
+            if orig_ratio > target_ratio:
+                # Image is wider - crop sides
+                new_height = target_height
+                new_width = int(new_height * orig_ratio)
+                resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
+                x_offset = (new_width - target_width) // 2
+                final_img = resized_img.crop((x_offset, 0, x_offset + target_width, target_height))
+            else:
+                # Image is taller - crop top/bottom
+                new_width = target_width
+                new_height = int(new_width / orig_ratio)
+                resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
+                y_offset = (new_height - target_height) // 2
+                final_img = resized_img.crop((0, y_offset, target_width, y_offset + target_height))
+
+        elif fit_method == "contain":
+            # Contain: fit with blurred background
+            if orig_ratio > target_ratio:
+                new_width = target_width
+                new_height = int(new_width / orig_ratio)
+                resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
+
+                # Create blurred background
+                bg_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+                bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=20))
+                enhancer = ImageEnhance.Brightness(bg_img)
+                bg_img = enhancer.enhance(0.3)
+
+                y_offset = (target_height - new_height) // 2
+                bg_img.paste(resized_img, (0, y_offset))
+                final_img = bg_img
+            else:
+                new_height = target_height
+                new_width = int(new_height * orig_ratio)
+                resized_img = pil_img.resize((new_width, new_height), Image.LANCZOS)
+
+                # Create blurred background
+                bg_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+                bg_img = bg_img.filter(ImageFilter.GaussianBlur(radius=20))
+                enhancer = ImageEnhance.Brightness(bg_img)
+                bg_img = enhancer.enhance(0.3)
+
+                x_offset = (target_width - new_width) // 2
+                bg_img.paste(resized_img, (x_offset, 0))
+                final_img = bg_img
+
+        else:  # stretch
+            final_img = pil_img.resize((target_width, target_height), Image.LANCZOS)
+
+        return final_img
+
+    except Exception as e:
+        print(f"Error processing image: {e}")
+        # Return black image as fallback
+        return Image.new('RGB', (target_width, target_height), (0, 0, 0))
+
 def create_slideshow(images_folder, title, content, audio_file, output_file,
                   use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True,
                   enhance=False, enhancement_options=None, stop_event=None,
-                  aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover"):
+                  aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover",
+                  audio_timing_result=None):
     """
-    Create a slideshow video from images with memory-optimized processing
+    Create a slideshow video from images with performance optimization
+
+    First attempts FFmpeg-based creation for optimal performance,
+    falls back to MoviePy if FFmpeg is not available or fails.
 
     Args:
         images_folder: Folder containing images OR list of image file paths (optimized mode)
@@ -158,9 +673,57 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         stop_event: Threading event to stop the process
         aspect_ratio: Video aspect ratio (width, height)
         ffmpeg_timeout: Timeout for FFmpeg operations
+        fit_method: How to fit images ("cover", "contain", "stretch")
 
     Returns:
         bool: True if successful, False otherwise
+    """
+    try:
+        # Try FFmpeg-based slideshow creation first for optimal performance
+
+        ffmpeg_success = create_slideshow_ffmpeg(
+            images_folder, audio_file, output_file,
+            use_effects=use_effects, zoom_effect=zoom_effect, fade_effect=fade_effect,
+            aspect_ratio=aspect_ratio, fit_method=fit_method, stop_event=stop_event,
+            audio_timing_result=audio_timing_result
+        )
+
+        if ffmpeg_success:
+
+
+            # Apply enhancement if requested
+            if enhance and enhancement_options:
+                print("Applying video enhancement...")
+                try:
+                    from .video_optimization import enhance_video
+                    enhanced_output = enhance_video(output_file, output_file, enhancement_options, stop_event)
+                    if not enhanced_output:
+                        print("Enhancement failed, using original slideshow")
+                except ImportError:
+                    print("Video optimization module not available, skipping enhancement")
+                except Exception as e:
+                    print(f"Enhancement error: {e}")
+
+            return True
+
+        # Fall back to MoviePy if FFmpeg failed
+
+        return _create_slideshow_moviepy(images_folder, title, content, audio_file, output_file,
+                                       use_gpu, use_effects, zoom_effect, fade_effect,
+                                       enhance, enhancement_options, stop_event,
+                                       aspect_ratio, ffmpeg_timeout, fit_method)
+
+    except Exception as e:
+        print(f"Error in slideshow creation: {e}")
+        traceback.print_exc()
+        return False
+
+def _create_slideshow_moviepy(images_folder, title, content, audio_file, output_file,
+                            use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True,
+                            enhance=False, enhancement_options=None, stop_event=None,
+                            aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover"):
+    """
+    Original MoviePy-based slideshow creation (fallback method)
     """
     try:
         from utils.memory_manager import get_memory_manager
@@ -194,15 +757,12 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             for file in os.listdir(images_folder):
                 if file.lower().endswith(supported_extensions):
                     image_files.append(os.path.join(images_folder, file))
-            print(f"Found {len(image_files)} images in folder")
-
         if not image_files:
             print("No supported image files found")
             return False
 
         # Sort images by filename for consistent order
         image_files.sort()
-        print(f"Processing {len(image_files)} images")
         
         # Load audio to get duration
         try:
@@ -218,8 +778,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         image_sequence = list(range(len(image_files)))
         effects_recommended = []
 
-        print(f"Duration per image: {duration_per_image:.2f} seconds")
-        print(f"Using {len(image_sequence)} images")
+
         
         # Process images into clips using optimized sequence
         clips = []
@@ -293,7 +852,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             return False
         
         # Concatenate all clips
-        print("Concatenating image clips...")
+
         try:
             # Ensure all clips have the same FPS before concatenating
             for clip in clips:
@@ -397,7 +956,7 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
             except Exception as e:
                 print(f"Enhancement error: {e}")
         
-        print("Slideshow creation completed successfully!")
+
         return True
         
     except Exception as e:
@@ -412,7 +971,7 @@ def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo,
     Legacy slideshow creation function - redirects to new implementation
     Maintained for backward compatibility
     """
-    print("Using legacy slideshow function - redirecting to new implementation")
+
     return create_slideshow(
         folderName, title, content, audioFile, outputVideo,
         use_gpu=use_gpu_encoding, use_effects=True, zoom_effect=True, fade_effect=True,

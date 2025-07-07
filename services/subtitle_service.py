@@ -289,27 +289,71 @@ class CleanSubtitleGenerator:
         return lines
 
     def _write_ass_file(self, output_file: str, subtitle_lines: List[Dict], style: str):
-        """Write subtitle lines to ASS file"""
+        """Write subtitle lines to ASS file with dynamic styling"""
         with open(output_file, 'w', encoding='utf-8') as f:
             # Write ASS header
             f.write("[Script Info]\n")
             f.write("Title: Clean Subtitles\n")
             f.write("ScriptType: v4.00+\n\n")
-            
-            # Write style
+
+            # Write style using dynamic style configuration
             f.write("[V4+ Styles]\n")
             f.write("Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n")
-            f.write("Style: Default,Rubik,12,&H00FFFFFF,&H00000000,&H00FF8000,&H80000000,1,0,0,0,100,100,0,0,1,3,2,2,10,10,80,1\n\n")
-            
+
+            # Generate style line from config
+            style_line = self._generate_style_line(style)
+            f.write(f"{style_line}\n\n")
+
             # Write events
             f.write("[Events]\n")
             f.write("Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n")
-            
+
             for line in subtitle_lines:
                 start_time = self._format_ass_time(line['start'])
                 end_time = self._format_ass_time(line['end'])
                 text = line['text']
                 f.write(f"Dialogue: 0,{start_time},{end_time},Default,,0,0,0,,{text}\n")
+
+    def _generate_style_line(self, style: str) -> str:
+        """Generate ASS style line from config"""
+        # Get style configuration
+        available_styles = self.config.get('available_styles', {})
+        style_config = available_styles.get(style, available_styles.get('modern_glow', {}))
+
+        # Extract style parameters with fallbacks
+        font = style_config.get('font', 'Rubik')
+        size = style_config.get('size', 12)
+        primary_color = style_config.get('primary_color', '&H00FFFFFF')
+        secondary_color = style_config.get('secondary_color', '&H00000000')
+        outline_color = style_config.get('outline_color', '&H00FF8000')
+        background_color = style_config.get('background_color', '&H80000000')
+        bold = 1 if style_config.get('bold', True) else 0
+        italic = 0  # Not used in current styles
+        underline = 0  # Not used
+        strikeout = 0  # Not used
+        scale_x = 100  # Normal scaling
+        scale_y = 100  # Normal scaling
+        spacing = 0  # No letter spacing
+        angle = 0  # No rotation
+        border_style = 1  # Outline + drop shadow
+        outline_width = style_config.get('outline_width', 3)
+        shadow = style_config.get('shadow', 2)
+        alignment = style_config.get('alignment', 2)  # Bottom center
+        margin_l = 10  # Left margin
+        margin_r = 10  # Right margin
+        margin_v = style_config.get('margin_v', 80)  # Bottom margin
+        encoding = 1  # Default encoding
+
+        # Build ASS style line
+        style_line = (
+            f"Style: Default,{font},{size},{primary_color},{secondary_color},"
+            f"{outline_color},{background_color},{bold},{italic},{underline},"
+            f"{strikeout},{scale_x},{scale_y},{spacing},{angle},{border_style},"
+            f"{outline_width},{shadow},{alignment},{margin_l},{margin_r},{margin_v},{encoding}"
+        )
+
+        print(f"[STYLE] Applied {style} style: {font} {size}pt, colors: {primary_color}/{outline_color}")
+        return style_line
 
     def _format_ass_time(self, seconds: float) -> str:
         """Format time in ASS format (H:MM:SS.CC)"""

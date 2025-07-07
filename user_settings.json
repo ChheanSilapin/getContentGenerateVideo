@@ -4,7 +4,7 @@
   "tts_language": "en",
   "tts_voice_actor": "Adam",
   "tts_speed": 0.8441176470588235,
-  "tts_emotion": "neutral",
+  "tts_emotion": "dramatic",
   "sr_enabled": true,
   "sr_language": "en-us",
   "enabled_tts_providers": [
@@ -22,18 +22,20 @@
   "min_image_duration": 0.8,
   "max_image_duration": 8.0,
   "optimal_image_duration": 3.0,
-  "image_fit_method": "cover",
-  "aspect_ratio": "16:9 (Landscape)",
+  "image_fit_method": "contain",
+  "aspect_ratio": "1:1 (Square)",
+  "mute": false,
+  "volume": 0.7,
   "shared_settings": {
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
     "tts_language": "en",
     "tts_voice_actor": "Adam",
     "tts_speed": 0.8441176470588235,
-    "tts_emotion": "neutral"
+    "tts_emotion": "dramatic"
   },
-  "image_tab_settings": {
-    "image_fit_method": "contain",
-    "aspect_ratio": "1:1 (Square)"
-  },
-  "video_tab_settings": {}
+  "image_tab_settings": {},
+  "video_tab_settings": {
+    "mute": true,
+    "volume": 0.7
+  }
 }

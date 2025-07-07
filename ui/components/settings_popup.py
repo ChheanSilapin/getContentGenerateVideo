@@ -407,8 +407,6 @@ class SettingsPopup:
             # Initialize volume state
             self._update_volume_state()
 
-
-
     def _create_image_processing_section(self, parent):
         """Create Image Processing settings section"""
         img_frame = ttk.LabelFrame(parent, text="🖼️ Image Processing", padding=15)

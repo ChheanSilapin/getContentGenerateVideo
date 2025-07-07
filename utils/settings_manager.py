@@ -344,17 +344,21 @@ class SettingsManager:
                 'output_folder': self.default_settings.get('output_folder', self._get_default_output_folder())
             }
 
-            if tab_name == 'image_tab':
-                tab_settings.update({
-                    'image_fit_method': self.default_settings.get('image_fit_method', 'contain'),
-                    'aspect_ratio': self.default_settings.get('aspect_ratio', '9:16 (Portrait)')
-                })
-            elif tab_name == 'video_tab':
-                tab_settings.update({
-                    'mute_original_audio': False,
-                    'original_audio_volume': 0.7,
-                    'subtitle_style': 'modern_glow'
-                })
+        # Always ensure tab-specific defaults are present
+        if tab_name == 'image_tab':
+            # Add image-specific defaults if not present
+            if 'image_fit_method' not in tab_settings:
+                tab_settings['image_fit_method'] = self.default_settings.get('image_fit_method', 'contain')
+            if 'aspect_ratio' not in tab_settings:
+                tab_settings['aspect_ratio'] = self.default_settings.get('aspect_ratio', '9:16 (Portrait)')
+        elif tab_name == 'video_tab':
+            # Add video-specific defaults if not present
+            if 'mute_original_audio' not in tab_settings:
+                tab_settings['mute_original_audio'] = False
+            if 'original_audio_volume' not in tab_settings:
+                tab_settings['original_audio_volume'] = 0.7
+            if 'subtitle_style' not in tab_settings:
+                tab_settings['subtitle_style'] = 'modern_glow'
 
         return tab_settings
 

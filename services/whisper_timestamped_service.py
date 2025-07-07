@@ -17,8 +17,10 @@ except ImportError:
     # Only show warning in development, not in bundled executable
     import sys
     if not getattr(sys, 'frozen', False):
-        print("⚠️ whisper-timestamped not available. Enhanced subtitle timing disabled.")
-        print("   Install with: pip install whisper-timestamped (for better voice synchronization)")
+        from utils.error_helpers import show_warning_with_log
+        show_warning_with_log(None, "Whisper Not Available",
+            "Whisper-timestamped not available. Enhanced subtitle timing disabled.\n"
+            "Install with: pip install whisper-timestamped (for better voice synchronization)")
 
 
 from utils.logging_utils import log_speech_recognition
@@ -54,17 +56,18 @@ class WhisperResult:
 class WhisperTimestampedService:
     """Service for precise word-level timestamp extraction using whisper-timestamped"""
 
-    def __init__(self, model_name: str = "tiny", device: str = "auto"):
+    def __init__(self, model_name: str = "tiny", device: str = "auto", preload_model: bool = True):
         """
         Initialize the whisper-timestamped service
 
         Args:
             model_name: Whisper model size ("tiny", "base", "small", "medium", "large")
             device: Device to use ("auto", "cpu", "cuda")
+            preload_model: Whether to preload the model at initialization (default: True for performance)
         """
         self.model_name = model_name
         self.device = device
-        self.model = None
+        self.model = None  # Keep for backward compatibility, but use cached model
         self.is_available = WHISPER_TIMESTAMPED_AVAILABLE
 
         # Debug logging for PyInstaller builds
@@ -84,8 +87,17 @@ class WhisperTimestampedService:
         if self.is_available:
             log_if_enabled('debug_messages', "Whisper-timestamped service initialized with cached model support")
             log_speech_recognition(f" Whisper-timestamped service ready with model '{model_name}'")
+
+            # Pre-load model for performance if requested
+            if preload_model:
+                log_speech_recognition(f" Pre-loading Whisper model for performance...")
+                cached_model = self._get_model()
+                if cached_model:
+                    log_speech_recognition(f" Whisper model pre-loaded successfully")
+                else:
+                    log_speech_recognition(f"⚠️ Whisper model pre-loading failed, will load on-demand")
         else:
-            print(f"[DEBUG] Skipping model loading - whisper not available")
+            
             log_speech_recognition(" Whisper-timestamped service unavailable")
     
     def _get_model(self):
@@ -188,21 +200,18 @@ class WhisperTimestampedService:
         start_time = time.time()
         
         if not self.is_available:
-            print(f"[DEBUG] Whisper not available: is_available={self.is_available}")
             return WhisperResult(
                 text="", language="", segments=[], processing_time=0,
                 success=False, error_message="Whisper-timestamped not available"
             )
 
-        if not self.model:
-            print(f"[DEBUG] Whisper model is None, attempting to load...")
-            self._load_model()
-            if not self.model:
-                print(f"[DEBUG] Whisper model loading failed")
-                return WhisperResult(
-                    text="", language="", segments=[], processing_time=0,
-                    success=False, error_message="Whisper model failed to load"
-                )
+        # Use cached model instead of self.model for performance
+        model = self._get_model()
+        if not model:
+            return WhisperResult(
+                text="", language="", segments=[], processing_time=0,
+                success=False, error_message="Model not available"
+            )
         
         if not os.path.exists(audio_file):
             return WhisperResult(
@@ -433,4 +442,9 @@ class WhisperTimestampedService:
     
     def is_service_available(self) -> bool:
         """Check if the service is available and ready"""
-        return self.is_available and self.model is not None
+        if not self.is_available:
+            return False
+
+        # Check if cached model is available
+        cached_model = self._get_model()
+        return cached_model is not None

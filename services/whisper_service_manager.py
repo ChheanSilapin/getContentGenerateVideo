@@ -30,7 +30,8 @@ def _create_whisper_service():
             
         service = WhisperTimestampedService(
             model_name=config.get("model_name", "tiny"),
-            device=config.get("device", "auto")
+            device=config.get("device", "auto"),
+            preload_model=True  # Enable pre-loading for performance
         )
         
         if service.is_service_available():
