@@ -3,89 +3,164 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://www.microsoft.com/windows)
-[![Contributions Welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+[![Version](https://img.shields.io/badge/version-1.0.9-blue.svg)](version.py)
 
-A powerful, AI-enhanced application that creates professional videos with subtitles from text and images. Generate voice-overs with speech recognition validation, add intelligent subtitles, and create engaging video content with content-aware settings.
+A powerful, AI-enhanced desktop application that creates professional videos with synchronized subtitles from text and images. Features advanced text-to-speech, speech recognition validation, and intelligent subtitle generation with content-aware timing.
 
-## 🌟 Key Highlights
+## 🌟 Key Features
 
-- **🎤 Advanced Text-to-Speech**: Multi-language support with Hindi voice actors
-- **🧠 AI Content Analysis**: Automatic content type detection and emotion-aware settings
-- **🎯 Speech Recognition**: Whisper-timestamped for precise subtitle synchronization
-- **🌍 Multi-language Support**: English, Hindi, and more with automatic language detection
-- **⚡ Real-time Processing**: Live progress tracking and background processing
-- **🎨 Professional Effects**: Content-aware transitions and visual enhancements
+- **🎤 Professional Text-to-Speech**: Edge TTS (Microsoft Neural) + Kokoro TTS with 6 high-quality voices
+- **🎯 Precise Speech Recognition**: Whisper-timestamped for word-level subtitle synchronization
+- **🎨 Smart Video Creation**: Automated slideshow generation with content-aware image timing
+- **📝 Advanced Subtitles**: Netflix-standard formatting with dynamic backgrounds and voice sync
+- **⚡ Optimized Performance**: Hardware acceleration, parallel processing, and memory management
+- **🖥️ User-Friendly GUI**: Tabbed interface with real-time progress tracking and batch processing
 
-## � Table of Contents
+## 📋 Table of Contents
 
 - [🚀 Quick Start](#-quick-start)
-- [✨ Features](#-features)
-- [📱 Application Tabs](#-application-tabs)
+- [🎯 Core Functionality](#-core-functionality)
+- [🏗️ Architecture Overview](#️-architecture-overview)
+- [🎤 AI & Voice Features](#-ai--voice-features)
+- [📱 User Interface](#-user-interface)
 - [🛠️ Development Setup](#️-development-setup)
+- [📦 Deployment](#-deployment)
+- [🔧 Configuration](#-configuration)
 - [💡 Tips & Best Practices](#-tips--best-practices)
 - [🔧 Troubleshooting](#-troubleshooting)
 - [🤝 Contributing](#-contributing)
 - [📄 License](#-license)
 
-## �🚀 Quick Start
+## 🚀 Quick Start
 
-### Download & Install
-1. **Download** the latest release: [Video Generator Setup v0.0.3](releases/Video%20Generator_Setup_0.0.3.exe)
-2. **Run** the installer 
-3. **Launch** Video Generator from your desktop
-4. **Start creating** videos immediately!
+### For End Users
+1. **Download** the portable installer from releases
+2. **Run** the installer - models download automatically on first launch
+3. **Launch** Video Generator and start creating videos immediately!
 
-### Basic Usage (3 Steps)
-1. **Input Tab**: Enter your text and select image source
-2. **Images Tab**: Preview and select your favorite images  
-3. **Input Tab**: Click "Generate Video"
+### Basic Workflow (3 Steps)
+1. **Enter Text**: Input your script or content in the main tab
+2. **Select Images**: Choose from web scraping or local folders
+3. **Generate**: Click "Generate Video" for automatic voice-over, subtitles, and effects
 
-Your video will be created with voice-over, subtitles, and professional effects!
+### System Requirements
+- **OS**: Windows 10/11 (primary platform)
+- **RAM**: 4GB minimum, 8GB recommended
+- **Storage**: 2GB for application + models
+- **Internet**: Required for initial model download and web scraping
 
-## ✨ Features
+## 🎯 Core Functionality
 
-### 🎨 Content Creation
-- **Text-to-Speech**: Natural-sounding voice generation
-- **Image Slideshow**: Professional transitions and effects  
-- **Subtitle Generation**: Automatic timing and styling
-- **Voice-over Integration**: Add voice to existing videos
-- **Multi-language Support**: Unicode and emoji compatibility
+### Primary Workflow: Text → Voice → Video
+The application follows a streamlined workflow:
+1. **Text Input**: User provides script/content
+2. **Voice Generation**: AI converts text to natural speech using Edge TTS or Kokoro TTS
+3. **Speech Analysis**: Whisper-timestamped extracts word-level timing data
+4. **Subtitle Creation**: Generates Netflix-standard subtitles synchronized with voice
+5. **Video Assembly**: Combines images, audio, and subtitles into final video
 
-### 🖼️ Image Sources
-- **Web Scraping**: Download images from any website
-- **Local Folders**: Use your own image collections
-- **Smart Selection**: Preview and choose specific images
-- **Auto-filtering**: Skips icons, logos, and unsuitable images
+### 🎨 Video Creation Features
+- **Automated Slideshow Generation**: Creates professional video slideshows from images
+- **Content-Aware Image Timing**: Adjusts image display duration based on speech content
+- **Professional Transitions**: Zoom, fade, and other cinematic effects
+- **Multiple Aspect Ratios**: 9:16 (vertical), 16:9 (horizontal), 1:1 (square)
+- **Batch Processing**: Process multiple videos simultaneously
+- **Voice-over for Existing Videos**: Add narration to pre-existing video files
 
-### 🎬 Video Options
-- **Multiple Aspect Ratios**: 9:16 (mobile), 16:9 (widescreen), 1:1 (square)
-- **Quality Settings**: Adjustable resolution and frame rates
-- **Visual Effects**: Zoom, fade transitions, color correction
-- **Audio Mixing**: Blend voice-over with original audio
+### 🖼️ Image Sources & Processing
+- **Web Scraping**: Intelligent image extraction from any website with content filtering
+- **Local Folders**: Support for personal image collections with auto-detection
+- **Smart Image Selection**: Preview interface for manual image curation
+- **Format Support**: JPG, PNG, GIF, WebP, BMP, TIFF
+- **Auto-filtering**: Removes icons, logos, and unsuitable images automatically
 
-### 📦 Batch Processing
-- **Multiple Projects**: Process several videos in sequence
-- **Auto-cleanup**: Keeps only final output files
-- **Progress Tracking**: Monitor all jobs in real-time
+## �️ Architecture Overview
 
-## 📱 Application Tabs
+### Clean Architecture Design
+The application follows clean architecture principles with strict separation of concerns:
 
-| Tab | Purpose |
-|-----|---------|
-| **Input** | Main video creation from text and images |
-| **Images** | Preview and select specific images |
-| **Video** | Add voice-over to existing video files |
-| **Options** | Advanced settings and customization |
-| **Batch** | Process multiple projects automatically |
-| **Log** | Monitor progress and troubleshooting |
+```
+├── main.py                 # Application entry point with startup optimization
+├── config.py              # Centralized configuration management
+├── ui/                    # User Interface Layer
+│   ├── gui.py            # Main GUI controller
+│   ├── image_tab.py      # Image selection interface
+│   └── video_tab.py      # Video processing interface
+├── models/               # Business Logic Layer
+│   ├── video_generator_refactored.py  # Core video generation logic
+│   ├── batch_processor.py             # Batch processing management
+│   └── cleanup_manager.py             # Resource cleanup
+├── services/             # Service Layer (AI & Media Processing)
+│   ├── tts_providers.py              # Text-to-speech services
+│   ├── whisper_timestamped_service.py # Speech recognition
+│   ├── subtitle_service.py           # Subtitle generation
+│   ├── video_slideshow.py            # Video creation
+│   └── audio_service.py              # Audio processing
+└── utils/               # Utility Layer
+    ├── memory_manager.py            # Memory optimization
+    ├── settings_manager.py          # User settings
+    └── path_manager.py             # File path management
+```
+
+### Key Design Patterns
+- **Factory Pattern**: UI component creation and TTS provider management
+- **Service Layer**: Decoupled AI services with fallback mechanisms
+- **Observer Pattern**: Progress tracking and event handling
+- **Strategy Pattern**: Multiple TTS providers with smart routing
+
+## 🎤 AI & Voice Features
+
+### Text-to-Speech Providers
+The application supports two professional TTS providers with intelligent fallback:
+
+#### Edge TTS (Microsoft Neural Voices)
+- **Guy** (`en-US-GuyNeural`): US Male - Warm, friendly tone
+- **Connor** (`en-IE-ConnorNeural`): Irish Male - Authentic accent
+- **Aria** (`en-US-AriaNeural`): US Female - Natural, expressive
+
+#### Kokoro TTS (82M Parameter Model)
+- **Michael** (`am_michael`): Male - Friendly, warm tone
+- **Adam** (`am_adam`): Male - Professional, clear delivery
+- **Heart** (`af_heart`): Female - Warm, expressive voice
+
+### Speech Recognition & Analysis
+- **Whisper-timestamped**: Word-level timestamp extraction for precise subtitle synchronization
+- **Voice Activity Detection (VAD)**: Silero VAD for natural pause detection
+- **Confidence Scoring**: Quality assessment of speech recognition results
+- **Caching System**: Optimized performance with intelligent result caching
+
+### Subtitle Generation
+- **Netflix Standards**: 42 characters per line, syntactic breaks, pyramid structure
+- **Dynamic Backgrounds**: Voice-synchronized background effects with opacity control
+- **Multiple Styles**: Modern glow, gradient gold, fire red, ice blue, bold outline
+- **ASS Format**: Advanced SubStation Alpha for professional subtitle rendering
+- **Smart Word Mapping**: Preserves original text formatting while maintaining voice sync
+
+## 📱 User Interface
+
+### Tabbed Interface Design
+| Tab | Purpose | Key Features |
+|-----|---------|-------------|
+| **Images** | Image selection and preview | Web scraping, local folders, manual curation |
+| **Video** | Video processing with voice-over | Existing video enhancement, audio mixing |
+| **Log** | Progress monitoring | Real-time status, error tracking, performance metrics |
+
+### User Experience Features
+- **Real-time Progress**: Live updates during video generation
+- **Memory Management**: Automatic cleanup and resource optimization
+- **Settings Persistence**: User preferences saved automatically
+- **Error Handling**: Graceful fallbacks with informative messages
 
 ## 🛠️ Development Setup
 
-### Requirements
-- Python 3.10 or later
-- Windows 10/11 (primary platform)
+### System Requirements
+- **Python**: 3.10+ (3.12 recommended)
+- **OS**: Windows 10/11 (primary), Linux/macOS (experimental)
+- **RAM**: 4GB minimum, 8GB recommended for AI models
+- **Storage**: 2GB for application + models
+- **GPU**: Optional (CUDA support for faster processing)
 
-### From Source
+### Installation from Source
 ```bash
 # Clone repository
 git clone https://github.com/ChheanSilapin/getContentGenerateVideo
@@ -95,241 +170,233 @@ cd getContentGenerateVideo
 python -m venv video_generator_env
 video_generator_env\Scripts\activate
 
-# Install dependencies
+# Install dependencies (handles conflicts automatically)
 pip install -r requirements.txt
+
+# Install PyTorch CPU (separate to avoid index conflicts)
+pip install torch --index-url https://download.pytorch.org/whl/cpu
 
 # Run application
 python main.py
 ```
 
-### Building
-```bash
-# Quick build
-fast_build.bat
+### Key Dependencies
+```python
+# Core AI & Speech
+whisper-timestamped>=1.15.8    # Speech recognition with timestamps
+edge-tts>=6.1.0                # Microsoft Neural TTS
+kokoro>=0.9.4                   # High-quality neural TTS
+silero-vad>=5.1.2              # Voice activity detection
 
-# Full installer build
-build.bat
+# Video & Audio Processing
+moviepy==1.0.3                 # Video editing and processing
+pillow>=10.3.0                 # Image processing
+pydub==0.25.1                  # Audio manipulation
+soundfile>=0.12.0              # Audio I/O
+
+# Scientific Computing (version-locked for stability)
+numpy>=1.21.2,<2.0.0          # Numerical computing
+scipy>=1.10.0                  # Scientific computing
 ```
 
-## 💡 Tips & Best Practices
+## 📦 Deployment
 
-### Image Selection
-- Use high-quality images (minimum 800x600)
-- Mix landscape and portrait orientations for visual variety
-- Avoid copyrighted content
+### Portable Build System
+The application uses a sophisticated portable build system for easy distribution:
 
-### Text Input
-- Keep sentences clear and well-punctuated for better voice generation
-- Use proper spacing for natural speech pacing
-- Emojis are supported and will be described in voice-over
+#### Build Scripts
+```bash
+# Create portable executable
+build_portable.bat
 
-### Performance
-- Use CPU processing for stability (default)
-- Close other applications during video generation
-- Allow sufficient disk space (500MB+ per video)
+# Generate installer with NSIS
+build_installer.bat
 
-## 🔧 Troubleshooting
+# Test complete workflow
+test_portable_workflow.bat
+```
 
-### Common Issues
-- **Slow generation**: Check internet connection for image downloads
-- **Audio issues**: Ensure system volume is not muted
-- **Memory errors**: Close other applications and restart
-- **File access**: Run as administrator if permission errors occur
+#### Deployment Features
+- **Single-file Executable**: PyInstaller-based with all dependencies bundled
+- **First-run Setup**: Automatic AI model download on initial launch
+- **Portable Operation**: Works from any location without installation
+- **Smart Dependency Management**: Handles DLL inclusion and model caching
+- **Professional Installer**: NSIS-based installer with proper uninstall support
 
-### Getting Help
-1. Check the **Log tab** for detailed error information
-2. Ensure you have sufficient disk space
-3. Try restarting the application
-4. For persistent issues, create a GitHub issue with log details
+## � Configuration
+
+### Core Configuration (`config.py`)
+The application uses centralized configuration with intelligent defaults:
+
+#### Video Settings
+```python
+# Video dimensions and aspect ratios
+VIDEO_WIDTH = 720
+VIDEO_HEIGHT = 1280  # Default 9:16 for mobile
+DEFAULT_FRAME_RATE = 25
+
+# Aspect ratio presets
+RATIO_9_16 = {"name": "9:16 (Vertical)", "width": 720, "height": 1280}
+RATIO_16_9 = {"name": "16:9 (Horizontal)", "width": 1280, "height": 720}
+RATIO_1_1 = {"name": "1:1 (Square)", "width": 1080, "height": 1080}
+```
+
+#### TTS Configuration
+```python
+TTS_CONFIG = {
+    "default_provider": "edge_tts",
+    "fallback_enabled": True,
+    "priority_order": ["edge_tts", "kokoro_tts"],
+    "default_voice": "Guy",
+    "emotion_processing": True,
+    "speed_adjustment": True
+}
+```
+
+#### Subtitle Settings
+```python
+SUBTITLE_CONFIG = {
+    "reading_speed_wpm": 80,        # Comfortable reading speed
+    "min_display_time": 4.0,        # Minimum subtitle duration
+    "use_speech_analysis": True,    # Enable voice synchronization
+    "default_style": "bold_outline" # Netflix-style formatting
+}
+```
+
+#### Performance Optimization
+```python
+FFMPEG_OPTIMIZATION = {
+    "preset": "ultrafast",          # Fastest encoding
+    "hardware_acceleration": True,   # GPU acceleration when available
+    "parallel_processing": True,     # Multi-core utilization
+    "memory_optimization": True      # Smart memory management
+}
+```
+
+### User Settings (`user_settings.json`)
+Runtime settings are automatically saved and restored:
+- Voice preferences and TTS provider selection
+- Video quality and aspect ratio preferences
+- UI layout and tab visibility
+- Performance and memory settings
+
+## � Tips & Best Practices
+
+### Content Creation
+- **Text Quality**: Use clear, well-punctuated sentences for better voice generation
+- **Image Selection**: High-quality images (800x600+) with mixed orientations
+- **Content Length**: Optimal video length is 30-120 seconds for engagement
+- **Voice Pacing**: Use proper spacing and punctuation for natural speech rhythm
+
+### Performance Optimization
+- **Memory Management**: Close unnecessary applications during video generation
+- **Storage Space**: Ensure 500MB+ free space per video project
+- **Processing Mode**: Use CPU processing for stability (GPU optional for speed)
+- **Batch Processing**: Process multiple videos during off-peak hours
+
+### Quality Settings
+- **Aspect Ratios**: 9:16 for mobile/social, 16:9 for desktop/TV, 1:1 for square posts
+- **Voice Selection**: Match voice personality to content type (professional vs casual)
+- **Subtitle Timing**: Enable speech analysis for precise voice-subtitle synchronization
+- **Visual Effects**: Use content-aware timing for better image-speech alignment
+
+## �🔧 Troubleshooting
+
+### Common Issues & Solutions
+
+#### Installation & Setup
+- **FFmpeg Not Found**: Download from [ffmpeg.org](https://ffmpeg.org/download.html) or place `ffmpeg.exe` in application folder
+- **Model Download Fails**: Check internet connection; models auto-download on first run
+- **Import Errors**: Ensure all dependencies installed with `pip install -r requirements.txt`
+- **PyTorch Issues**: Install CPU version separately: `pip install torch --index-url https://download.pytorch.org/whl/cpu`
+
+#### Performance Issues
+- **Slow Generation**: Check internet connection for image downloads and model access
+- **Memory Errors**: Close other applications; reduce parallel processing in settings
+- **Audio Problems**: Verify system audio not muted; check TTS provider availability
+- **Video Quality**: Adjust FFmpeg preset in config (ultrafast → fast → medium for better quality)
+
+#### AI & Voice Issues
+- **TTS Failures**: Application automatically falls back between Edge TTS and Kokoro TTS
+- **Subtitle Sync Problems**: Enable speech analysis in settings for better timing
+- **Voice Quality**: Try different voice actors; adjust speed settings for clarity
+- **Recognition Errors**: Whisper-timestamped handles most accents; check audio quality
+
+#### File & Path Issues
+- **Output Folder**: Application creates output directory automatically in temp folder if needed
+- **Portable Mode**: Ensure application has write permissions in its directory
+- **Long Paths**: Windows path length limits may affect deep folder structures
+- **File Locks**: Close other applications that might lock video/audio files
+
+### Debug Mode
+Enable verbose logging for detailed troubleshooting:
+```bash
+python main.py --verbose
+```
+
+### Log Files
+Check application logs for detailed error information:
+- **Location**: `logs/` folder in application directory
+- **Key Files**: `video_finalization.log` for processing details
+- **Real-time**: Monitor Log tab in application for live updates
+## 🤝 Contributing
+
+We welcome contributions to improve Video Generator! This project follows clean architecture principles and modern development practices.
+
+### Development Guidelines
+- **Code Style**: Follow PEP 8 guidelines with Black formatting
+- **Architecture**: Maintain separation of concerns (UI → Models → Services → Utils)
+- **Testing**: Add unit tests for new features and bug fixes
+- **Documentation**: Update docstrings and README for any changes
+- **Dependencies**: Use package managers; avoid manual package file edits
+
+### Contribution Areas
+- **AI Models**: Improve TTS providers and speech recognition accuracy
+- **Performance**: Optimize video processing and memory management
+- **UI/UX**: Enhance user interface and experience
+- **Platform Support**: Extend Linux/macOS compatibility
+- **Documentation**: Improve guides and troubleshooting
+
+### Getting Started
+1. Fork the repository
+2. Create feature branch: `git checkout -b feature/amazing-feature`
+3. Make changes following architecture patterns
+4. Test thoroughly with different content types
+5. Submit pull request with detailed description
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project is licensed under the MIT License - see the [LICENSE.txt](LICENSE.txt) file for details.
 
-## 🤝 Contributing
-
-We welcome contributions from the community! Whether you're fixing bugs, adding features, improving documentation, or suggesting enhancements, your help is appreciated.
-
-### 🌟 Ways to Contribute
-
-#### 🐛 Bug Reports
-- **Search existing issues** before creating new ones
-- **Use the bug report template** with detailed information
-- **Include logs** from the Log tab when reporting issues
-- **Provide steps to reproduce** the problem
-
-#### ✨ Feature Requests
-- **Check existing feature requests** to avoid duplicates
-- **Describe the use case** and why it would be valuable
-- **Provide mockups or examples** if applicable
-- **Consider implementation complexity** and user impact
-
-#### 💻 Code Contributions
-- **Start with good first issues** labeled `good-first-issue`
-- **Follow the coding standards** outlined below
-- **Write tests** for new functionality
-- **Update documentation** as needed
-
-#### 📚 Documentation
-- **Improve README** sections that are unclear
-- **Add code comments** for complex functions
-- **Create tutorials** or usage examples
-- **Translate documentation** to other languages
-
-### 🛠️ Development Guidelines
-
-#### Setting Up Development Environment
-```bash
-# 1. Fork and clone the repository
-git clone https://github.com/YOUR_USERNAME/getContentGenerateVideo
-cd getContentGenerateVideo
-
-# 2. Create virtual environment
-python -m venv video_generator_env
-video_generator_env\Scripts\activate  # Windows
-source video_generator_env/bin/activate  # Linux/Mac
-
-# 3. Install development dependencies
-pip install -r requirements.txt
-pip install pytest black flake8  # Development tools
-
-# 4. Run tests to ensure everything works
-python -m pytest tests/
-
-# 5. Start development
-python main.py
 ```
+MIT License
 
-#### Code Style & Standards
-- **Python Style**: Follow PEP 8 guidelines
-- **Code Formatting**: Use `black` for automatic formatting
-- **Linting**: Use `flake8` for code quality checks
-- **Docstrings**: Document all public functions and classes
-- **Type Hints**: Add type hints for better code clarity
+Copyright (c) 2024 Video Generator
 
-```bash
-# Format code before committing
-black .
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-# Check code quality
-flake8 .
-
-# Run tests
-python -m pytest tests/ -v
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 ```
-
-#### Project Structure
-```
-getContentGenerateVideo/
-├── main.py                 # Application entry point
-├── models/                 # Core business logic
-├── services/              # External service integrations
-├── ui/                    # User interface components
-├── utils/                 # Utility functions and helpers
-├── tests/                 # Test suite
-├── requirements.txt       # Python dependencies
-└── README.md             # This file
-```
-
-#### Commit Guidelines
-- **Use conventional commits**: `type(scope): description`
-- **Types**: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`
-- **Examples**:
-  - `feat(audio): add Hindi voice support`
-  - `fix(ui): resolve settings dialog crash`
-  - `docs(readme): update installation instructions`
-
-### 🔄 Pull Request Process
-
-1. **Fork the repository** and create your branch from `main`
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Make your changes** following the coding standards
-4. **Add tests** for new functionality
-5. **Update documentation** if needed
-6. **Run the test suite** to ensure nothing breaks
-7. **Commit your changes** with clear, descriptive messages
-8. **Push to your fork**: `git push origin feature/amazing-feature`
-9. **Create a Pull Request** with:
-   - Clear title and description
-   - Reference to related issues
-   - Screenshots/videos for UI changes
-   - Test results and verification steps
-
-#### Pull Request Checklist
-- [ ] Code follows project style guidelines
-- [ ] Self-review of code completed
-- [ ] Tests added for new functionality
-- [ ] All tests pass locally
-- [ ] Documentation updated if needed
-- [ ] No breaking changes (or clearly documented)
-- [ ] Screenshots included for UI changes
-
-### 🧪 Testing
-
-#### Running Tests
-```bash
-# Run all tests
-python -m pytest tests/
-
-# Run specific test file
-python -m pytest tests/test_audio_service.py
-
-# Run with coverage
-python -m pytest tests/ --cov=. --cov-report=html
-```
-
-#### Writing Tests
-- **Unit tests** for individual functions
-- **Integration tests** for component interactions
-- **UI tests** for critical user workflows
-- **Mock external dependencies** (APIs, file system)
-
-### 🏷️ Issue Labels
-
-| Label | Description |
-|-------|-------------|
-| `bug` | Something isn't working |
-| `enhancement` | New feature or request |
-| `good-first-issue` | Good for newcomers |
-| `help-wanted` | Extra attention is needed |
-| `documentation` | Improvements or additions to docs |
-| `question` | Further information is requested |
-| `wontfix` | This will not be worked on |
-
-### 💬 Community Guidelines
-
-- **Be respectful** and inclusive in all interactions
-- **Help others** learn and contribute
-- **Provide constructive feedback** in code reviews
-- **Ask questions** if something is unclear
-- **Share knowledge** and best practices
-
-### 🎯 Priority Areas for Contribution
-
-1. **Performance Optimization**: Video processing speed improvements
-2. **Cross-platform Support**: Linux and macOS compatibility
-3. **Accessibility**: Screen reader support and keyboard navigation
-4. **Internationalization**: Multi-language UI support
-5. **Advanced Features**: AI-powered content analysis
-6. **Testing**: Increase test coverage and reliability
-
-### 📞 Getting Help
-
-- **GitHub Discussions**: For questions and general discussion
-- **GitHub Issues**: For bug reports and feature requests
-- **Code Review**: Tag maintainers for review assistance
-- **Documentation**: Check existing docs before asking
-
-### 🙏 Recognition
-
-Contributors will be:
-- **Listed in CONTRIBUTORS.md** with their contributions
-- **Mentioned in release notes** for significant contributions
-- **Invited to join** the core contributor team for ongoing contributors
-
-Thank you for helping make Video Generator better for everyone! 🚀
 
 ---
 
-**Note**: This application includes FFmpeg for video processing. No additional downloads required!
+## � Project Status
+
+- **Version**: 1.0.9 (Active Development)
+- **Platform**: Windows 10/11 (Primary), Linux/macOS (Experimental)
+- **AI Models**: Edge TTS, Kokoro TTS, Whisper-timestamped
+- **Architecture**: Clean Architecture with Service Layer Pattern
+- **Deployment**: Portable executable with automatic model download
+
+**Made with ❤️ for content creators worldwide**
+
+*Transform your ideas into professional videos with AI-powered voice generation and intelligent subtitle synchronization.*
+
+
 

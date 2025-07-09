@@ -1,33 +1,32 @@
-# Core TTS and Speech Recognition
+# Video Generator - Full Requirements (Conflict-Free)
+
+# Scientific Computing - MUST BE FIRST to avoid conflicts
+numpy>=1.21.2,<2.0.0
+scipy>=1.10.0
+
+# Core TTS Providers
 edge-tts>=6.1.0
 kokoro>=0.9.4
-soundfile>=0.12.0
+espeakng-loader>=0.2.0
+
+# Speech Recognition and AI Dependencies
 whisper-timestamped>=1.15.8
-# pyaudio==0.2.11  # Optional - may fail on Windows without PortAudio headers
+silero-vad>=5.1.2
+onnxruntime>=1.15.0
 
 # Video and Image Processing
 moviepy==1.0.3
 pillow>=10.3.0
-opencv-python==4.11.0.86
 pydub==0.25.1
 
-# Scientific Computing - Fixed NumPy compatibility
-numpy>=1.21.2,<2.0.0  # Pin to NumPy 1.x for OpenCV compatibility
-scipy>=1.10.0
+# Audio I/O
+soundfile>=0.12.0
 
 # Web and Text Processing
 requests==2.32.0
 beautifulsoup4==4.12.2
 bs4==0.0.2
 emoji==2.8.0
-spacy>=3.0.0
 
-# GUI Framework (Note: tkinter is built-in, PySide6 might be unused)
-# PySide6>=6.6.0  # Commented out - using tkinter instead
-# tk==0.1.0  # Not needed - tkinter is built-in
-
-# Additional dependencies for PyInstaller
-cffi>=1.15.0
-setuptools>=65.0.0 
-wheel>=0.37.0
-pyinstaller>=5.0.0
+# PyTorch CPU - Install separately to avoid index conflicts
+# torch --index-url https://download.pytorch.org/whl/cpu

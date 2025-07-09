@@ -170,12 +170,6 @@ class UIComponentFactory:
 
 # Import the model and UI components
 try:
-    # Try to import OpenCV, but don't fail if it's not available
-    try:
-        import cv2
-    except ImportError:
-        print("OpenCV (cv2) not available. Some features may be limited.")
-
     # Import config
     from config import GUI_WINDOW_SIZE, GUI_TITLE, GUI_MIN_WIDTH, GUI_MIN_HEIGHT, GUI_RESIZABLE, GUI_CENTER_ON_SCREEN, GUI_COLORS, GUI_FONTS, get_tab_visibility
     from models.video_generator_refactored import VideoGeneratorModel

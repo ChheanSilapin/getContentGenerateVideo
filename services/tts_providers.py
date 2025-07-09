@@ -21,14 +21,32 @@ except ImportError:
     EDGE_TTS_AVAILABLE = False
     print("❌ Edge TTS not available. Install with: pip install edge-tts")
 
-# Import Kokoro TTS
-try:
-    from kokoro import KPipeline
-    import soundfile as sf
-    KOKORO_AVAILABLE = True
-except ImportError:
-    KOKORO_AVAILABLE = False
-    print("❌ Kokoro TTS not available. Install with: pip install kokoro soundfile")
+# Lazy import for Kokoro TTS - only import when actually needed
+def _check_kokoro_availability():
+    """Check if Kokoro TTS is available without importing it"""
+    try:
+        # Check if running in PyInstaller environment
+        import sys
+        if getattr(sys, 'frozen', False):
+            # Running in PyInstaller - set up environment first
+            import os
+            base_dir = os.path.dirname(sys.executable)
+            hf_dir = os.path.join(base_dir, 'huggingface')
+            if os.path.exists(hf_dir):
+                os.environ['HF_HOME'] = hf_dir
+                os.environ['TRANSFORMERS_CACHE'] = hf_dir
+
+        # Try to import Kokoro TTS
+        import kokoro
+        import soundfile as sf
+        return True
+    except ImportError:
+        return False
+    except Exception:
+        return False
+
+# Check availability without importing
+KOKORO_AVAILABLE = _check_kokoro_availability()
 
 
 class EdgeTTSProvider:
@@ -50,8 +68,18 @@ class EdgeTTSProvider:
         """Check if Edge TTS is available"""
         return EDGE_TTS_AVAILABLE
 
+    def _escape_ssml_text(self, text: str) -> str:
+        """Escape text for safe use in SSML"""
+        # Replace XML special characters that could break SSML
+        text = text.replace('&', '&amp;')
+        text = text.replace('<', '&lt;')
+        text = text.replace('>', '&gt;')
+        text = text.replace('"', '&quot;')
+        text = text.replace("'", '&apos;')
+        return text
+
     def generate_speech(self, text: str, output_file: str, **kwargs) -> bool:
-        """Generate speech using Edge TTS"""
+        """Generate speech using Edge TTS with proper speed control"""
         if not self.available:
             self.last_error = "Edge TTS not available"
             return False
@@ -64,8 +92,11 @@ class EdgeTTSProvider:
             # Map to Edge TTS voice
             edge_voice = self.voice_mapping.get(voice_actor, 'en-US-GuyNeural')
 
-            # Generate audio asynchronously with speed control
-            success = asyncio.run(self._generate_async(text, output_file, edge_voice, speed))
+            # Escape text for SSML safety
+            safe_text = self._escape_ssml_text(text)
+
+            # Generate audio with proper speed control
+            success = asyncio.run(self._generate_async(safe_text, output_file, edge_voice, speed))
 
             if success:
                 return True
@@ -78,25 +109,50 @@ class EdgeTTSProvider:
             print(clean_log_message(f"❌ Edge TTS error: {e}"))
             return False
 
-    async def _generate_async(self, text: str, output_file: str, voice: str, speed: float = 1.0) -> bool:
-        """Async generation for Edge TTS with speed control"""
+    async def _generate_async(self, safe_text: str, output_file: str, voice: str, speed: float = 1.0) -> bool:
+        """Async generation for Edge TTS with proper speed control"""
         try:
-            # Apply speed control using SSML prosody rate
+            # Convert speed to Edge TTS rate format
             if speed != 1.0:
-                # Convert speed to percentage rate (0.8 -> "-20%", 1.2 -> "+20%")
-                rate_percentage = f"{(speed - 1) * 100:+.0f}%"
-                # Wrap text in SSML with prosody rate control
-                ssml_text = f'<speak><prosody rate="{rate_percentage}">{text}</prosody></speak>'
+                # Convert speed multiplier to percentage change
+                # 1.0 = +0%, 1.2 = +20%, 0.8 = -20%
+                rate_percent = int((speed - 1.0) * 100)
+
+                # Clamp to Edge TTS limits (-50% to +100%)
+                rate_percent = max(-50, min(100, rate_percent))
+
+                # Create proper SSML with rate control
+                if rate_percent >= 0:
+                    rate_str = f"+{rate_percent}%"
+                else:
+                    rate_str = f"{rate_percent}%"
+
+                # Use proper SSML format that Edge TTS can process
+                # Text is already escaped for SSML safety
+                ssml_text = f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><prosody rate="{rate_str}">{safe_text}</prosody></speak>'
+
+                print(clean_log_message(f"🎵 Edge TTS speed: {speed:.2f}x ({rate_str})"))
+
+                # Use SSML with rate control
                 communicate = edge_tts.Communicate(ssml_text, voice)
             else:
-                # Use normal text without SSML for default speed
-                communicate = edge_tts.Communicate(text, voice)
+                # Use plain text for normal speed (text is already escaped but safe to use as plain text)
+                communicate = edge_tts.Communicate(safe_text, voice)
 
             await communicate.save(output_file)
             return True
+
         except Exception as e:
             print(clean_log_message(f"❌ Edge TTS async error: {e}"))
-            return False
+            # Fallback to plain text if SSML fails
+            try:
+                print(clean_log_message("🔄 Falling back to plain text (normal speed)"))
+                communicate = edge_tts.Communicate(safe_text, voice)
+                await communicate.save(output_file)
+                return True
+            except Exception as fallback_error:
+                print(clean_log_message(f"❌ Edge TTS fallback failed: {fallback_error}"))
+                return False
 
     def get_supported_voices(self):
         """Get supported voices for Edge TTS"""
@@ -184,6 +240,7 @@ class KokoroTTSProvider:
                 final_audio = np.concatenate(audio_chunks)
 
             # Save audio file (Kokoro outputs WAV at 24kHz)
+            import soundfile as sf
             sf.write(output_file, final_audio, 24000)
 
             return True
@@ -213,7 +270,7 @@ class TTSManager:
         self._load_settings()
 
     def _initialize_providers(self):
-        """Initialize Edge TTS and Kokoro TTS providers"""
+        """Initialize Edge TTS and Kokoro TTS providers (lazy loading)"""
         # Initialize Edge TTS provider
         edge_provider = EdgeTTSProvider()
         if edge_provider.available:
@@ -221,12 +278,12 @@ class TTSManager:
             self.priority_order.append('edge_tts')
             print(clean_log_message("[OK] Edge TTS provider initialized"))
 
-        # Initialize Kokoro TTS provider
+        # Initialize Kokoro TTS provider (but don't load the model yet)
         kokoro_provider = KokoroTTSProvider()
         if kokoro_provider.available:
             self.providers['kokoro_tts'] = kokoro_provider
             self.priority_order.append('kokoro_tts')
-            print(clean_log_message("[OK] Kokoro TTS provider initialized"))
+            print(clean_log_message("[OK] Kokoro TTS provider initialized (models will load on first use)"))
 
         if not self.providers:
             print(clean_log_message("❌ No TTS providers available!"))

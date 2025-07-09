@@ -2,8 +2,8 @@
   "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
   "_migration_completed": true,
   "tts_language": "en",
-  "tts_voice_actor": "Adam",
-  "tts_speed": 0.8441176470588235,
+  "tts_voice_actor": "Guy",
+  "tts_speed": 1.0,
   "tts_emotion": "dramatic",
   "sr_enabled": true,
   "sr_language": "en-us",
@@ -29,13 +29,13 @@
   "shared_settings": {
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
     "tts_language": "en",
-    "tts_voice_actor": "Adam",
-    "tts_speed": 0.8441176470588235,
+    "tts_voice_actor": "Guy",
+    "tts_speed": 1.0,
     "tts_emotion": "dramatic"
   },
   "image_tab_settings": {},
   "video_tab_settings": {
-    "mute": true,
+    "mute": false,
     "volume": 0.7
   }
 }

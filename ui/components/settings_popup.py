@@ -343,7 +343,10 @@ class SettingsPopup:
 
         # Update speed label when scale changes and auto-save
         def update_speed_label(*args):
-            speed_label.config(text=f"{self.tts_speed.get():.1f}x")
+            # Round speed to 1 decimal place to avoid floating point precision issues
+            rounded_speed = round(self.tts_speed.get(), 1)
+            self.tts_speed.set(rounded_speed)  # Update the variable with rounded value
+            speed_label.config(text=f"{rounded_speed:.1f}x")
             self._on_setting_changed()  # Auto-save when speed changes
         self.tts_speed.trace_add("write", update_speed_label)
 

@@ -274,8 +274,21 @@ class SettingsManager:
             return self.default_settings.copy()
     
     def save_settings(self, settings: Dict[str, Any]) -> bool:
-        """Save settings to file and clear cache"""
+        """Save settings to file and clear cache with value normalization"""
         try:
+            # Normalize TTS speed to avoid floating point precision issues
+            if 'tts_speed' in settings:
+                settings['tts_speed'] = round(float(settings['tts_speed']), 1)
+
+            # Normalize shared settings TTS speed if present
+            if 'shared_settings' in settings and 'tts_speed' in settings['shared_settings']:
+                settings['shared_settings']['tts_speed'] = round(float(settings['shared_settings']['tts_speed']), 1)
+
+            # Normalize tab-specific TTS speeds if present
+            for tab_key in ['image_tab_settings', 'video_tab_settings']:
+                if tab_key in settings and 'tts_speed' in settings[tab_key]:
+                    settings[tab_key]['tts_speed'] = round(float(settings[tab_key]['tts_speed']), 1)
+
             print(f"Saving settings to: {self.settings_file}")
             # Ensure directory exists (only if there is a directory part)
             settings_dir = os.path.dirname(self.settings_file)

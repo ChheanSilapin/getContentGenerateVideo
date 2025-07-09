@@ -53,20 +53,40 @@ def setup_environment():
 def initialize_models():
     """Initialize and pre-load models for performance optimization"""
     try:
+        # For portable builds, check if models are available first
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller executable - check portable model status
+            try:
+                from utils.portable_model_manager import get_portable_model_manager
+                model_manager = get_portable_model_manager()
+
+                if not model_manager.is_setup_complete():
+                    print("⚠️ Models not yet downloaded - will be available after first-run setup")
+                    return
+
+            except ImportError:
+                print("Warning: Portable model manager not available")
+
         print("Initializing models for optimal performance...")
 
-        # Pre-load Whisper model through service manager
-        from services.whisper_service_manager import get_whisper_service
-        whisper_service = get_whisper_service()
-        if whisper_service and whisper_service.is_service_available():
-            print("✅ Whisper model pre-loaded successfully")
-        else:
-            print("⚠️ Whisper model not available (will use fallback)")
+        # Pre-load Whisper model through service manager (only if available)
+        try:
+            from services.whisper_service_manager import get_whisper_service
+            whisper_service = get_whisper_service()
+            if whisper_service and whisper_service.is_service_available():
+                print("✅ Whisper model pre-loaded successfully")
+            else:
+                print("⚠️ Whisper model not available (will use fallback)")
+        except ImportError:
+            print("⚠️ Whisper service not available (optional dependency)")
 
-        # Pre-load model cache
-        from utils.model_cache import get_model_cache
-        cache = get_model_cache()
-        print("✅ Model cache initialized")
+        # Pre-load model cache (only if available)
+        try:
+            from utils.model_cache import get_model_cache
+            cache = get_model_cache()
+            print("✅ Model cache initialized")
+        except ImportError:
+            print("⚠️ Model cache not available (optional dependency)")
 
     except Exception as e:
         print(f"Warning: Model initialization failed: {e}")
@@ -119,16 +139,55 @@ def show_ffmpeg_warning():
         print("Video generation requires FFmpeg. Please install it from https://ffmpeg.org/download.html")
 
 def create_gui():
-    """Create and run the GUI application with lazy imports"""
+    """Create and run the GUI application with lazy imports and first-run setup"""
     try:
         from config import GUI_WINDOW_SIZE, GUI_TITLE
         import tkinter as tk
-        from ui.gui import VideoGeneratorGUI
-        
+
+        # Create root window first for first-run setup
         root = tk.Tk()
         root.title(GUI_TITLE)
         root.geometry(GUI_WINDOW_SIZE)
-        
+
+        # Check if first-run setup is needed (only for portable builds)
+        if getattr(sys, 'frozen', False):
+            # Running as PyInstaller executable - check for first-run setup
+            try:
+                from utils.portable_model_manager import get_portable_model_manager
+                model_manager = get_portable_model_manager()
+
+                if not model_manager.is_setup_complete():
+                    print("\n" + "="*60)
+                    print("🚀 FIRST TIME SETUP - Video Generator")
+                    print("="*60)
+                    print("Downloading required AI models...")
+                    print("This will take 2-3 minutes with good internet connection.")
+                    print("Future startups will be instant!")
+                    print("="*60 + "\n")
+
+                    # Hide root window during setup
+                    root.withdraw()
+
+                    # Download models with console progress
+                    success = model_manager.download_all_missing_models()
+
+                    if not success:
+                        print("\n❌ Setup failed. Please check your internet connection.")
+                        print("The application will continue but some features may not work.")
+                        input("Press Enter to continue...")
+                    else:
+                        print("\n✅ Setup complete! Video Generator is ready to use.")
+                        print("Starting application...")
+
+                    # Show root window after setup
+                    root.deiconify()
+
+            except ImportError as setup_error:
+                print(f"Warning: Could not check model setup: {setup_error}")
+                # Continue without setup check
+
+        # Import and create main GUI
+        from ui.gui import VideoGeneratorGUI
         VideoGeneratorGUI(root)
         root.mainloop()
         
@@ -190,8 +249,12 @@ def run_console_mode():
 
 def main():
     """Main entry point with optimized startup"""
+    # CRITICAL: Set up multiprocessing protection early to prevent duplicate processes
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     print("Starting Video Generator...")
-    
+
     # Quick file check before any heavy imports
     missing_files = check_critical_files()
     if missing_files:
@@ -235,6 +298,11 @@ def main():
     create_gui()
 
 if __name__ == "__main__":
+    # CRITICAL: Prevent multiprocessing issues with PyInstaller
+    # This prevents Kokoro TTS and other libraries from spawning duplicate processes
+    import multiprocessing
+    multiprocessing.freeze_support()
+
     try:
         main()
     except KeyboardInterrupt:

@@ -8,19 +8,35 @@ import tempfile
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
-# Try to import whisper-timestamped
+# Try to import whisper-timestamped with enhanced PyInstaller support
 try:
+    # Check if running in PyInstaller environment
+    import sys
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller - set up environment first
+        import os
+        base_dir = os.path.dirname(sys.executable)
+        whisper_dir = os.path.join(base_dir, 'whisper_models')
+        if os.path.exists(whisper_dir):
+            os.environ['TORCH_HOME'] = whisper_dir
+            os.environ['WHISPER_CACHE'] = whisper_dir
+            print(f"🔧 PyInstaller: Set WHISPER_CACHE to {whisper_dir}")
+
     import whisper_timestamped as whisper
     WHISPER_TIMESTAMPED_AVAILABLE = True
-except ImportError:
+    print("✅ Whisper-timestamped imported successfully")
+except ImportError as e:
     WHISPER_TIMESTAMPED_AVAILABLE = False
-    # Only show warning in development, not in bundled executable
-    import sys
+    print(f"❌ Whisper-timestamped not available: {e}")
+    # Only show detailed warning in development, not in bundled executable
     if not getattr(sys, 'frozen', False):
         from utils.error_helpers import show_warning_with_log
         show_warning_with_log(None, "Whisper Not Available",
             "Whisper-timestamped not available. Enhanced subtitle timing disabled.\n"
             "Install with: pip install whisper-timestamped (for better voice synchronization)")
+except Exception as e:
+    WHISPER_TIMESTAMPED_AVAILABLE = False
+    print(f"❌ Whisper-timestamped error: {e}")
 
 
 from utils.logging_utils import log_speech_recognition

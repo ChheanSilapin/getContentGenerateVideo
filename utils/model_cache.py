@@ -103,6 +103,7 @@ class ModelCache:
             from io import StringIO
             from kokoro import KPipeline
             import os
+            from utils.logging_utils import clean_log_message
 
             # Temporarily suppress warnings during model loading
             old_stderr = sys.stderr
@@ -114,19 +115,48 @@ class ModelCache:
                     # Running as PyInstaller executable
                     # Set environment variable to use bundled models
                     import pathlib
-                    
+
                     # Find the bundled models directory
                     base_dir = sys._MEIPASS if hasattr(sys, '_MEIPASS') else os.path.dirname(sys.executable)
-                    hf_cache_dir = os.path.join(base_dir, 'huggingface')
-                    
-                    # Set environment variable for huggingface to use bundled models
-                    os.environ['HF_HOME'] = hf_cache_dir
-                    os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
-                    
-                    from utils.logging_utils import log_cache_operations
-                    log_cache_operations(f"Using bundled Kokoro models from: {hf_cache_dir}")
+
+                    # Check for models in the new structure first
+                    kokoro_model_dir = os.path.join(base_dir, 'models', 'kokoro', 'Kokoro-82M')
+                    if os.path.exists(kokoro_model_dir):
+                        # Set up HuggingFace cache to point to our model location
+                        hf_cache_dir = os.path.join(base_dir, 'huggingface')
+                        os.environ['HF_HOME'] = hf_cache_dir
+                        os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
+                        os.environ['KOKORO_MODEL_PATH'] = kokoro_model_dir
+
+                        from utils.logging_utils import log_cache_operations
+                        log_cache_operations(f"Using Kokoro models from: {kokoro_model_dir}")
+                    else:
+                        # Legacy: check for old HuggingFace structure
+                        hf_cache_dir = os.path.join(base_dir, 'huggingface')
+                        if os.path.exists(hf_cache_dir):
+                            os.environ['HF_HOME'] = hf_cache_dir
+                            os.environ['TRANSFORMERS_CACHE'] = hf_cache_dir
+
+                            from utils.logging_utils import log_cache_operations
+                            log_cache_operations(f"Using legacy bundled Kokoro models from: {hf_cache_dir}")
                 
-                pipeline = KPipeline(lang_code='a')  # American English
+                print(clean_log_message("🔄 Loading Kokoro TTS pipeline (first time only)..."))
+
+                # Check if we have a custom model path set
+                custom_model_path = os.environ.get('KOKORO_MODEL_PATH')
+                if custom_model_path and os.path.exists(custom_model_path):
+                    print(clean_log_message(f"Using custom Kokoro model path: {custom_model_path}"))
+                    # Try to initialize with custom path if KPipeline supports it
+                    try:
+                        pipeline = KPipeline(lang_code='a', model_path=custom_model_path)
+                    except TypeError:
+                        # Fallback: KPipeline doesn't support model_path parameter
+                        print(clean_log_message("KPipeline doesn't support custom path, using default"))
+                        pipeline = KPipeline(lang_code='a')
+                else:
+                    pipeline = KPipeline(lang_code='a')  # American English
+
+                print(clean_log_message("✅ Kokoro TTS pipeline loaded and cached"))
                 return pipeline
             finally:
                 sys.stderr = old_stderr
