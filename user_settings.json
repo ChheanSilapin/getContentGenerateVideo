@@ -24,7 +24,7 @@
   "optimal_image_duration": 3.0,
   "image_fit_method": "contain",
   "aspect_ratio": "1:1 (Square)",
-  "mute": true,
+  "mute": false,
   "volume": 0.7,
   "shared_settings": {
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
@@ -35,7 +35,7 @@
   },
   "image_tab_settings": {},
   "video_tab_settings": {
-    "mute": true,
+    "mute": false,
     "volume": 0.7
   }
 }

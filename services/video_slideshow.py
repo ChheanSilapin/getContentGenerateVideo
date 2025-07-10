@@ -25,13 +25,14 @@ from utils.helpers import (
 from config import DEFAULT_ASPECT_RATIO
 
 
-def _analyze_content_timing_for_images(audio_timing_result, image_count):
+def _analyze_content_timing_for_images(audio_timing_result, image_count, actual_audio_duration=None):
     """
     Analyze Whisper segments to create content-aware timing for images
 
     Args:
         audio_timing_result: AudioTimingResult with Whisper segments
         image_count: Number of images to distribute timing across
+        actual_audio_duration: Actual audio file duration (to prevent cutoff issues)
 
     Returns:
         List of timing data for each image: [{'start': float, 'duration': float, 'content': str}, ...]
@@ -45,8 +46,15 @@ def _analyze_content_timing_for_images(audio_timing_result, image_count):
         print("⚠️ No Whisper segments found, falling back to equal distribution")
         return None
 
-    # Calculate total audio duration
-    total_duration = segments[-1]['end'] if segments else 0
+    # Calculate total audio duration - use actual audio duration to prevent cutoff
+    # Whisper segments might not extend to the very end of audio (silence at end)
+    whisper_end_time = segments[-1]['end'] if segments else 0
+    total_duration = actual_audio_duration if actual_audio_duration else whisper_end_time
+
+    # Debug logging to identify timing mismatches
+    if actual_audio_duration and abs(whisper_end_time - actual_audio_duration) > 0.1:
+        print(f"⚠️ Timing mismatch detected: Whisper ends at {whisper_end_time:.2f}s, actual audio is {actual_audio_duration:.2f}s")
+        print(f"   Using actual audio duration to prevent black screen at end")
 
     # Method 1: Distribute segments evenly among images with CONTINUOUS COVERAGE
     if len(segments) >= image_count:
@@ -117,7 +125,7 @@ def _analyze_content_timing_for_images(audio_timing_result, image_count):
         # Method 2: When we have fewer segments than images, distribute images across full audio duration
         # Use full audio duration to ensure no content is cut off
         audio_start = segments[0]['start'] if segments else 0
-        audio_end = segments[-1]['end'] if segments else total_duration
+        audio_end = total_duration  # Use actual audio duration, not just last segment end
         full_duration = audio_end - audio_start
 
         # Calculate equal distribution across full duration
@@ -448,7 +456,7 @@ def create_slideshow_ffmpeg(images_folder, audio_file, output_file,
         content_timings = None
         if audio_timing_result:
 
-            content_timings = _analyze_content_timing_for_images(audio_timing_result, len(image_files))
+            content_timings = _analyze_content_timing_for_images(audio_timing_result, len(image_files), audio_duration)
 
         if content_timings:
             pass
