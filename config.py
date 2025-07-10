@@ -383,9 +383,9 @@ LOGGING_CONFIG = {
     "show_emojis": False,                # Show emoji indicators in logs (helpful for status)
     "show_performance_status": False,    # Show performance optimization status
     "show_content_analysis": False,      # Show detailed content synchronization analysis
-    "show_speech_recognition": False,    # Show speech recognition results (essential info)
-    "show_cache_operations": False,      # Show model and speech recognition cache operations
-    "show_model_loading": False,         # Show model loading details
+    "show_speech_recognition": True,    # Show speech recognition results (essential info)
+    "show_cache_operations": True,      # Show model and speech recognition cache operations
+    "show_model_loading": True,         # Show model loading details
     "show_debug_messages": False,        # Show debug messages from services
     "show_file_operations": False,       # Show file copy/move operations
     "show_cache_operations": False,      # Show cache hit/miss operations

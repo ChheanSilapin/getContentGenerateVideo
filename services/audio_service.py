@@ -170,8 +170,11 @@ def _analyze_audio_timing(audio_file: str, original_text: str) -> Dict[str, Any]
 def _analyze_with_whisper(audio_file: str) -> list:
     """Analyze audio with Whisper for precise timing"""
     try:
-        whisper_service = WhisperTimestampedService()
-        if not whisper_service.is_available:
+        # Use singleton service manager instead of creating new instance
+        from services.whisper_service_manager import get_whisper_service
+        whisper_service = get_whisper_service()
+
+        if not whisper_service or not whisper_service.is_service_available():
             return []
 
         # Analyze with Whisper

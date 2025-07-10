@@ -26,13 +26,14 @@ class ModelCache:
     def __init__(self):
         if self._initialized:
             return
-            
+
         self._models = {}
         self._model_locks = {}
         self._load_times = {}
         self._access_counts = {}
+        self._background_initialized = False
         self._initialized = True
-        
+
         from utils.logging_utils import log_cache_operations
         log_cache_operations("Model cache system initialized")
     
@@ -54,6 +55,17 @@ class ModelCache:
             lambda: self._load_whisper_model(model_name),
             f"Whisper Model ({model_name})"
         )
+
+    def _initialize_background(self):
+        """Initialize cache in background without loading models"""
+        if self._background_initialized:
+            return
+
+        # Just mark as background initialized - models will load on-demand
+        self._background_initialized = True
+
+        from utils.logging_utils import log_cache_operations
+        log_cache_operations("Model cache background initialization complete")
     
     def _get_or_load_model(self, cache_key: str, loader_func, model_name: str):
         """Generic method to get or load a model with thread safety"""
@@ -171,9 +183,19 @@ class ModelCache:
 
     
     def _load_whisper_model(self, model_name: str):
-        """Load Whisper-timestamped model"""
+        """Load Whisper-timestamped model using lazy import system"""
         try:
-            import whisper_timestamped as whisper
+            # Use the lazy import system from whisper service
+            from services.whisper_timestamped_service import _lazy_import_whisper, whisper
+
+            if not _lazy_import_whisper():
+                print(clean_log_message("❌ Whisper-timestamped not available"))
+                return None
+
+            if not whisper:
+                print(clean_log_message("❌ Whisper module not loaded"))
+                return None
+
             return whisper.load_model(model_name)
         except ImportError:
             print(clean_log_message("❌ Whisper-timestamped not available"))

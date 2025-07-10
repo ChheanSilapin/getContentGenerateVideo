@@ -20,25 +20,24 @@ def get_whisper_service():
     return _whisper_service_instance
 
 def _create_whisper_service():
-    """Create whisper service instance"""
+    """Create whisper service instance with lazy model loading"""
     try:
+        # Import only when actually creating the service
         from services.whisper_timestamped_service import WhisperTimestampedService
-        
+
         config = WHISPER_TIMESTAMPED_CONFIG
         if not config.get("enable_service", True):
             return None
-            
+
         service = WhisperTimestampedService(
             model_name=config.get("model_name", "tiny"),
             device=config.get("device", "auto"),
-            preload_model=True  # Enable pre-loading for performance
+            preload_model=False  # Disable pre-loading for faster startup
         )
-        
-        if service.is_service_available():
-            # Silent initialization for speed optimization
-            return service
-        else:
-            return None
+
+        # Don't check availability during creation for faster startup
+        # Availability will be checked on first use
+        return service
 
     except ImportError:
         print(clean_log_message(" whisper-timestamped not available. Install with: pip install whisper-timestamped"))
@@ -56,3 +55,16 @@ def is_whisper_available() -> bool:
     """Check if whisper service is available"""
     service = get_whisper_service()
     return service is not None and service.is_service_available()
+
+def preload_whisper_model_background():
+    """Pre-load Whisper model in background for performance (non-blocking)"""
+    try:
+        service = get_whisper_service()
+        if service and service.is_service_available():
+            # Trigger model loading in background
+            service._get_model()
+            return True
+        return False
+    except Exception as e:
+        print(clean_log_message(f" Background Whisper model loading failed: {e}"))
+        return False

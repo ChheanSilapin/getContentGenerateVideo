@@ -51,7 +51,7 @@ def setup_environment():
         # Continue execution - the application should handle missing setup gracefully
 
 def initialize_models():
-    """Initialize and pre-load models for performance optimization"""
+    """Initialize models in background for performance optimization"""
     try:
         # For portable builds, check if models are available first
         if getattr(sys, 'frozen', False):
@@ -69,28 +69,46 @@ def initialize_models():
 
         print("Initializing models for optimal performance...")
 
+        # Start background model initialization (non-blocking)
+        import threading
+        background_thread = threading.Thread(target=_background_model_initialization, daemon=True)
+        background_thread.start()
+        print("✅ Background model initialization started")
+
+    except Exception as e:
+        print(f"Warning: Model initialization failed: {e}")
+        # Continue execution - models will load on-demand if pre-loading fails
+
+def _background_model_initialization():
+    """Background thread function for model pre-loading"""
+    try:
         # Pre-load Whisper model through service manager (only if available)
         try:
-            from services.whisper_service_manager import get_whisper_service
-            whisper_service = get_whisper_service()
-            if whisper_service and whisper_service.is_service_available():
+            from services.whisper_service_manager import preload_whisper_model_background
+            if preload_whisper_model_background():
                 print("✅ Whisper model pre-loaded successfully")
             else:
                 print("⚠️ Whisper model not available (will use fallback)")
         except ImportError:
             print("⚠️ Whisper service not available (optional dependency)")
+        except Exception as e:
+            print(f"⚠️ Whisper model background loading failed: {e}")
 
         # Pre-load model cache (only if available)
         try:
             from utils.model_cache import get_model_cache
             cache = get_model_cache()
+            # Initialize cache without forcing model loads
+            cache._initialize_background()
             print("✅ Model cache initialized")
         except ImportError:
             print("⚠️ Model cache not available (optional dependency)")
+        except Exception as e:
+            print(f"⚠️ Model cache background initialization failed: {e}")
 
     except Exception as e:
-        print(f"Warning: Model initialization failed: {e}")
-        # Continue execution - models will load on-demand if pre-loading fails
+        print(f"Warning: Background model initialization failed: {e}")
+        # Models will load on-demand if background pre-loading fails
 
 def check_ffmpeg_availability():
     """Check if FFmpeg is available (bundled or system-installed)"""

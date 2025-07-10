@@ -110,43 +110,44 @@ class EdgeTTSProvider:
             return False
 
     async def _generate_async(self, safe_text: str, output_file: str, voice: str, speed: float = 1.0) -> bool:
-        """Async generation for Edge TTS with proper speed control"""
+        """Async generation for Edge TTS with proper speed control and performance optimization"""
         try:
             # Convert speed to Edge TTS rate format
-            if speed != 1.0:
+            # Validate speed range (0.5 to 2.0 is reasonable for TTS)
+            speed = max(0.5, min(2.0, speed))
+
+            if abs(speed - 1.0) > 0.01:  # Use small epsilon to handle floating point precision
                 # Convert speed multiplier to percentage change
                 # 1.0 = +0%, 1.2 = +20%, 0.8 = -20%
-                rate_percent = int((speed - 1.0) * 100)
+                rate_percent = int(round((speed - 1.0) * 100))
 
                 # Clamp to Edge TTS limits (-50% to +100%)
                 rate_percent = max(-50, min(100, rate_percent))
 
-                # Create proper SSML with rate control
+                # Create rate string for Edge TTS built-in rate parameter
                 if rate_percent >= 0:
                     rate_str = f"+{rate_percent}%"
                 else:
                     rate_str = f"{rate_percent}%"
 
-                # Use proper SSML format that Edge TTS can process
-                # Text is already escaped for SSML safety
-                ssml_text = f'<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US"><prosody rate="{rate_str}">{safe_text}</prosody></speak>'
-
                 print(clean_log_message(f"🎵 Edge TTS speed: {speed:.2f}x ({rate_str})"))
 
-                # Use SSML with rate control
-                communicate = edge_tts.Communicate(ssml_text, voice)
+                # Use Edge TTS built-in rate parameter - NO SSML needed!
+                # This completely avoids SSML being spoken aloud
+                communicate = edge_tts.Communicate(safe_text, voice, rate=rate_str)
             else:
-                # Use plain text for normal speed (text is already escaped but safe to use as plain text)
+                # Use normal speed with default rate
                 communicate = edge_tts.Communicate(safe_text, voice)
 
+            # Save with optimized settings for better performance
             await communicate.save(output_file)
             return True
 
         except Exception as e:
             print(clean_log_message(f"❌ Edge TTS async error: {e}"))
-            # Fallback to plain text if SSML fails
+            # Fallback to normal speed if rate parameter fails
             try:
-                print(clean_log_message("🔄 Falling back to plain text (normal speed)"))
+                print(clean_log_message("🔄 Falling back to normal speed"))
                 communicate = edge_tts.Communicate(safe_text, voice)
                 await communicate.save(output_file)
                 return True

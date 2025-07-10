@@ -8,35 +8,58 @@ import tempfile
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 
-# Try to import whisper-timestamped with enhanced PyInstaller support
-try:
-    # Check if running in PyInstaller environment
-    import sys
-    if getattr(sys, 'frozen', False):
-        # Running in PyInstaller - set up environment first
-        import os
-        base_dir = os.path.dirname(sys.executable)
-        whisper_dir = os.path.join(base_dir, 'whisper_models')
-        if os.path.exists(whisper_dir):
-            os.environ['TORCH_HOME'] = whisper_dir
-            os.environ['WHISPER_CACHE'] = whisper_dir
-            print(f"🔧 PyInstaller: Set WHISPER_CACHE to {whisper_dir}")
+# Lazy import whisper-timestamped for faster startup
+WHISPER_TIMESTAMPED_AVAILABLE = None  # Will be determined on first use
+whisper = None  # Will be imported lazily
 
-    import whisper_timestamped as whisper
-    WHISPER_TIMESTAMPED_AVAILABLE = True
-    print("✅ Whisper-timestamped imported successfully")
-except ImportError as e:
-    WHISPER_TIMESTAMPED_AVAILABLE = False
-    print(f"❌ Whisper-timestamped not available: {e}")
-    # Only show detailed warning in development, not in bundled executable
-    if not getattr(sys, 'frozen', False):
-        from utils.error_helpers import show_warning_with_log
-        show_warning_with_log(None, "Whisper Not Available",
-            "Whisper-timestamped not available. Enhanced subtitle timing disabled.\n"
-            "Install with: pip install whisper-timestamped (for better voice synchronization)")
-except Exception as e:
-    WHISPER_TIMESTAMPED_AVAILABLE = False
-    print(f"❌ Whisper-timestamped error: {e}")
+def _lazy_import_whisper():
+    """Lazy import whisper-timestamped with enhanced PyInstaller support"""
+    global WHISPER_TIMESTAMPED_AVAILABLE, whisper
+
+    if WHISPER_TIMESTAMPED_AVAILABLE is not None:
+        return WHISPER_TIMESTAMPED_AVAILABLE
+
+    try:
+        # First, just try a quick import test without heavy operations
+        import importlib.util
+        spec = importlib.util.find_spec("whisper_timestamped")
+        if spec is None:
+            WHISPER_TIMESTAMPED_AVAILABLE = False
+            print(f"❌ Whisper-timestamped not available: module not found")
+            return False
+
+        # Check if running in PyInstaller environment
+        import sys
+        if getattr(sys, 'frozen', False):
+            # Running in PyInstaller - set up environment first
+            import os
+            base_dir = os.path.dirname(sys.executable)
+            whisper_dir = os.path.join(base_dir, 'whisper_models')
+            if os.path.exists(whisper_dir):
+                os.environ['TORCH_HOME'] = whisper_dir
+                os.environ['WHISPER_CACHE'] = whisper_dir
+                print(f"🔧 PyInstaller: Set WHISPER_CACHE to {whisper_dir}")
+
+        # Now do the actual import (this is the slow part)
+        import whisper_timestamped as whisper_module
+        whisper = whisper_module
+        WHISPER_TIMESTAMPED_AVAILABLE = True
+        print("✅ Whisper-timestamped imported successfully")
+        return True
+    except ImportError as e:
+        WHISPER_TIMESTAMPED_AVAILABLE = False
+        print(f"❌ Whisper-timestamped not available: {e}")
+        # Only show detailed warning in development, not in bundled executable
+        if not getattr(sys, 'frozen', False):
+            from utils.error_helpers import show_warning_with_log
+            show_warning_with_log(None, "Whisper Not Available",
+                "Whisper-timestamped not available. Enhanced subtitle timing disabled.\n"
+                "Install with: pip install whisper-timestamped (for better voice synchronization)")
+        return False
+    except Exception as e:
+        WHISPER_TIMESTAMPED_AVAILABLE = False
+        print(f"❌ Whisper-timestamped error: {e}")
+        return False
 
 
 from utils.logging_utils import log_speech_recognition
@@ -84,15 +107,12 @@ class WhisperTimestampedService:
         self.model_name = model_name
         self.device = device
         self.model = None  # Keep for backward compatibility, but use cached model
-        self.is_available = WHISPER_TIMESTAMPED_AVAILABLE
+        # Defer availability check until first use for faster startup
+        self.is_available = None  # Will be determined on first use
 
         # Debug logging for PyInstaller builds
         from utils.logging_utils import log_if_enabled
-        log_if_enabled('debug_messages', f"WhisperTimestampedService init: WHISPER_TIMESTAMPED_AVAILABLE={WHISPER_TIMESTAMPED_AVAILABLE}")
-
-        if not self.is_available:
-            log_if_enabled('debug_messages', "Whisper not available - import failed")
-            return
+        log_if_enabled('debug_messages', f"WhisperTimestampedService init: deferred availability check for faster startup")
 
         # Performance optimization: result caching
         self._result_cache = {}
@@ -100,24 +120,23 @@ class WhisperTimestampedService:
         self._cache_hits = 0
         self._cache_misses = 0
 
-        if self.is_available:
-            log_if_enabled('debug_messages', "Whisper-timestamped service initialized with cached model support")
-            log_speech_recognition(f" Whisper-timestamped service ready with model '{model_name}'")
+        # Fast initialization - defer heavy operations
+        log_if_enabled('debug_messages', "Whisper-timestamped service initialized with lazy loading")
+        log_speech_recognition(f" Whisper-timestamped service ready with model '{model_name}' (lazy loading)")
 
-            # Pre-load model for performance if requested
-            if preload_model:
-                log_speech_recognition(f" Pre-loading Whisper model for performance...")
-                cached_model = self._get_model()
-                if cached_model:
-                    log_speech_recognition(f" Whisper model pre-loaded successfully")
-                else:
-                    log_speech_recognition(f"⚠️ Whisper model pre-loading failed, will load on-demand")
+        # Store preload preference for later use
+        self._preload_requested = preload_model
+        if preload_model:
+            log_speech_recognition(f" Whisper model will pre-load on first access")
         else:
-            
-            log_speech_recognition(" Whisper-timestamped service unavailable")
+            log_speech_recognition(f" Whisper model will load on-demand for faster startup")
     
     def _get_model(self):
-        """Get cached Whisper model"""
+        """Get cached Whisper model (lazy loading)"""
+        # Check availability on first use
+        if self.is_available is None:
+            self.is_available = _lazy_import_whisper()
+
         if not self.is_available:
             return None
 
@@ -127,14 +146,14 @@ class WhisperTimestampedService:
             model = cache.get_whisper_model(self.model_name)
 
             if model is None:
-                self.is_available = False
-                log_speech_recognition(f"❌ Failed to load Whisper model '{self.model_name}'")
+                # Don't mark service as unavailable on first load failure
+                # This allows retry on next access
+                log_speech_recognition(f"⚠️ Whisper model '{self.model_name}' not loaded yet")
 
             return model
 
         except Exception as e:
             log_speech_recognition(f"❌ Error getting Whisper model: {e}")
-            self.is_available = False
             return None
 
     def _load_model(self):
@@ -251,6 +270,10 @@ class WhisperTimestampedService:
             model = self._get_model()
             if not model:
                 return WhisperResult("", "", [], 0.0, False, "Model not available")
+
+            # Ensure whisper module is available
+            if not whisper:
+                return WhisperResult("", "", [], 0.0, False, "Whisper module not imported")
 
             result = whisper.transcribe(model, audio_file, **transcribe_options)
 
@@ -458,9 +481,8 @@ class WhisperTimestampedService:
     
     def is_service_available(self) -> bool:
         """Check if the service is available and ready"""
-        if not self.is_available:
-            return False
+        # Check availability on first use
+        if self.is_available is None:
+            self.is_available = _lazy_import_whisper()
 
-        # Check if cached model is available
-        cached_model = self._get_model()
-        return cached_model is not None
+        return self.is_available

@@ -3,7 +3,7 @@
   "_migration_completed": true,
   "tts_language": "en",
   "tts_voice_actor": "Guy",
-  "tts_speed": 1.0,
+  "tts_speed": 0.8,
   "tts_emotion": "dramatic",
   "sr_enabled": true,
   "sr_language": "en-us",
@@ -24,18 +24,18 @@
   "optimal_image_duration": 3.0,
   "image_fit_method": "contain",
   "aspect_ratio": "1:1 (Square)",
-  "mute": false,
+  "mute": true,
   "volume": 0.7,
   "shared_settings": {
     "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
     "tts_language": "en",
     "tts_voice_actor": "Guy",
-    "tts_speed": 1.0,
+    "tts_speed": 0.8,
     "tts_emotion": "dramatic"
   },
   "image_tab_settings": {},
   "video_tab_settings": {
-    "mute": false,
+    "mute": true,
     "volume": 0.7
   }
 }
