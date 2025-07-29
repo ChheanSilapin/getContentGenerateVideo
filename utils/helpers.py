@@ -92,25 +92,11 @@ def validate_output_file(file_path, min_size_bytes=1024, file_type="output"):
 
 def safe_file_operation(operation_func, *args, operation_name="file operation", **kwargs):
     """
-    Centralized safe file operation wrapper
-    Eliminates duplicate try-catch patterns across services
-
-    Args:
-        operation_func: Function to execute safely
-        *args: Arguments for the function
-        operation_name: Name of operation for logging
-        **kwargs: Keyword arguments for the function
-
-    Returns:
-        tuple: (success: bool, result: any, error_message: str)
+    Safe file operation wrapper - delegates to error_helpers for consistency
     """
-    try:
-        result = operation_func(*args, **kwargs)
-        return True, result, None
-    except Exception as e:
-        error_msg = f"Error in {operation_name}: {str(e)}"
-        print(error_msg)
-        return False, None, error_msg
+    from utils.error_helpers import safe_operation
+    success, result, error = safe_operation(None, operation_name, operation_func, *args, **kwargs)
+    return success, result, str(error) if error else None
 
 def cleanup_temp_files(*file_paths):
     """
@@ -126,31 +112,13 @@ def cleanup_temp_files(*file_paths):
 
 def force_moviepy_cleanup():
     """
-    Force cleanup of MoviePy resources and file handles
-    This helps prevent file locking issues during cleanup
+    Force cleanup of MoviePy resources - delegates to OutputManager for consistency
     """
     try:
-        import gc
-        import time
-
-        # Force garbage collection multiple times to ensure all references are released
-        for _ in range(3):
-            gc.collect()
-            time.sleep(0.1)
-
-        # Try to clear MoviePy's internal caches if available
-        try:
-            import moviepy.config as mp_config
-            # Clear any cached settings that might hold file references
-            if hasattr(mp_config, '_FFMPEG_BINARY'):
-                mp_config._FFMPEG_BINARY = None
-        except (ImportError, AttributeError):
-            pass
-
-        # Additional delay to ensure all file handles are released
-        time.sleep(0.5)
-
-    except Exception as e:
+        from utils.output_manager import get_output_manager
+        output_manager = get_output_manager()
+        output_manager._force_moviepy_cleanup()
+    except Exception:
         # Silent failure - this is a best-effort cleanup
         pass
 
@@ -722,16 +690,11 @@ class TempVideoFile:
 
 def log_message(message, level="INFO", logger_func=None):
     """
-    Centralized logging function that works with project's logging system
-
-    Args:
-        message: Message to log
-        level: Log level (INFO, WARNING, ERROR)
-        logger_func: Optional logger function (e.g., main_gui.log)
+    Centralized logging function - delegates to logging_utils for consistency
     """
-    formatted_message = f"{level}: {message}" if level != "INFO" else message
-
+    from utils.logging_utils import log_essential
     if logger_func and callable(logger_func):
+        formatted_message = f"{level}: {message}" if level != "INFO" else message
         logger_func(formatted_message)
     else:
-        print(formatted_message)
+        log_essential(f"{level}: {message}" if level != "INFO" else message)

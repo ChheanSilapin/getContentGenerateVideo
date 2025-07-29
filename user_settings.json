@@ -1,8 +1,8 @@
 {
-  "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
+  "output_folder": "C:/Users/USER/Documents/XuanZhi9/Pictures/elon1",
   "_migration_completed": true,
   "tts_language": "en",
-  "tts_voice_actor": "Guy",
+  "tts_voice_actor": "Adam",
   "tts_speed": 0.8,
   "tts_emotion": "dramatic",
   "sr_enabled": true,
@@ -27,9 +27,9 @@
   "mute": false,
   "volume": 0.7,
   "shared_settings": {
-    "output_folder": "C:/Generate/PythonCode/getContentGenerateVideo/output",
+    "output_folder": "C:/Users/USER/Documents/XuanZhi9/Pictures/elon1",
     "tts_language": "en",
-    "tts_voice_actor": "Guy",
+    "tts_voice_actor": "Adam",
     "tts_speed": 0.8,
     "tts_emotion": "dramatic"
   },

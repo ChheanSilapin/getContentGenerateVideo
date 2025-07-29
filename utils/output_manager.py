@@ -35,11 +35,10 @@ class OutputManager:
         }
     
     def ensure_output_directory(self):
-        """Ensure the output directory exists"""
-        try:
-            os.makedirs(self.user_output_directory, exist_ok=True)
-        except Exception as e:
-            print(f"Warning: Could not create output directory {self.user_output_directory}: {e}")
+        """Ensure the output directory exists - delegates to centralized helper"""
+        from utils.helpers import ensure_directory_exists
+        if not ensure_directory_exists(self.user_output_directory):
+            print(f"Warning: Could not create output directory {self.user_output_directory}")
     
     def get_unique_filename(self, desired_filename, extension=".mp4"):
         """

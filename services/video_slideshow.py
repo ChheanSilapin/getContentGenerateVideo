@@ -25,6 +25,28 @@ from utils.helpers import (
 from config import DEFAULT_ASPECT_RATIO
 
 
+def _apply_enhancement(output_file, enhance, enhancement_options, stop_event):
+    """
+    Apply video enhancement if requested
+
+    Args:
+        output_file: Path to the video file to enhance
+        enhance: Whether to apply enhancement
+        enhancement_options: Enhancement options dictionary
+        stop_event: Threading event to stop the process
+    """
+    if enhance and enhancement_options:
+        print("Applying video enhancement...")
+        try:
+            from .video_optimization import enhance_video
+            enhanced_output = enhance_video(output_file, output_file, enhancement_options, stop_event)
+            if not enhanced_output:
+                print("Enhancement failed, using original slideshow")
+        except ImportError:
+            print("Video optimization module not available, skipping enhancement")
+        except Exception as e:
+            print(f"Enhancement error: {e}")
+
 def _analyze_content_timing_for_images(audio_timing_result, image_count, actual_audio_duration=None):
     """
     Analyze Whisper segments to create content-aware timing for images
@@ -173,7 +195,6 @@ def _analyze_content_timing_for_images(audio_timing_result, image_count, actual_
 
         return image_timings
 
-
 def _create_content_aware_slideshow_ffmpeg(processed_images, content_timings, audio_file, output_file,
                                           target_width, target_height, use_effects, zoom_effect, fade_effect, temp_dir):
     """
@@ -282,7 +303,6 @@ def _create_content_aware_slideshow_ffmpeg(processed_images, content_timings, au
         print(f"❌ Error in content-aware slideshow creation: {e}")
         traceback.print_exc()
         return False
-
 
 def process_image_for_slideshow(img, target_width, target_height, fit_method="cover", zoom_effect=True):
     """
@@ -668,8 +688,8 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
 
     Args:
         images_folder: Folder containing images OR list of image file paths (optimized mode)
-        title: Title text (not used in current implementation)
-        content: Content text (not used in current implementation)
+        title: Title text (kept for backward compatibility, not used in current implementation)
+        content: Content text (kept for backward compatibility, not used in current implementation)
         audio_file: Path to audio file
         output_file: Path to output video file
         use_gpu: Whether to use GPU acceleration
@@ -680,8 +700,9 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         enhancement_options: Options for enhancement
         stop_event: Threading event to stop the process
         aspect_ratio: Video aspect ratio (width, height)
-        ffmpeg_timeout: Timeout for FFmpeg operations
+        ffmpeg_timeout: Timeout for FFmpeg operations (currently unused, reserved for future use)
         fit_method: How to fit images ("cover", "contain", "stretch")
+        audio_timing_result: Audio timing data for content-aware image timing
 
     Returns:
         bool: True if successful, False otherwise
@@ -697,292 +718,14 @@ def create_slideshow(images_folder, title, content, audio_file, output_file,
         )
 
         if ffmpeg_success:
-
-
             # Apply enhancement if requested
-            if enhance and enhancement_options:
-                print("Applying video enhancement...")
-                try:
-                    from .video_optimization import enhance_video
-                    enhanced_output = enhance_video(output_file, output_file, enhancement_options, stop_event)
-                    if not enhanced_output:
-                        print("Enhancement failed, using original slideshow")
-                except ImportError:
-                    print("Video optimization module not available, skipping enhancement")
-                except Exception as e:
-                    print(f"Enhancement error: {e}")
-
+            _apply_enhancement(output_file, enhance, enhancement_options, stop_event)
             return True
 
         # Fall back to MoviePy if FFmpeg failed
-
-        return _create_slideshow_moviepy(images_folder, title, content, audio_file, output_file,
-                                       use_gpu, use_effects, zoom_effect, fade_effect,
-                                       enhance, enhancement_options, stop_event,
-                                       aspect_ratio, ffmpeg_timeout, fit_method)
 
     except Exception as e:
         print(f"Error in slideshow creation: {e}")
         traceback.print_exc()
         return False
 
-def _create_slideshow_moviepy(images_folder, title, content, audio_file, output_file,
-                            use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True,
-                            enhance=False, enhancement_options=None, stop_event=None,
-                            aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30, fit_method="cover"):
-    """
-    Original MoviePy-based slideshow creation (fallback method)
-    """
-    try:
-        from utils.memory_manager import get_memory_manager
-
-        # Get memory manager for clip tracking
-        memory_manager = get_memory_manager()
-
-        # Reduced logging: print(f"Creating slideshow from {images_folder}")
-
-        # Configure FFmpeg and temp directory
-        configure_ffmpeg_for_moviepy()
-        setup_temp_directory_for_bundled_exe(output_file)
-        
-        # Check if we should stop
-        if stop_event and stop_event.is_set():
-            print("Process stopped by user before slideshow creation.")
-            return False
-        
-        # Get list of image files (support both folder path and list of image paths)
-        image_files = []
-        supported_extensions = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp')
-
-        if isinstance(images_folder, list):
-            # images_folder is actually a list of image paths (optimized mode)
-            for image_path in images_folder:
-                if os.path.exists(image_path) and image_path.lower().endswith(supported_extensions):
-                    image_files.append(image_path)
-            print(f"Using {len(image_files)} image paths directly (no folder scanning)")
-        else:
-            # images_folder is a directory path (traditional mode)
-            for file in os.listdir(images_folder):
-                if file.lower().endswith(supported_extensions):
-                    image_files.append(os.path.join(images_folder, file))
-        if not image_files:
-            print("No supported image files found")
-            return False
-
-        # Sort images by filename for consistent order
-        image_files.sort()
-        
-        # Load audio to get duration
-        try:
-            audio_clip = AudioFileClip(audio_file)
-            audio_duration = audio_clip.duration
-            print(f"Audio duration: {audio_duration:.2f} seconds")
-        except Exception as e:
-            print(f"Error loading audio: {e}")
-            return False
-
-        # Calculate simple timing based on audio duration
-        duration_per_image = audio_duration / len(image_files) if len(image_files) > 0 else 0
-        image_sequence = list(range(len(image_files)))
-        effects_recommended = []
-
-
-        
-        # Process images into clips using optimized sequence
-        clips = []
-        target_width, target_height = aspect_ratio
-
-        # Determine effects based on recommendations
-        use_slow_zoom = 'slow_zoom' in effects_recommended
-        use_pan_effect = 'pan_effect' in effects_recommended
-        use_subtle_zoom = 'subtle_zoom' in effects_recommended
-
-        for slot_index, image_index in enumerate(image_sequence):
-            if stop_event and stop_event.is_set():
-                print("Process stopped by user during image processing.")
-                return False
-
-            # Handle case where image_index might exceed available images
-            actual_image_index = image_index % len(image_files)
-            img_path = image_files[actual_image_index]
-
-            try:
-                # Reduced logging: print(f"Processing slot {slot_index+1}/{len(image_sequence)}: {os.path.basename(img_path)} (image #{actual_image_index+1})")
-
-                # Load and process image
-                pil_img = Image.open(img_path)
-                processed_clip = process_image_for_slideshow(
-                    pil_img, target_width, target_height,
-                    fit_method=fit_method, zoom_effect=(zoom_effect and use_effects) or use_subtle_zoom
-                )
-
-                # Set duration and FPS
-                processed_clip = processed_clip.set_duration(duration_per_image)
-                processed_clip = processed_clip.set_fps(24)  # Set standard FPS
-
-                # Apply enhanced effects
-                if use_effects and duration_per_image > 0:
-                    # Apply standard zoom effects (emotion-aware effects removed for simplicity)
-                    if use_slow_zoom or (zoom_effect and duration_per_image > 3.0):
-                        # Slower, more subtle zoom for longer durations
-                        zoom_factor = 0.05 if use_slow_zoom else 0.1
-                        processed_clip = processed_clip.resize(lambda t: 1 + zoom_factor * t / duration_per_image)
-                    elif use_subtle_zoom or zoom_effect:
-                        # Standard zoom effect
-                        processed_clip = processed_clip.resize(lambda t: 1 + 0.1 * t / duration_per_image)
-
-                # Apply fade effect with conservative duration to prevent black frames
-                if fade_effect and use_effects and duration_per_image > 1.5:
-                    # Conservative fade duration to prevent black gaps
-                    max_fade = min(0.3, duration_per_image * 0.15)  # Max 15% of clip duration
-                    if duration_per_image > 4.0:
-                        fade_duration = min(0.4, max_fade)  # Slightly longer for very long clips
-                    else:
-                        fade_duration = min(0.2, max_fade)  # Conservative for normal clips
-                    processed_clip = processed_clip.fadein(fade_duration).fadeout(fade_duration)
-
-                clips.append(processed_clip)
-                
-            except Exception as e:
-                print(f"Error processing image {img_path}: {e}")
-                # Create a black placeholder clip
-                black_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
-                placeholder_clip = ImageClip(np.array(black_img)).set_duration(duration_per_image).set_fps(24)
-                clips.append(placeholder_clip)
-        
-        if not clips:
-            print("No valid image clips created")
-            return False
-        
-        # Check if we should stop
-        if stop_event and stop_event.is_set():
-            print("Process stopped by user before video composition.")
-            return False
-        
-        # Concatenate all clips
-
-        try:
-            # Ensure all clips have the same FPS before concatenating
-            for clip in clips:
-                if not hasattr(clip, 'fps') or clip.fps is None:
-                    clip.fps = 24
-
-            # Apply standard transitions (emotion-aware transitions removed for simplicity)
-            final_video = concatenate_videoclips(clips, method="compose")
-
-            final_video = final_video.set_audio(audio_clip)
-
-            # Explicitly set FPS on the final video
-            final_video.fps = 24
-
-        except Exception as e:
-            print(f"Error concatenating clips: {e}")
-            return False
-        
-        # Check if we should stop
-        if stop_event and stop_event.is_set():
-            print("Process stopped by user before video writing.")
-            final_video.close()
-            return False
-        
-        # Write the final video
-        # Reduced logging: print(f"Writing slideshow video to {output_file}")
-        try:
-            # Use optimized settings for slideshow videos
-            write_params = {
-                'fps': 24,
-                'codec': 'libx264',
-                'audio_codec': 'aac',
-                'preset': 'medium',
-                'ffmpeg_params': [
-                    '-crf', '23',
-                    '-pix_fmt', 'yuv420p',
-                    '-avoid_negative_ts', 'make_zero'
-                ],
-                'verbose': False,
-                'logger': None
-            }
-            
-            # For bundled executables, use faster settings
-            if getattr(sys, 'frozen', False):
-                write_params['preset'] = 'ultrafast'
-                write_params['ffmpeg_params'] = [
-                    '-crf', '28',
-                    '-pix_fmt', 'yuv420p',
-                    '-avoid_negative_ts', 'make_zero'
-                ]
-            
-            final_video.write_videofile(output_file, **write_params)
-            
-        except Exception as write_error:
-            print(f"Error writing slideshow video: {write_error}")
-            traceback.print_exc()
-            
-            # Try fallback approach
-            try:
-                print("Trying fallback video write...")
-                final_video.write_videofile(
-                    output_file,
-                    fps=24,
-                    codec='libx264',
-                    audio_codec='aac',
-                    verbose=False,
-                    logger=None
-                )
-            except Exception as fallback_error:
-                print(f"Fallback write also failed: {fallback_error}")
-                final_video.close()
-                return False
-        
-        # Clean up with memory management
-        try:
-            final_video.close()
-            audio_clip.close()
-            for clip in clips:
-                clip.close()
-
-            # Force garbage collection
-            memory_manager.force_garbage_collection()
-        except Exception as cleanup_error:
-            print(f"⚠️ Cleanup error: {cleanup_error}")
-        
-        # Check if we should stop
-        if stop_event and stop_event.is_set():
-            print("Process stopped by user after slideshow creation.")
-            return False
-        
-        # Apply enhancement if requested
-        if enhance and enhancement_options:
-            print("Applying video enhancement...")
-            try:
-                from .video_optimization import enhance_video
-                enhanced_output = enhance_video(output_file, output_file, enhancement_options, stop_event)
-                if not enhanced_output:
-                    print("Enhancement failed, using original slideshow")
-            except ImportError:
-                print("Video optimization module not available, skipping enhancement")
-            except Exception as e:
-                print(f"Enhancement error: {e}")
-        
-
-        return True
-        
-    except Exception as e:
-        print(f"Error creating slideshow: {e}")
-        traceback.print_exc()
-        return False
-
-def createSideShowWithFFmpeg(folderName, title, content, audioFile, outputVideo, 
-                           zoomFactor=0.5, frameRarte=25, use_gpu_encoding=False, 
-                           stop_event=None, aspect_ratio=DEFAULT_ASPECT_RATIO):
-    """
-    Legacy slideshow creation function - redirects to new implementation
-    Maintained for backward compatibility
-    """
-
-    return create_slideshow(
-        folderName, title, content, audioFile, outputVideo,
-        use_gpu=use_gpu_encoding, use_effects=True, zoom_effect=True, fade_effect=True,
-        enhance=False, enhancement_options=None, stop_event=stop_event,
-        aspect_ratio=aspect_ratio
-    )

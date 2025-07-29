@@ -282,6 +282,3 @@ def add_voiceover_to_video_ffmpeg_fallback(video_file, audio_file, output_file, 
         print(f"FFmpeg fallback error: {e}")
         return False
 
-# merge_video_with_subtitles function moved to services.video_finalization
-# Import it from there if needed:
-# from services.video_finalization import merge_video_with_subtitles

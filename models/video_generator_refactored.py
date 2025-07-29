@@ -133,6 +133,7 @@ class VideoGeneratorModel:
     def finalize_video(self, subtitle_path, video_path, output_dir, stop_event=None):
         """
         Finalize video by merging with subtitles and move to user's output directory
+        Delegates to VideoProcessor for consistent finalization logic
 
         Args:
             subtitle_path: Path to subtitle file
@@ -143,63 +144,20 @@ class VideoGeneratorModel:
         Returns:
             str: Path to final video file in user's output directory
         """
-        try:
-            if stop_event and stop_event.is_set():
-                return None
-
-            self.update_progress(95, "Finalizing video...")
-
-            from services.video_finalization import merge_video_subtitle
-            from utils.filename_validator import get_final_output_filename
-            from utils.output_manager import get_output_manager
-
-            # Use custom filename if provided, otherwise use default
-            custom_filename = getattr(self, 'custom_filename', '')
-            temp_filename = get_final_output_filename(custom_filename, "final_output")
-            temp_output = os.path.join(output_dir, temp_filename)
-
-            # Merge video with subtitles in temporary location
-            result = merge_video_subtitle(video_path, subtitle_path, temp_output)
-
-            if result:
-                # Get output manager for user's directory
-                try:
-                    from utils.settings_manager import SettingsManager
-                    settings_manager = SettingsManager()
-                    user_settings = settings_manager.load_settings()
-                except Exception:
-                    user_settings = None
-
-                output_manager = get_output_manager(user_settings)
-
-                # Get source files for intelligent default naming
-                source_files = getattr(self, 'source_files', None)
-
-                # Move final video to user's output directory with conflict resolution
-                final_video_path = output_manager.move_final_video(
-                    temp_video_path=result,
-                    custom_filename=custom_filename,
-                    source_files=source_files,
-                    default_name="video"
-                )
-
-                if final_video_path:
-                    self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
-
-                    # Clean up temporary directory
-                    output_manager.cleanup_temp_directory(output_dir)
-
-                    return final_video_path
-                else:
-                    self.update_progress(0, "Failed to move video to output directory")
-                    return result  # Return temp path as fallback
-            else:
-                self.update_progress(0, "Failed to finalize video")
-                return None
-
-        except Exception as e:
-            handle_operation_error(None, "Video finalization", e, show_dialog=False)
+        if stop_event and stop_event.is_set():
             return None
+
+        # Set up the video processor with current settings
+        self.video_processor.enhancement_options = self.enhancement_options.copy()
+        custom_filename = getattr(self, 'custom_filename', '')
+        self.video_processor.custom_filename = custom_filename
+        source_files = getattr(self, 'source_files', None)
+        self.video_processor.source_files = source_files
+
+        # Delegate to video processor's finalization method
+        return self.video_processor._finalize_video(
+            subtitle_path, video_path, output_dir, stop_event, skip_auto_cleanup=False
+        )
     
     def process_video_with_prompt(self, video_file, text_input, stop_event=None, output_folder=None, skip_auto_cleanup=False):
         """
@@ -296,8 +254,7 @@ class VideoGeneratorModel:
         milliseconds = int(time.time() * 1000) % 1000
         unique_timestamp = f"{timestamp}_{milliseconds:03d}"
 
-        # Create a safe video name for folder
-        safe_video_name = "".join([c if c.isalnum() or c in " _-" else "_" for c in self.text_input[:30]])
+
         
         if self.output_folder and os.path.isdir(self.output_folder):
             output_dir = os.path.join(self.output_folder, f"video_{unique_timestamp}")
@@ -370,8 +327,6 @@ class VideoGeneratorModel:
         # The slideshow service will use the original image paths directly
         return valid_images
 
-
-
     def _handle_folder_images(self, output_dir):
         """Handle local folder images"""
         # output_dir parameter kept for interface consistency
@@ -384,65 +339,24 @@ class VideoGeneratorModel:
         return self.local_folder
 
     def _generate_audio(self, output_dir, stop_event):
-        """Generate audio from text input using Edge TTS or Kokoro TTS with settings"""
+        """Generate audio from text input - delegates to VideoProcessor for consistency"""
         if stop_event and stop_event.is_set():
             return None
 
         self.update_progress(30, "Analyzing content and generating audio...")
 
-        # Use default settings for all content types
+        # Delegate to video processor for consistent audio generation
+        # Set up the video processor with current settings
+        self.video_processor.enhancement_options = self.enhancement_options.copy()
+        self.video_processor.tts_settings = self.tts_settings.copy()
+        self.video_processor.text_input = self.text_input
 
-        from services.audio_service import generate_audio_with_timing_analysis
-        audio_file = os.path.join(output_dir, "voice.mp3")
+        # Use video processor's audio generation method
+        audio_file = self.video_processor._generate_audio(self.text_input, output_dir, stop_event)
 
-        # Reload TTS settings from current user settings to ensure we have the latest values
-        try:
-            from utils.settings_manager import SettingsManager
-            settings_manager = SettingsManager()
-            video_tab_settings = settings_manager.get_tab_settings('video_tab')
-            current_tts_settings = {
-                'language': video_tab_settings.get('tts_language', 'en'),
-                'voice_actor': video_tab_settings.get('tts_voice_actor', 'Guy'),
-                'speed': video_tab_settings.get('tts_speed', 1.0),
-                'emotion': video_tab_settings.get('tts_emotion', 'neutral')
-            }
-        except Exception as e:
-            print(f"Warning: Could not reload TTS settings: {e}")
-            current_tts_settings = {}
-
-        # Get TTS settings from current settings, then enhancement options, then defaults
-        tts_settings = getattr(self, 'tts_settings', {})
-        tts_settings.update(current_tts_settings)  # Update with latest settings
-        voice_actor = tts_settings.get('voice_actor', self.enhancement_options.get('voice_emotion', 'Guy'))
-        speed = tts_settings.get('speed', 1.0)
-        emotion = tts_settings.get('emotion', self.enhancement_options.get('voice_emotion', 'neutral'))
-        language = tts_settings.get('language', 'en')
-
-
-
-        # Generate audio with timing analysis for subtitle synchronization
-        audio_timing_result = generate_audio_with_timing_analysis(
-            self.text_input, audio_file, voice_actor=voice_actor, speed=speed,
-            emotion=emotion, language=language
-        )
-
-        if not audio_timing_result.success:
-            print("ERROR: Failed to generate audio with timing analysis.")
-            self.update_progress(0, "Failed to generate audio")
-            return None
-
-        # Store timing result for subtitle generation
-        self.audio_timing_result = audio_timing_result
-        self.update_progress(40, "Audio generated with timing analysis for subtitle synchronization")
-
-        # Speech recognition validation disabled for speed optimization
-        # enable_speech_validation = getattr(self, 'enable_speech_validation', False)
-        # if enable_speech_validation:
-        #     validation_result = self._validate_speech_recognition(audio_file, stop_event)
-        #     if validation_result is not None and not validation_result:
-        #         self.update_progress(45, "⚠️ Speech recognition validation failed, but continuing...")
-        #     elif validation_result:
-        #         self.update_progress(45, "✅ Speech recognition validation passed")
+        # Copy timing result back to main model for subtitle generation
+        if hasattr(self.video_processor, 'audio_timing_result'):
+            self.audio_timing_result = self.video_processor.audio_timing_result
 
         return audio_file
 
@@ -515,9 +429,6 @@ class VideoGeneratorModel:
                 aspect_ratio = (1080, 1920)  # Default to 9:16
         else:
             aspect_ratio = (1080, 1920)  # Default to 9:16
-
-
-
         # Get fit method from settings
         fit_method = "cover"  # Default
         try:
@@ -556,155 +467,24 @@ class VideoGeneratorModel:
             return None
 
     def _generate_subtitles(self, video_file, audio_file, output_dir, stop_event, subtitle_type="phrase"):
-        """
-        Generate improved phrase-based subtitles with smart mapping
-
-        Word-by-word subtitle option removed per user request.
-        Now always uses improved phrase-based subtitles with smart timing.
-        """
+        """Generate subtitles - delegates to VideoProcessor for consistency"""
         if stop_event and stop_event.is_set():
             return None
 
-        self.update_progress(85, f"Generating improved phrase-based subtitles...")
+        self.update_progress(85, "Generating improved phrase-based subtitles...")
 
-        # Use audio timing result for synchronized subtitle generation
-        audio_timing_result = getattr(self, 'audio_timing_result', None)
-        if not audio_timing_result:
-            print("ERROR: No audio timing result available for subtitle synchronization.")
-            self.update_progress(0, "Failed to generate subtitles - no timing data")
-            return None
+        # Delegate to video processor for consistent subtitle generation
+        # Set up the video processor with current settings and timing data
+        self.video_processor.enhancement_options = self.enhancement_options.copy()
+        if hasattr(self, 'audio_timing_result'):
+            self.video_processor.audio_timing_result = self.audio_timing_result
+        self.video_processor.text_input = self.text_input
 
-        # Always use improved phrase-based subtitle generation
-        from services.subtitle_service import generate_subtitles_with_timing_sync
-        generate_function = generate_subtitles_with_timing_sync
-
-
-        subtitle_file = os.path.join(output_dir, "subtitles.ass")
-
-        # Get subtitle style from enhancement options or config default
-        from config import SUBTITLE_CONFIG
-        default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
-        subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
-
-        # Always use original text for subtitles to preserve formatting ($1.2 trillion, June 28th, 2025, 19.7%)
-        # Speech validation is for quality assurance only, not for subtitle text
-        text_for_subtitles = self.text_input
-
-        if generate_function(text_for_subtitles, audio_timing_result, subtitle_file, subtitle_style):
-            self.update_progress(90, f"Improved phrase-based subtitles generated successfully with TTS-to-Text timing synchronization")
-            if hasattr(self, 'validated_text') and self.validated_text != self.text_input:
-                from utils.logging_utils import log_speech_recognition
-                log_speech_recognition(f"📝 Improved phrase-based subtitles generated using validated text")
-
-            return subtitle_file
-        else:
-            print(f"ERROR: Failed to generate improved phrase-based subtitles.")
-            self.update_progress(0, f"Failed to generate improved phrase-based subtitles")
-            return None
-
-
-    def _validate_speech_recognition(self, audio_file, stop_event=None):
-        """
-        Validate speech recognition accuracy for the generated audio
-
-        Args:
-            audio_file: Path to the generated audio file
-            stop_event: Threading event to stop the process
-
-        Returns:
-            bool: True if validation passes, False if fails, None if error
-        """
-        try:
-            if stop_event and stop_event.is_set():
-                return None
-
-            self.update_progress(52, "Validating speech recognition accuracy...")
-
-            # Import enhanced speech recognition service
-            from services.enhanced_speech_recognition import EnhancedSpeechRecognitionService
-
-            # Initialize enhanced speech recognition service
-            speech_service = EnhancedSpeechRecognitionService()
-
-            if not speech_service.is_available():
-                print("⚠️ Speech recognition service not available, skipping validation")
-                return None
-
-            # Prepare voice settings for validation
-            voice_settings = {
-                'speed': getattr(self, 'tts_settings', {}).get('speed', 1.0),
-                'emotion': getattr(self, 'tts_settings', {}).get('emotion', 'neutral'),
-                'language': getattr(self, 'tts_settings', {}).get('language', 'en'),
-                'voice_actor': getattr(self, 'tts_settings', {}).get('voice_actor', None)
-            }
-
-            # Update voice settings with any speech validation specific settings
-            voice_settings.update(self.speech_validation_settings)
-
-            # Use speech recognition with post-processing
-
-            # Use enhanced speech recognition with multiple validation methods
-            enhanced_result = speech_service.validate_audio_with_enhanced_methods(
-                audio_file=audio_file,
-                original_text=self.text_input
-            )
-
-            if not enhanced_result.success:
-                print("⚠️ Enhanced speech recognition failed")
-                return False
-
-            recognized_text = enhanced_result.final_text
-            confidence_score = enhanced_result.confidence_score
-            method_used = enhanced_result.method_used
-
-            # Check if validation passes threshold
-            threshold = self._get_content_aware_threshold(None)
-            passes_validation = confidence_score >= threshold
-
-            # Log service status for transparency
-            service_status = speech_service.get_service_status()
-
-            # Store enhanced validation results for potential use by UI
-            self.last_speech_validation_result = {
-                'original_text': self.text_input,
-                'recognized_text': recognized_text,
-                'confidence_score': confidence_score,
-                'method_used': method_used,
-                'passes_validation': passes_validation,
-                'threshold': threshold,
-                'whisper_available': service_status['whisper_available'],
-                'enhanced_mode': service_status['enhanced_mode']
-            }
-
-            # Automatically apply recognized text to final output if validation passes
-            if passes_validation and confidence_score >= 0.8:  # High confidence threshold
-                from utils.logging_utils import log_speech_recognition
-                log_speech_recognition(f"🎯 Applying recognized text to video output (confidence: {confidence_score:.1%}, method: {method_used})")
-                # Update the text input with the recognized text for consistency
-                self.validated_text = recognized_text
-                # Log the change for transparency (condensed)
-                if recognized_text != self.text_input:
-                    log_speech_recognition(f" Text refined for better accuracy using {method_used}")
-            else:
-                # Keep original text if validation fails or confidence is low
-                self.validated_text = self.text_input
-                if not passes_validation:
-                    print(f"⚠️ Using original text due to validation failure")
-                else:
-                    print(f"⚠️ Using original text due to low confidence ({confidence_score:.1%})")
-
-            return passes_validation
-
-        except Exception as e:
-            print(f"❌ Error during speech recognition validation: {e}")
-            import traceback
-            traceback.print_exc()
-            return None
-
-    def _get_content_aware_threshold(self, content_type):
-        """Get default validation threshold"""
-        return getattr(self, 'speech_validation_threshold', 0.70)
-
+        # Use video processor's subtitle generation method
+        return self.video_processor._generate_subtitles(
+            self.text_input, video_file, audio_file, output_dir, stop_event, subtitle_type
+        )
+    
     def set_speech_validation_settings(self, enable=False, threshold=0.7, voice_settings=None):
         """
         Configure speech recognition validation settings
@@ -719,12 +499,13 @@ class VideoGeneratorModel:
         if voice_settings:
             self.speech_validation_settings = voice_settings.copy()
 
-
-
     def get_last_speech_validation_result(self):
-        """Get the results of the last speech validation"""
-        return getattr(self, 'last_speech_validation_result', None)
-
+        """Get the results of the last speech validation - delegates to VideoProcessor"""
+        # Check both main model and video processor for validation results
+        main_result = getattr(self, 'last_speech_validation_result', None)
+        processor_result = getattr(self.video_processor, 'last_speech_validation_result', None)
+        # Return the most recent result (processor result takes precedence)
+        return processor_result if processor_result is not None else main_result
 
 def show_version():
     return f"Video Generator v{__version__}"

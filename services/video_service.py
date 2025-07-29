@@ -7,7 +7,7 @@ import sys
 import shutil
 
 # Import modular video components
-from .video_slideshow import create_slideshow, createSideShowWithFFmpeg
+from .video_slideshow import create_slideshow
 from .video_voiceover import add_voiceover_to_video
 # video_utils removed for performance optimization
 from .video_looping import loop_video
@@ -64,36 +64,7 @@ def create_video_with_voiceover(video_file, audio_file, output_file, mix_with_or
     """
     return add_voiceover_to_video(video_file, audio_file, output_file, mix_with_original, original_volume)
 
-def create_video_slideshow(images_folder, title, content, audio_file, output_file,
-                          use_gpu=False, use_effects=True, zoom_effect=True, fade_effect=True,
-                          enhance=False, enhancement_options=None, stop_event=None,
-                          aspect_ratio=DEFAULT_ASPECT_RATIO, ffmpeg_timeout=30):
-    """
-    Main orchestrator function for creating slideshow videos
 
-    Args:
-        images_folder: Folder containing images
-        title: Title text
-        content: Content text
-        audio_file: Path to audio file
-        output_file: Path to output video file
-        use_gpu: Whether to use GPU acceleration
-        use_effects: Whether to apply visual effects
-        zoom_effect: Whether to apply zoom effect
-        fade_effect: Whether to apply fade transitions
-        enhance: Whether to apply video enhancement
-        enhancement_options: Enhancement options
-        stop_event: Threading event to stop process
-        aspect_ratio: Video aspect ratio
-        ffmpeg_timeout: Timeout for FFmpeg operations
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    return create_slideshow(images_folder, title, content, audio_file, output_file,
-                          use_gpu, use_effects, zoom_effect, fade_effect,
-                          enhance, enhancement_options, stop_event,
-                          aspect_ratio, ffmpeg_timeout)
 
 def create_looped_video(video_file, target_duration, output_file, method="seamless"):
     """
