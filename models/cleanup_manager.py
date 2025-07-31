@@ -47,7 +47,14 @@ class CleanupManager:
         Organize the output folder DURING generation - keep all important files
         Only remove truly temporary files that are no longer needed
         """
-        # This method can remain as it's specific to during-generation cleanup
+        # Check if auto-cleanup is enabled before cleaning up during generation
+        import config
+        cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+
+        if not cleanup_enabled:
+            print(" Skipping during-generation cleanup (AUTO_CLEANUP_AFTER_COMPLETION = False)")
+            return
+
         try:
             # Only clean up intermediate files that are definitely not needed anymore
             truly_temp_files = [

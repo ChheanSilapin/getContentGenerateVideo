@@ -395,8 +395,10 @@ class VideoProcessor:
             if final_video_path:
                 self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
 
-                # Clean up temporary directory if not skipping cleanup
-                if not skip_auto_cleanup:
+                # Clean up temporary directory if not skipping cleanup and auto-cleanup is enabled
+                import config
+                cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+                if not skip_auto_cleanup and cleanup_enabled:
                     output_manager.cleanup_temp_directory(output_dir)
 
                 return final_video_path
@@ -453,8 +455,10 @@ class VideoProcessor:
             if final_video_path:
                 self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
 
-                # Clean up temporary directory if not skipping cleanup
-                if not skip_auto_cleanup:
+                # Clean up temporary directory if not skipping cleanup and auto-cleanup is enabled
+                import config
+                cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+                if not skip_auto_cleanup and cleanup_enabled:
                     output_manager.cleanup_temp_directory(output_dir)
 
                 return final_video_path
@@ -514,8 +518,10 @@ class VideoProcessor:
         if final_video_path:
             self.update_progress(100, f"Video saved: {os.path.basename(final_video_path)}")
 
-            # Clean up temporary directory if not skipping cleanup
-            if not skip_auto_cleanup:
+            # Clean up temporary directory if not skipping cleanup and auto-cleanup is enabled
+            import config
+            cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+            if not skip_auto_cleanup and cleanup_enabled:
                 output_manager.cleanup_temp_directory(output_dir)
 
             return final_video_path
