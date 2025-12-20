@@ -4,7 +4,13 @@ Consolidated from Final_Video.py to eliminate duplicate implementations
 """
 import time
 import logging
-from utils.common_imports import subprocess, os, traceback, shutil, sys, tempfile, glob
+import subprocess
+import os
+import traceback
+import shutil
+import sys
+import tempfile
+import glob
 
 # Use centralized path management
 try:

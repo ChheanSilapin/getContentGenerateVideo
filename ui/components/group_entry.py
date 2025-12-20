@@ -2,7 +2,8 @@
 Group Entry Component - UI component for managing grouped video entries
 Handles display and editing of video groups that will be combined into single outputs
 """
-from utils.common_imports import tk, ttk
+import tkinter as tk
+from tkinter import ttk
 import os
 
 

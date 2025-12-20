@@ -1,9 +1,4 @@
-#!/usr/bin/env python3
-"""
-Video Generator - Optimized Main Entry Point
-Creates videos with subtitles from a text and images
-Optimized for fast startup and standalone operation
-"""
+
 import os
 import sys
 

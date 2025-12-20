@@ -3,7 +3,7 @@ Dialog helper functions for the Video Generator application
 Provides standardized file dialogs to eliminate duplication across UI components
 """
 
-from utils.common_imports import filedialog
+from tkinter import filedialog
 
 
 def select_image_files(title="Select Images", multiple=True):

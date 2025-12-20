@@ -1,0 +1,23 @@
+[project]
+name = "getcontentgeneratevideo"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+"numpy>=1.21.2,<2.0.0",
+"scipy>=1.10.0",
+"edge-tts>=6.1.0",
+"kokoro>=0.9.4",
+"espeakng-loader>=0.2.0",
+"whisper-timestamped>=1.15.8",
+"silero-vad>=5.1.2",
+"onnxruntime>=1.15.0",
+"moviepy==1.0.3",
+"pillow>=10.3.0",
+"pydub==0.25.1",
+"soundfile>=0.12.0",
+"requests==2.32.0",
+"beautifulsoup4==4.12.2",
+"emoji==2.8.0",
+]

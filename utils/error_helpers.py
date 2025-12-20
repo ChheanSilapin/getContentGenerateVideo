@@ -4,7 +4,7 @@ Provides standardized error handling to eliminate duplication across UI componen
 """
 
 import traceback
-from utils.common_imports import messagebox
+from tkinter import messagebox
 
 
 def show_error_with_log(main_gui, title, message, exception=None, show_traceback=True):

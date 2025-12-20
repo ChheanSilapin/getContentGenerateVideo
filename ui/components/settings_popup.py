@@ -3,7 +3,8 @@ Settings Popup Component - Reusable settings dialog for any tab
 Leverages existing AudioSettings and UI Factory components to avoid duplication
 Includes Edge TTS + Kokoro TTS settings
 """
-from utils.common_imports import tk, messagebox, ttk, filedialog
+import tkinter as tk
+from tkinter import messagebox, ttk, filedialog
 from utils.settings_manager import SettingsManager
 import os
 

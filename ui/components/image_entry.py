@@ -2,7 +2,9 @@
 Image Entry Component - Individual image folder input entry
 Similar to VideoEntry but for image folders with text files
 """
-from utils.common_imports import tk, ttk, os
+import tkinter as tk
+from tkinter import ttk
+import os
 
 class ImageEntry:
     """Individual image folder entry with folder selector and prompt input"""

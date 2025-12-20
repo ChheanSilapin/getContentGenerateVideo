@@ -3,7 +3,8 @@
 Video Generator GUI
 A professional-looking UI for generating videos from a text and images
 """
-from utils.common_imports import tk, messagebox, ttk, filedialog
+import tkinter as tk
+from tkinter import messagebox, ttk, filedialog
 
 import datetime
 import os
@@ -457,7 +458,8 @@ class VideoGeneratorGUI:
 
     def open_file(self, file_path):
         try:
-            from utils.common_imports import platform, subprocess
+            import platform
+            import subprocess
             if platform.system() == "Windows":
                 os.startfile(file_path)
             elif platform.system() == "Darwin":

@@ -2,7 +2,8 @@
 Video Entry Component - Individual video input entry
 Extracted from video_tab.py for reusability and maintainability
 """
-from utils.common_imports import tk, ttk
+import tkinter as tk
+from tkinter import ttk
 
 class VideoEntry:
     """Individual video entry with file selector and prompt input"""

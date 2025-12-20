@@ -1,5 +1,6 @@
 # Use centralized UI imports
-from utils.common_imports import tk, messagebox, ttk, filedialog
+import tkinter as tk
+from tkinter import messagebox, ttk, filedialog
 from ui.components.settings_popup import show_settings_popup
 from ui.components.group_entry import GroupEntry, SmartNotification
 from ui.components.video_entry import VideoEntry

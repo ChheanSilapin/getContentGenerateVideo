@@ -3,7 +3,7 @@
   "_migration_completed": true,
   "tts_language": "en",
   "tts_voice_actor": "Adam",
-  "tts_speed": 1.0,
+  "tts_speed": 1.1,
   "tts_emotion": "dramatic",
   "sr_enabled": true,
   "sr_language": "en-us",
@@ -30,7 +30,7 @@
     "output_folder": "C:/Users/USER/Documents/XuanZhi9/Pictures/elon1",
     "tts_language": "en",
     "tts_voice_actor": "Adam",
-    "tts_speed": 1.0,
+    "tts_speed": 1.1,
     "tts_emotion": "dramatic"
   },
   "image_tab_settings": {},

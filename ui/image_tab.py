@@ -6,7 +6,9 @@ Handles folder-based image-to-video generation with multi-folder support
 import os
 
 # Use centralized UI imports
-from utils.common_imports import tk, ttk, filedialog, threading
+import tkinter as tk
+from tkinter import ttk, filedialog
+import threading
 from config import GUI_FONTS
 
 from ui.components.settings_popup import show_settings_popup

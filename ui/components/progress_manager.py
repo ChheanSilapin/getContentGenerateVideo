@@ -3,7 +3,9 @@ Progress Manager Component - Reusable progress tracking and display
 Handles progress bars, status messages, and threading integration
 Includes dialog helpers and common UI functionality
 """
-from utils.common_imports import tk, ttk, threading, messagebox
+import tkinter as tk
+from tkinter import ttk, messagebox
+import threading
 
 class ProgressManager:
     """Manages progress bars, status updates, and common UI functionality with threading support"""

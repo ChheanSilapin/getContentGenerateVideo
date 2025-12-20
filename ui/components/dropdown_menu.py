@@ -2,7 +2,8 @@
 Dropdown Menu Component - Custom dropdown menu for content addition
 Creates a dropdown button with menu options for adding content
 """
-from utils.common_imports import tk, ttk
+import tkinter as tk
+from tkinter import ttk
 
 
 class DropdownMenu:
