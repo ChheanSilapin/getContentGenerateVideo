@@ -23,8 +23,8 @@ if errorlevel 1 (
 :: Clone if not already in project folder
 if not exist "main.py" (
     echo [INFO] Cloning project from GitHub...
-    git clone https://github.com/ChheanSilapin/getContentGenerateVideo.git
-    cd getContentGenerateVideo
+    git clone https://github.com/MyWork22-creator/VideoGenerate_Tools.git
+    cd VideoGenerate_Tools
 )
 
 :: Check if uv is installed
