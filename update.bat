@@ -4,6 +4,9 @@ echo    Video Generator - Update
 echo ========================================
 echo.
 
+:: Enter project folder if we're outside
+if exist "getContentGenerateVideo" cd getContentGenerateVideo
+
 :: Check if uv is installed
 uv --version >nul 2>&1
 if errorlevel 1 (
@@ -16,9 +19,6 @@ git pull
 
 echo [INFO] Updating dependencies...
 uv sync
-
-:: Ensure pip is available (required by Kokoro TTS)
-uv pip install pip >nul 2>&1
 
 echo.
 echo ========================================

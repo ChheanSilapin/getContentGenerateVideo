@@ -24,7 +24,6 @@ if errorlevel 1 (
 ffmpeg -version >nul 2>&1
 if errorlevel 1 (
     echo [WARNING] FFmpeg not found!
-    echo.
     echo FFmpeg is REQUIRED for video processing.
     echo Please install from: https://ffmpeg.org/download.html
     echo Or use: winget install FFmpeg
@@ -32,12 +31,14 @@ if errorlevel 1 (
     pause
 )
 
-:: Clone if not already in project folder
-if not exist "main.py" (
+:: Clone if not already exists
+if not exist "getContentGenerateVideo" (
     echo [INFO] Cloning project from GitHub...
     git clone https://github.com/ChheanSilapin/getContentGenerateVideo.git
-    cd getContentGenerateVideo
 )
+
+:: Enter project folder
+cd getContentGenerateVideo
 
 :: Check if uv is installed
 uv --version >nul 2>&1
@@ -49,10 +50,6 @@ if errorlevel 1 (
 :: Install dependencies
 echo [INFO] Installing dependencies...
 uv sync
-
-:: Install pip in venv (required by some packages like Kokoro TTS)
-echo [INFO] Ensuring pip is available...
-uv pip install pip
 
 echo.
 echo ========================================

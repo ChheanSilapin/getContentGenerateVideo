@@ -20,4 +20,5 @@ dependencies = [
 "requests==2.32.0",
 "beautifulsoup4==4.12.2",
 "emoji==2.8.0",
+"pip>=23.0",
 ]
