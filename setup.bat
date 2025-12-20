@@ -20,6 +20,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+:: Check if FFmpeg is installed
+ffmpeg -version >nul 2>&1
+if errorlevel 1 (
+    echo [WARNING] FFmpeg not found!
+    echo.
+    echo FFmpeg is REQUIRED for video processing.
+    echo Please install from: https://ffmpeg.org/download.html
+    echo Or use: winget install FFmpeg
+    echo.
+    pause
+)
+
 :: Clone if not already in project folder
 if not exist "main.py" (
     echo [INFO] Cloning project from GitHub...
@@ -37,6 +49,10 @@ if errorlevel 1 (
 :: Install dependencies
 echo [INFO] Installing dependencies...
 uv sync
+
+:: Install pip in venv (required by some packages like Kokoro TTS)
+echo [INFO] Ensuring pip is available...
+uv pip install pip
 
 echo.
 echo ========================================
