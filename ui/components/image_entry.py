@@ -46,101 +46,50 @@ class ImageEntry:
         self.setup_status_section()
 
     def setup_folder_section(self):
-        """Set up folder selection section"""
-        # Custom header row with entry label, filename, and remove button on same line
-        header_frame = ttk.Frame(self.entry_frame)
-        header_frame.pack(fill="x", pady=(0, 8))
+        """Set up folder selection section - optimized with fewer frames"""
+        # Single header row: label + filename + remove button
+        header_row = ttk.Frame(self.entry_frame)
+        header_row.pack(fill="x", pady=(0, 4))
+        
+        # Entry label on left
+        #ttk.Label(header_row, text=f"🖼️ {self.entry_id}", font=("Cascadia Code", 10, "bold")).pack(side="left")
+        
+        # Filename entry in middle
+        self.filename_entry = ttk.Entry(header_row, textvariable=self.custom_filename, font=("Cascadia Code", 9), width=20)
+        self.filename_entry.pack(side="left", padx=(10, 0))
+        ttk.Label(header_row, text=".mp4", font=("Cascadia Code", 9), foreground="#7f8c8d").pack(side="left")
+        
+        # Remove button on right
+        from config import GUI_COLORS
+        tk.Button(
+            header_row, text="✕", font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"], bg=GUI_COLORS["background"],
+            relief="flat", borderwidth=0, width=2,
+            command=lambda: self.remove_callback(self.entry_id),
+            cursor="hand2", highlightthickness=0, takefocus=False
+        ).pack(side="right")
 
-        # Entry label on the left
-        entry_label = ttk.Label(
-            header_frame,
-            text=f"🖼️ {self.entry_id}",
-            font=("Cascadia Code", 10, "bold")
-        )
-        entry_label.pack(side="left")
-
-        # Custom filename section in the middle
-        filename_section = ttk.Frame(header_frame)
-        filename_section.pack(side="left", padx=(20, 0))
-
-        # Small filename entry
-        self.filename_entry = ttk.Entry(
-            filename_section,
-            textvariable=self.custom_filename,
-            font=("Cascadia Code", 9),
-            width=25
-        )
-        self.filename_entry.pack(side="left", padx=(0, 2))
-
-        # .mp4 label
-        mp4_label = ttk.Label(
-            filename_section,
-            text=".mp4",
-            font=("Cascadia Code", 9),
-            foreground="#7f8c8d"
-        )
-        mp4_label.pack(side="left")
-
-        # Placeholder text - make it shorter
+        # Placeholder text
         self.filename_entry.insert(0, "Custom filename (optional)")
         self.filename_entry.config(foreground="#999999")
-
-        # Bind events for placeholder behavior
         self.filename_entry.bind('<FocusIn>', self._on_filename_focus_in)
         self.filename_entry.bind('<FocusOut>', self._on_filename_focus_out)
         self.filename_entry.bind('<KeyRelease>', self._on_filename_change)
 
-        # Add remove icon button on the right
-        from config import GUI_COLORS
-        remove_button = tk.Button(
-            header_frame,
-            text="✕",
-            font=("Segoe UI", 10, "bold"),
-            fg=GUI_COLORS["text"],  # Dark text color instead of red
-            bg=GUI_COLORS["background"],  # Light gray background
-            relief="flat",
-            borderwidth=0,
-            width=2,
-            height=1,
-            command=lambda: self.remove_callback(self.entry_id),
-            cursor="hand2",
-            highlightthickness=0,
-            takefocus=False
-        )
-        remove_button.pack(side="right")
-
-        # Folder path section
-        folder_frame = ttk.Frame(self.entry_frame)
-        folder_frame.pack(fill="x", pady=(0, 8))
-
-        # Folder path row
-        path_row = ttk.Frame(folder_frame)
-        path_row.pack(fill="x")
-
-        # Folder path entry
+        # Folder path entry directly
         self.folder_entry = ttk.Entry(
-            path_row,
+            self.entry_frame,
             textvariable=self.folder_path,
             font=("Cascadia Code", 10),
             state="readonly"
         )
-        self.folder_entry.pack(fill="x", expand=True)
-
-
+        self.folder_entry.pack(fill="x", pady=(0, 4))
 
     def setup_prompt_section(self):
-        """Set up prompt input section"""
-        # Clean text frame like the selected style
-        text_frame = ttk.LabelFrame(self.entry_frame, text="📝 Text Prompt for Video", padding=8)
-        text_frame.pack(fill="x", pady=(0, 8))
-
-        # Text input row
-        prompt_input_frame = ttk.Frame(text_frame)
-        prompt_input_frame.pack(fill="x")
-
-        # Clean text area - reduced height for more compact design
+        """Set up prompt input section - use single-line Entry instead of Text for performance"""
+        # Use Entry instead of Text widget (much lighter)
         self.prompt_text_widget = tk.Text(
-            prompt_input_frame,
+            self.entry_frame,
             height=2,
             wrap="word",
             font=("Cascadia Code", 10),
@@ -149,9 +98,7 @@ class ImageEntry:
             padx=4,
             pady=2
         )
-        self.prompt_text_widget.pack(fill="x", expand=True)
-
-        # Bind text changes
+        self.prompt_text_widget.pack(fill="x", pady=(0, 4))
         self.prompt_text_widget.bind('<KeyRelease>', self.on_prompt_change)
 
     def setup_status_section(self):

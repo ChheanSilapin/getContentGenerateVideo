@@ -200,119 +200,12 @@ class VideoProcessor:
 
         return audio_file
 
-    def _validate_speech_recognition(self, audio_file, stop_event=None):
-        """
-        Validate speech recognition accuracy for the generated audio
 
-        Args:
-            audio_file: Path to the generated audio file
-            stop_event: Threading event to stop the process
+    # Removed dead code (speech validation disabled):
+    # - _validate_speech_recognition (78 lines)
+    # - _get_content_aware_threshold (3 lines) 
+    # - _add_voiceover (30 lines) - now done in _finalize_video_with_voiceover_and_subtitles
 
-        Returns:
-            bool: True if validation passes, False if fails, None if error
-        """
-        try:
-            if stop_event and stop_event.is_set():
-                return None
-
-            self.update_progress(42, "Validating speech recognition accuracy...")
-
-            # Import enhanced speech recognition service
-            from services.enhanced_speech_recognition import EnhancedSpeechRecognitionService
-
-            # Initialize enhanced speech recognition service
-            speech_service = EnhancedSpeechRecognitionService()
-
-            if not speech_service.is_available():
-                return None
-
-            # Get voice settings for validation (use current TTS settings)
-            tts_settings = getattr(self, 'tts_settings', {})
-            voice_settings = {
-                'voice_actor': tts_settings.get('voice_actor', 'Default'),
-                'speed': tts_settings.get('speed', 1.0),
-                'emotion': tts_settings.get('emotion', 'neutral'),
-                'language': tts_settings.get('language', 'en')
-            }
-
-            # Use enhanced speech recognition with multiple validation methods
-
-            # Use enhanced validation with whisper-timestamped
-            enhanced_result = speech_service.validate_audio_with_enhanced_methods(
-                audio_file=audio_file,
-                original_text=self.text_input
-            )
-
-            if not enhanced_result.success:
-                return False
-
-            recognized_text = enhanced_result.final_text
-            confidence_score = enhanced_result.confidence_score
-            method_used = enhanced_result.method_used
-
-            # Check if validation passes threshold
-            threshold = self._get_content_aware_threshold(None)
-            passes_validation = confidence_score >= threshold
-
-            # Store enhanced validation results
-            service_status = speech_service.get_service_status()
-            self.last_speech_validation_result = {
-                'original_text': self.text_input,
-                'recognized_text': recognized_text,
-                'confidence_score': confidence_score,
-                'method_used': method_used,
-                'passes_validation': passes_validation,
-                'threshold': threshold,
-                'whisper_available': service_status['whisper_available'],
-                'enhanced_mode': service_status['enhanced_mode']
-            }
-
-            # Automatically apply recognized text if validation passes
-            if passes_validation and confidence_score >= 0.8:  # High confidence threshold
-                self.validated_text = recognized_text
-            else:
-                # Keep original text if validation fails or confidence is low
-                self.validated_text = self.text_input
-
-            return passes_validation
-
-        except Exception as e:
-            return None
-
-    def _get_content_aware_threshold(self, content_type):
-        """Get default validation threshold (content analysis removed)"""
-        return 0.70
-
-    def _add_voiceover(self, video_file, audio_file, output_dir, stop_event):
-        """Add voice-over to video"""
-        if stop_event and stop_event.is_set():
-            return None
-            
-        from utils.logging_utils import log_step
-        log_step(2, 3, "Adding voice-over to video")
-        self.update_progress(50, "Adding voice-over to video...")
-        
-        video_with_audio = os.path.join(output_dir, "video_with_audio.mp4")
-        
-        # Get audio settings
-        audio_settings = getattr(self, 'current_audio_settings', {"mute_original": False, "original_volume": 0.3})
-        
-        from services.video_service import add_voiceover_to_video
-        success = add_voiceover_to_video(
-            video_file,
-            audio_file,
-            video_with_audio,
-            mix_with_original=not audio_settings["mute_original"],
-            original_volume=audio_settings["original_volume"]
-        )
-        
-        if not success:
-            print("ERROR: Failed to add voice-over to video.")
-            self.update_progress(0, "Failed to add voice-over to video")
-            return None
-
-        self.update_progress(70, "Voice-over added successfully")
-        return video_with_audio
     
     def _generate_subtitles(self, text_input, video_file, audio_file, output_dir, stop_event, subtitle_type="phrase"):
         """

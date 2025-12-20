@@ -122,7 +122,7 @@ class VideoGeneratorModel:
                 return None
 
             # Organize output folder during generation
-            self.cleanup_manager.organize_output_folder_during_generation(output_dir)
+            self.organize_output_folder_during_generation(output_dir)
 
             return subtitle_file, video_file, output_dir
 
@@ -523,27 +523,11 @@ class VideoGeneratorModel:
             self.text_input, video_file, audio_file, output_dir, stop_event, subtitle_type
         )
     
-    def set_speech_validation_settings(self, enable=False, threshold=0.7, voice_settings=None):
-        """
-        Configure speech recognition validation settings
 
-        Args:
-            enable: Whether to enable speech validation
-            threshold: Minimum similarity score to pass validation (0.0 to 1.0)
-            voice_settings: Optional voice settings for validation
-        """
-        self.enable_speech_validation = enable
-        self.speech_validation_threshold = max(0.0, min(1.0, threshold))
-        if voice_settings:
-            self.speech_validation_settings = voice_settings.copy()
+    # Removed dead speech validation methods (22 lines):
+    # - set_speech_validation_settings
+    # - get_last_speech_validation_result
 
-    def get_last_speech_validation_result(self):
-        """Get the results of the last speech validation - delegates to VideoProcessor"""
-        # Check both main model and video processor for validation results
-        main_result = getattr(self, 'last_speech_validation_result', None)
-        processor_result = getattr(self.video_processor, 'last_speech_validation_result', None)
-        # Return the most recent result (processor result takes precedence)
-        return processor_result if processor_result is not None else main_result
 
 def show_version():
     return f"Video Generator v{__version__}"

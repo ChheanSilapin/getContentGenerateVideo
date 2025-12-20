@@ -24,121 +24,48 @@ class VideoEntry:
         self.setup_entry()
 
     def setup_entry(self):
-        """Set up the UI for this video entry"""
-        # Main entry frame without title - we'll create custom header
-        self.entry_frame = ttk.LabelFrame(
-            self.parent_frame,
-            text="",  # Empty title, we'll create custom header
-            padding=8
-        )
+        """Set up the UI for this video entry - optimized with fewer frames"""
+        # Main entry frame
+        self.entry_frame = ttk.LabelFrame(self.parent_frame, text="", padding=8)
         self.entry_frame.pack(fill="x", padx=6, pady=4)
 
-        # Custom header row with entry label, filename, and remove button on same line
-        header_frame = ttk.Frame(self.entry_frame)
-        header_frame.pack(fill="x", pady=(0, 8))
+        # Single header row: label + filename + remove button
+        header_row = ttk.Frame(self.entry_frame)
+        header_row.pack(fill="x", pady=(0, 4))
+        
+        # Entry label on left
+        #ttk.Label(header_row, text=f"🎬 {self.entry_id}", font=("Cascadia Code", 10, "bold")).pack(side="left")
+        
+        # Filename entry in middle
+        self.filename_entry = ttk.Entry(header_row, textvariable=self.custom_filename, font=("Cascadia Code", 9), width=20)
+        self.filename_entry.pack(side="left", padx=(10, 0))
+        ttk.Label(header_row, text=".mp4", font=("Cascadia Code", 9), foreground="#7f8c8d").pack(side="left")
+        
+        # Remove button on right
+        from config import GUI_COLORS
+        tk.Button(
+            header_row, text="✕", font=("Segoe UI", 10, "bold"),
+            fg=GUI_COLORS["text"], bg=GUI_COLORS["background"],
+            relief="flat", borderwidth=0, width=2,
+            command=lambda: self.remove_callback(self.entry_id),
+            cursor="hand2", highlightthickness=0, takefocus=False
+        ).pack(side="right")
 
-        # Entry label on the left - cleaner, more concise
-        entry_label = ttk.Label(
-            header_frame,
-            text=f"{self.entry_id}",
-            font=("Cascadia Code", 10, "bold")
-        )
-        entry_label.pack(side="left")
-
-        # Custom filename section in the middle
-        filename_section = ttk.Frame(header_frame)
-        filename_section.pack(side="left", padx=(20, 0))
-
-        # Small filename entry
-        self.filename_entry = ttk.Entry(
-            filename_section,
-            textvariable=self.custom_filename,
-            font=("Cascadia Code", 9),
-            width=25
-        )
-        self.filename_entry.pack(side="left", padx=(0, 2))
-
-        # .mp4 label
-        mp4_label = ttk.Label(
-            filename_section,
-            text=".mp4",
-            font=("Cascadia Code", 9),
-            foreground="#7f8c8d"
-        )
-        mp4_label.pack(side="left")
-
-        # Placeholder text - make it shorter
+        # Placeholder text
         self.filename_entry.insert(0, "Custom filename (optional)")
         self.filename_entry.config(foreground="#999999")
-
-        # Bind events for placeholder behavior
         self.filename_entry.bind('<FocusIn>', self._on_filename_focus_in)
         self.filename_entry.bind('<FocusOut>', self._on_filename_focus_out)
         self.filename_entry.bind('<KeyRelease>', self._on_filename_change)
 
-        # Add remove icon button on the right
-        from config import GUI_COLORS
-        remove_button = tk.Button(
-            header_frame,
-            text="✕",
-            font=("Segoe UI", 10, "bold"),
-            fg=GUI_COLORS["text"],  # Dark text color instead of red
-            bg=GUI_COLORS["background"],  # Light gray background
-            relief="flat",
-            borderwidth=0,
-            width=2,
-            height=1,
-            command=lambda: self.remove_callback(self.entry_id),
-            cursor="hand2",
-            highlightthickness=0,
-            takefocus=False
-        )
-        remove_button.pack(side="right")
-
-        # Video file selection section
-        file_section = ttk.Frame(self.entry_frame)
-        file_section.pack(fill="x", pady=(0, 6))
-
-        # File input row
-        file_input_frame = ttk.Frame(file_section)
-        file_input_frame.pack(fill="x")
-
-        # Create a display variable that shows only the filename
+        # Video file entry directly
         self.display_filename = tk.StringVar()
+        ttk.Entry(self.entry_frame, textvariable=self.display_filename, state="readonly", font=("Cascadia Code", 10)).pack(fill="x", pady=(0, 4))
 
-        file_entry = ttk.Entry(
-            file_input_frame,
-            textvariable=self.display_filename,
-            state="readonly",
-            font=("Cascadia Code", 10),
-            width=50
-        )
-        file_entry.pack(fill="x", expand=True)
-
-        # Clean text frame - simple label
-        text_frame = ttk.LabelFrame(self.entry_frame, text="Prompt", padding=8)
-        text_frame.pack(fill="x", pady=(0, 8))
-
-        # Text input row
-        prompt_input_frame = ttk.Frame(text_frame)
-        prompt_input_frame.pack(fill="x")
-
-        prompt_text = tk.Text(
-            prompt_input_frame,
-            height=2,
-            wrap="word",
-            font=("Cascadia Code", 10),
-            relief="solid",
-            borderwidth=1,
-            padx=6,
-            pady=4
-        )
-        prompt_text.pack(fill="x", expand=True)
-
-        # Bind text changes to update the StringVar
+        # Prompt directly in entry_frame (no wrapper frames)
+        prompt_text = tk.Text(self.entry_frame, height=2, wrap="word", font=("Cascadia Code", 10), relief="solid", borderwidth=1, padx=6, pady=4)
+        prompt_text.pack(fill="x")
         prompt_text.bind('<KeyRelease>', lambda e: self.prompt_text.set(prompt_text.get("1.0", tk.END).strip()))
-
-        # Store text widget reference for getting content
         self.prompt_widget = prompt_text
 
     def _on_filename_focus_in(self, event):
