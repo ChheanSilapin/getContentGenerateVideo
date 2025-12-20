@@ -1,5 +1,5 @@
 {
-  "output_folder": "C:/Users/USER/Documents/XuanZhi9/Pictures/elon1",
+  "output_folder": "C:/Users/Administrator/Documents/XuanZhi9/Pictures/New folder (2)",
   "_migration_completed": true,
   "tts_language": "en",
   "tts_voice_actor": "Adam",
@@ -23,19 +23,17 @@
   "max_image_duration": 8.0,
   "optimal_image_duration": 3.0,
   "image_fit_method": "contain",
-  "aspect_ratio": "1:1 (Square)",
-  "mute": false,
-  "volume": 0.7,
+  "aspect_ratio": "9:16 (Portrait)",
   "shared_settings": {
-    "output_folder": "C:/Users/USER/Documents/XuanZhi9/Pictures/elon1",
+    "output_folder": "C:/Users/Administrator/Documents/XuanZhi9/Pictures/New folder (2)",
     "tts_language": "en",
     "tts_voice_actor": "Adam",
     "tts_speed": 1.1,
     "tts_emotion": "dramatic"
   },
-  "image_tab_settings": {},
-  "video_tab_settings": {
-    "mute": false,
-    "volume": 0.7
-  }
+  "image_tab_settings": {
+    "image_fit_method": "contain",
+    "aspect_ratio": "9:16 (Portrait)"
+  },
+  "video_tab_settings": {}
 }

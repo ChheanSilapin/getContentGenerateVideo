@@ -334,7 +334,6 @@ class VideoProcessor:
         # Always use improved phrase-based subtitle generation
         from services.subtitle_service import generate_subtitles_with_timing_sync
         generate_function = generate_subtitles_with_timing_sync
-        print("[SUBTITLE] Using improved phrase-based subtitle generation with smart mapping")
 
         subtitle_file = os.path.join(output_dir, "subtitles.ass")
 
@@ -343,9 +342,7 @@ class VideoProcessor:
         default_style = SUBTITLE_CONFIG.get("default_style", "modern_glow")
         subtitle_style = self.enhancement_options.get("subtitle_style", default_style)
 
-        # For video processing, extract timing from the final video with audio
-        # This ensures perfect synchronization with the actual video timing
-        print("[SUBTITLE] Using original audio timing for perfect synchronization...")
+        # Use original audio timing for perfect synchronization
 
         # Use the original audio timing result instead of re-extracting from video
         # This avoids timing offsets introduced by video processing (avoid_negative_ts, etc.)
@@ -355,7 +352,6 @@ class VideoProcessor:
             return None
 
         video_timing_result = self.audio_timing_result
-        print(f"[SUBTITLE] Using original audio timing for perfect synchronization")
 
         # Always use original text for subtitles to preserve formatting ($1.2 trillion, June 28th, 2025, 19.7%)
         # The subtitle service preserves original formatting while using timing from speech recognition

@@ -110,133 +110,38 @@ GUI_FONTS = get_gui_fonts()
 # =============================================================================
 
 SUBTITLE_CONFIG = {
-    # Font and Styling
-    "default_font": "Times New Roman",
-    "font_size": 48,
-    "font_bold": False,
+    # Font and Styling (used by viral subtitle service)
+    "default_font": "Poppins",
+    "font_size": 80,
+    "font_bold": True,
     
-    # Word Grouping (words per subtitle) - Larger groups for better speech analysis compatibility
-    "words_per_group_short": 6,    # Larger groups for better speech timing compatibility
-    "words_per_group_medium": 5,   # Larger groups for better speech timing compatibility
-    "words_per_group_long": 4,     # Larger groups for longer text
-
-    # Timing Settings - SLOWER for much more comfortable reading
-    "reading_speed_wpm": 80,       # Words per minute (slower for comfortable reading)
-    "min_display_time": 4.0,       # Minimum seconds to display each subtitle (much longer)
-    "early_start_offset": 0.2,     # Start subtitles X seconds before speech
-    "overlap_time": 0.0,           # No overlap between subtitles (prevents overlapping text)
-    "gap_time": 0.1,               # Minimum gap between subtitles to prevent overlap
-    
-    #Text Formart Settings
+    # Text Format Settings
     "uppercase": True,
-    # Speech Analysis - ENABLED for precise subtitle-voice synchronization
-    "use_speech_analysis": True,    # Enabled for accurate timing based on actual speech patterns
-    "speech_analysis_max_duration": 60.0,  # Max audio length for speech analysis
-    "silence_threshold_db": 15,    # dB below average for silence detection (optimized for neural TTS)
-    "min_silence_length_ms": 100,  # Minimum silence length in milliseconds (detect natural pauses)
     
-    # Dynamic Background Effects
-    "enable_dynamic_backgrounds": True,     # Enable voice-synchronized background effects
-    "background_opacity": 0.7,              # Background transparency (0.0-1.0)
-    "background_padding": 10,               # Padding around text in pixels
-    "background_border_radius": 8,          # Rounded corners for background
-    "voice_sync_precision": "high",         # Background sync precision: "low", "medium", "high"
+    # Viral Mode Settings (default behavior)
+    "viral_mode": {
+        "enabled": True,
+        "words_per_line_min": 2,
+        "words_per_line_max": 3,
+        "highlight_colors": [
+            "&H0000FFFF",  # Yellow
+            "&H0000FF00",  # Green
+            "&H00FFFF00",  # Cyan
+            "&H00FF00FF",  # Pink
+            "&H000080FF",  # Orange
+        ]
+    },
 
-    # Sentence-Level Processing Only (optimized for speed)
-    "enable_word_level_highlighting": False, # Disabled for speed optimization
-    "word_highlight_mode": "sentence",       # Force sentence-level only
-
-    # Style Presets
+    # Style Presets (simplified - only font names used)
     "available_styles": {
         "modern_glow": {
-            "name": "Modern Glow",
-            "description": "White text with blue glow effect and dynamic background",
-            "font": "Rubik",
-            "size": 12,
-            "primary_color": "&H00FFFFFF",  # White
-            "outline_color": "&H00FF8000",  # Blue glow
-            "outline_width": 3,
-            "shadow": 2,
-            "bold": True,
-            "alignment": 2,  # Bottom center
-            "margin_v": 80,
-            # Dynamic background settings
-            "background_color": "&H80000000",  # Semi-transparent black
-            "background_active_color": "&H80001040",  # Semi-transparent dark blue when voice active
-            "enable_voice_sync": True
+            "font": "Poppins",
         },
         "gradient_gold": {
-            "name": "Gradient Gold",
-            "description": "Gold gradient with black shadow and dynamic background",
-            "font": "Rubik",
-            "size": 46,
-            "primary_color": "&H0000D7FF",  # Gold
-            "secondary_color": "&H000080FF",  # Orange
-            "outline_color": "&H00000000",  # Black
-            "outline_width": 2,
-            "shadow": 2,
-            "bold": True,
-            "alignment": 2,
-            "margin_v": 90,
-            # Dynamic background settings
-            "background_color": "&H80000000",  # Semi-transparent black
-            "background_active_color": "&H80402000",  # Semi-transparent dark gold when voice active
-            "enable_voice_sync": True
+            "font": "Poppins",
         },
-        "fire_red": {
-            "name": "Fire Red",
-            "description": "Red to orange gradient with glow and dynamic background",
-            "font": "Rubik",
-            "size": 50,
-            "primary_color": "&H000000FF",  # Red
-            "secondary_color": "&H000080FF",  # Orange
-            "outline_color": "&H00000080",  # Dark red
-            "outline_width": 3,
-            "shadow": 2,
-            "bold": True,
-            "alignment": 2,
-            "margin_v": 85,
-            # Dynamic background settings
-            "background_color": "&H80000000",  # Semi-transparent black
-            "background_active_color": "&H80000040",  # Semi-transparent dark red when voice active
-            "enable_voice_sync": True
-        },
-        "ice_blue": {
-            "name": "Ice Blue",
-            "description": "Light blue with white glow and dynamic background",
-            "font": "Rubik",
-            "size": 45,
-            "primary_color": "&H00FFFF80",  # Light blue
-            "outline_color": "&H00FFFFFF",  # White glow
-            "outline_width": 2,
-            "shadow": 1,
-            "bold": True,
-            "alignment": 2,
-            "margin_v": 75,
-            # Dynamic background settings
-            "background_color": "&H80000000",  # Semi-transparent black
-            "background_active_color": "&H80804000",  # Semi-transparent dark blue when voice active
-            "enable_voice_sync": True
-        },
-
         "bold_outline": {
-            "name": "Bold Outline",
-            "description": "Gold text with thick black outline for maximum visibility",
-            "font": "Rubik",
-            "size": 12,
-            "primary_color": "&H0000D7FF",  # Bright yellow/gold
-            "secondary_color": "&H0000B8FF",  # Slightly darker gold for gradient
-            "outline_color": "&H00000000",  # Black outline
-            "outline_width": 6,  # Thick outline for bold effect
-            "shadow": 0,
-            "bold": True,
-            "alignment": 2,  # Bottom center
-            "margin_v": 85,
-            # Dynamic background settings
-            "enable_voice_sync": True,
-            # Enhanced outline settings for bold effect
-            "background_padding": 15,  # Extra padding for bold style
-            "background_border_radius": 10  # Rounded corners
+            "font": "Poppins",
         }
     },
     
@@ -380,19 +285,11 @@ PROCESSING_OPTIMIZATIONS = {
 # Logging Configuration - Cleaner, less verbose output
 LOGGING_CONFIG = {
     "verbose_mode": False,               # Enable/disable verbose logging
-    "show_emojis": False,                # Show emoji indicators in logs (helpful for status)
-    "show_performance_status": False,    # Show performance optimization status
-    "show_content_analysis": False,      # Show detailed content synchronization analysis
-    "show_speech_recognition": True,    # Show speech recognition results (essential info)
-    "show_cache_operations": True,      # Show model and speech recognition cache operations
-    "show_model_loading": True,         # Show model loading details
-    "show_debug_messages": False,        # Show debug messages from services
-    "show_file_operations": False,       # Show file copy/move operations
+    "show_emojis": False,                # Show emoji indicators in logs
+    "show_speech_recognition": True,     # Show speech recognition results (essential)
     "show_cache_operations": False,      # Show cache hit/miss operations
-    "show_ffmpeg_commands": False,       # Show FFmpeg command details
-    "show_subtitle_details": False,      # Show detailed subtitle timing logs
-    "show_media_duration": False,        # Show media duration detection logs
-    "show_cleanup_details": False,       # Show detailed cleanup operations
+    "show_model_loading": True,          # Show model loading details
+    "show_debug_messages": False,        # Show debug messages from services
 }
 # Simplified tab configuration - only active tabs
 TAB_VISIBILITY = {

@@ -546,8 +546,8 @@ class SettingsPopup:
                 if self.on_settings_changed:
                     self.on_settings_changed(settings)
 
-                if self.main_gui:
-                    self.main_gui.log(f"Settings applied successfully for {tab_name.replace('_', ' ').title()}")
+                # Only log if main_gui exists, keep message concise
+                # Removed verbose per-tab logging
 
                 self.close()
             else:
@@ -664,10 +664,9 @@ class SettingsPopup:
             if hasattr(self, 'current_tab'):
                 self.settings_manager.save_tab_settings(self.current_tab, current_settings)
 
-            print(f"✅ Settings auto-saved: Voice={current_settings.get('tts_voice_actor', 'Guy')}")
-
-        except Exception as e:
-            print(f"❌ Failed to auto-save settings: {e}")
+            # Silent save - no logging on each change
+        except Exception:
+            pass  # Silent fail on auto-save
 
     def set_settings(self, settings=None):
         """Set settings from dictionary"""
