@@ -19,6 +19,10 @@ from utils.settings_manager import SettingsManager
 class VideoTab:
     """Video tab component for multi-video processing with individual prompts"""
 
+    # Maximum entries to prevent memory issues
+    MAX_ENTRIES = 50
+    MAX_GROUPS = 20
+
     def __init__(self, parent_frame, main_gui):
         """Initialize the video tab"""
         self.parent_frame = parent_frame
@@ -30,6 +34,9 @@ class VideoTab:
         self.next_entry_id = 1
         self.next_group_id = 1
         self.current_mode = "individual"  # "individual" or "grouped"
+
+        # Batch loading state (prevents excessive UI updates)
+        self._is_batch_loading = False
 
         # Settings manager for persistence
         self.settings_manager = SettingsManager()
@@ -69,8 +76,6 @@ class VideoTab:
         
         # Set up the tab
         self.setup_video_tab()
-        # In VideoTab.__init__, after self.setup_video_tab():
-         # This would activate Phase 1
 
     def setup_video_tab(self):
         """Set up the video tab UI"""
@@ -416,6 +421,12 @@ class VideoTab:
 
     def add_video_entry(self, video_file=None, prompt=None):
         """Add a new video entry to the list with duplicate prevention"""
+        # Check entry limit
+        if len(self.video_entries) >= self.MAX_ENTRIES:
+            if not self._is_batch_loading:
+                self.main_gui.log(f"⚠️ Maximum entries ({self.MAX_ENTRIES}) reached. Remove some entries first.")
+            return None
+
         # Hide empty state when adding first entry
         self.hide_empty_state()
 
@@ -444,11 +455,12 @@ class VideoTab:
         # Store the entry
         self.video_entries[entry_id] = video_entry
 
-        # Update scroll region
-        self.scrollable_frame.update_idletasks()
-        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        # Only update scroll region if not batch loading (performance optimization)
+        if not self._is_batch_loading:
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+            self.main_gui.log(f"Added video entry #{entry_id}")
 
-        self.main_gui.log(f"Added video entry #{entry_id}")
         return entry_id
 
     def remove_video_entry(self, entry_id):
@@ -486,26 +498,9 @@ class VideoTab:
     def get_valid_groups(self):
         """Get all valid group entries"""
         valid_groups = []
-        self.main_gui.log(f"Checking {len(self.group_entries)} group entries for validity...")
-        
         for group_id, group_entry in self.group_entries.items():
-            group_data = group_entry.get_group_data()
-            is_valid = group_entry.is_valid()
-            
-            self.main_gui.log(f"Group {group_id} ({group_data.get('folder_name', 'Unknown')}): {'Valid' if is_valid else 'Invalid'}")
-            
-            if is_valid:
-                valid_groups.append(group_data)
-            else:
-                # Debug invalid groups
-                pairs = group_data.get('pairs', [])
-                self.main_gui.log(f"  - Has {len(pairs)} pairs")
-                for i, pair in enumerate(pairs):
-                    has_video = bool(pair.get('video_file'))
-                    has_prompt = bool(pair.get('prompt'))
-                    self.main_gui.log(f"  - Pair {i+1}: Video={has_video}, Prompt={has_prompt}")
-        
-        self.main_gui.log(f"Found {len(valid_groups)} valid groups")
+            if group_entry.is_valid():
+                valid_groups.append(group_entry.get_group_data())
         return valid_groups
 
     def clear_all_entries(self):
@@ -637,54 +632,59 @@ class VideoTab:
         if 'groups' in detection_result:
             groups = detection_result['groups']
             if isinstance(groups, dict):
-                # groups is a dictionary {group_name: group_info}
                 for group_name, group_info in groups.items():
                     all_pairs.extend(group_info.get('pairs', []))
             else:
-                # groups is a list of group_info objects
                 for group_info in groups:
                     all_pairs.extend(group_info.get('pairs', []))
         else:
-            # Fallback for direct pairs (shouldn't happen in current implementation)
             all_pairs = detection_result.get('pairs', [])
         
-        # Check for duplicates and handle them
+        # Check for duplicates
         existing_files = self._get_existing_video_files()
         new_pairs = [pair for pair in all_pairs if pair['video_file'] not in existing_files]
 
-        # Add individual entries with smart population
+        # Enable batch loading mode to prevent excessive UI updates
+        self._is_batch_loading = True
+        
         empty_entry_id = self._find_empty_entry()
-        created_entries = []
-        populated_entries = []
+        created_count = 0
+        skipped_count = 0
 
-        # Process pairs one by one
-        for i, pair in enumerate(new_pairs):
-            if i == 0 and empty_entry_id is not None:
-                # Populate the first empty entry with the first pair
-                entry = self.video_entries[empty_entry_id]
-                entry.set_data(pair['video_file'], pair['prompt'])
-                populated_entries.append(empty_entry_id)
-            else:
-                # Create new entries for remaining pairs
-                entry_id = self.add_video_entry(pair['video_file'], pair['prompt'])
-                if entry_id is not None:
-                    created_entries.append(entry_id)
+        try:
+            for i, pair in enumerate(new_pairs):
+                # Check entry limit
+                if len(self.video_entries) >= self.MAX_ENTRIES:
+                    skipped_count = len(new_pairs) - i
+                    break
+                    
+                if i == 0 and empty_entry_id is not None:
+                    entry = self.video_entries[empty_entry_id]
+                    entry.set_data(pair['video_file'], pair['prompt'])
+                    created_count += 1
+                else:
+                    entry_id = self.add_video_entry(pair['video_file'], pair['prompt'])
+                    if entry_id is not None:
+                        created_count += 1
+        finally:
+            # Disable batch loading mode
+            self._is_batch_loading = False
+            
+            # Single UI update at the end
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
 
-        # Log results concisely
-        total_pairs = len(all_pairs)
-        new_count = len(new_pairs)
-        duplicate_count = total_pairs - new_count
-
-        if new_count > 0:
+        # Log consolidated results
+        duplicate_count = len(all_pairs) - len(new_pairs)
+        if skipped_count > 0:
+            self.main_gui.log(f"⚠️ Loaded {created_count} videos, {skipped_count} skipped (max {self.MAX_ENTRIES} entries)")
+        elif created_count > 0:
             if duplicate_count > 0:
-                self.main_gui.log(f"Loaded {new_count} videos, skipped {duplicate_count} duplicates")
+                self.main_gui.log(f"Loaded {created_count} videos, {duplicate_count} duplicates skipped")
             else:
-                self.main_gui.log(f"Loaded {new_count} videos")
-        else:
-            if duplicate_count > 0:
-                self.main_gui.log(f"No new videos loaded, skipped {duplicate_count} duplicates")
-            else:
-                self.main_gui.log("No videos found to load")
+                self.main_gui.log(f"Loaded {created_count} videos")
+        elif duplicate_count > 0:
+            self.main_gui.log(f"No new videos, {duplicate_count} duplicates skipped")
 
     def _handle_detection_override(self, detection_result):
         """Handle user override of smart detection"""

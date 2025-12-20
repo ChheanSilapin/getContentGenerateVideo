@@ -391,18 +391,6 @@ def get_ffprobe_path():
     # Fallback to system PATH
     return 'ffprobe'
 
-def get_file_extension(file_path):
-    """
-    Get the extension of a file
-
-    Args:
-        file_path: Path to file
-
-    Returns:
-        str: File extension (with dot)
-    """
-    return os.path.splitext(file_path)[1].lower()
-
 def is_image_file(file_path):
     """
     Check if a file is an image based on its extension
@@ -413,31 +401,9 @@ def is_image_file(file_path):
     Returns:
         bool: True if a file is an image, False otherwise
     """
-    return get_file_extension(file_path) in SUPPORTED_IMAGE_EXTENSIONS
+    ext = os.path.splitext(file_path)[1].lower()
+    return ext in SUPPORTED_IMAGE_EXTENSIONS
 
-def copy_file(source, destination):
-    """
-    Copy a file from source to destination
-
-    Args:
-        source: Source file path
-        destination: Destination file path
-
-    Returns:
-        bool: True if successful, False otherwise
-    """
-    try:
-        # Create destination directory if it doesn't exist
-        dest_dir = os.path.dirname(destination)
-        if dest_dir and not os.path.exists(dest_dir):
-            os.makedirs(dest_dir, exist_ok=True)
-
-        # Copy the file
-        shutil.copy2(source, destination)
-        return True
-    except Exception as e:
-        print(f"Error copying file from {source} to {destination}: {e}")
-        return False
 
 # Removed unused utility functions (72 lines saved):
 # - get_platform_info(): Not used anywhere in the project

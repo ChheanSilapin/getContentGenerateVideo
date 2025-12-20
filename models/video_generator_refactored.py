@@ -10,7 +10,7 @@ from utils.error_helpers import handle_operation_error
 # Import the extracted components
 from .video_processor import VideoProcessor
 from .batch_processor import BatchProcessor
-from .cleanup_manager import CleanupManager
+from utils.output_manager import get_output_manager
 
 __version__ = "1.0.4"
 
@@ -27,7 +27,7 @@ class VideoGeneratorModel:
     Complex operations are delegated to specialized components:
     - VideoProcessor: Individual video operations
     - BatchProcessor: Batch processing operations  
-    - CleanupManager: File cleanup operations
+    - OutputManager (utils): File cleanup operations
     """
     
     def __init__(self, progress_callback=None):
@@ -58,10 +58,10 @@ class VideoGeneratorModel:
         # Initialize components
         self.video_processor = VideoProcessor(progress_callback)
         self.batch_processor = BatchProcessor(progress_callback)
-        self.cleanup_manager = CleanupManager()
+        self._output_manager = None  # Lazy-loaded OutputManager
 
-        # Link cleanup manager to batch processor for unified cleanup
-        self.batch_processor.cleanup_manager = self.cleanup_manager
+        # Link output manager to batch processor for unified cleanup
+        self.batch_processor.cleanup_manager = self
         
         # State tracking
         self.current_output_dir = None
@@ -216,18 +216,56 @@ class VideoGeneratorModel:
         self.video_processor.progress_callback = callback
         self.batch_processor.progress_callback = callback
 
+    def _get_output_manager(self):
+        """Get or create OutputManager instance"""
+        if self._output_manager is None:
+            self._output_manager = get_output_manager()
+        return self._output_manager
+
     def cleanup_after_video_complete(self, output_dir, keep_debug_files=False):
-        """Cleanup after video completion - delegates to CleanupManager"""
-        return self.cleanup_manager.cleanup_after_video_complete(output_dir, keep_debug_files)
+        """Cleanup after video completion - uses OutputManager directly"""
+        return self._get_output_manager().cleanup_after_video_complete(output_dir, keep_debug_files)
+
+    def cleanup_extracted_frames(self, images_dir):
+        """Clean up extracted frames - uses OutputManager directly"""
+        return self._get_output_manager().cleanup_extracted_frames(images_dir)
+
+    def cleanup_on_stop(self, output_dir):
+        """Clean up files when process is stopped - uses OutputManager directly"""
+        return self._get_output_manager().cleanup_on_stop(output_dir)
 
     def _cleanup_extracted_frames(self, images_dir):
-        """Clean up extracted frames - delegates to CleanupManager"""
-        return self.cleanup_manager.cleanup_extracted_frames(images_dir)
+        """Clean up extracted frames (legacy alias)"""
+        return self.cleanup_extracted_frames(images_dir)
 
     def _cleanup_on_stop(self):
-        """Clean up files when process is stopped - delegates to CleanupManager"""
+        """Clean up files when process is stopped (legacy alias)"""
         if hasattr(self, 'current_output_dir') and self.current_output_dir:
-            return self.cleanup_manager.cleanup_on_stop(self.current_output_dir)
+            return self.cleanup_on_stop(self.current_output_dir)
+
+    def organize_output_folder_during_generation(self, output_dir):
+        """
+        Organize the output folder DURING generation - keep all important files
+        Only remove truly temporary files that are no longer needed
+        """
+        import config
+        cleanup_enabled = getattr(config, 'AUTO_CLEANUP_AFTER_COMPLETION', True)
+        if not cleanup_enabled:
+            return
+
+        try:
+            truly_temp_files = [
+                os.path.join(output_dir, "slideshow_temp.mp4"),
+                os.path.join(output_dir, "slideshow_enhanced_temp.mp4"),
+                os.path.join(output_dir, "original_video_backup.mp4"),
+                os.path.join(output_dir, "temp_audio.mp3"),
+                os.path.join(output_dir, "temp_video.mp4"),
+            ]
+            cleaned_count = self._get_output_manager().cleanup_temp_files(*truly_temp_files)
+            if cleaned_count > 0:
+                print(f"Cleaned {cleaned_count} temporary files during generation")
+        except Exception as e:
+            print(f"Error organizing during generation: {e}")
     
     def _validate_inputs(self):
         """Validate input parameters"""

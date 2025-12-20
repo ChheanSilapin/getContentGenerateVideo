@@ -20,6 +20,10 @@ from utils.folder_processor import FolderProcessor
 class ImageTab:
     """Image tab component for multi-folder image-to-video generation"""
 
+    # Maximum entries to prevent memory issues
+    MAX_ENTRIES = 50
+    MAX_GROUPS = 20
+
     def __init__(self, parent_frame, main_gui):
         """
         Initialize the image tab
@@ -37,6 +41,9 @@ class ImageTab:
         self.next_entry_id = 1
         self.next_group_id = 1
         self.current_mode = "individual"  # "individual" or "grouped"
+
+        # Batch loading state (prevents excessive UI updates)
+        self._is_batch_loading = False
 
         # Settings manager for persistence
         self.settings_manager = SettingsManager()
@@ -264,75 +271,7 @@ class ImageTab:
         # Store reference to entries frame
         self.entries_frame = self.scrollable_frame
 
-    def setup_text_input_section(self, parent):
-        """Set up text input section for prompts"""
-        text_frame = ttk.LabelFrame(parent, text="📝 Text Prompt for Video", padding=8)
-        text_frame.pack(fill="x", pady=(0, 15))
 
-        # Text input with scrollbar
-        text_container = ttk.Frame(text_frame)
-        text_container.pack(fill="x")
-
-        self.text_input = tk.Text(
-            text_container,
-            wrap='word',
-            height=4,
-            font=GUI_FONTS["default"],
-            borderwidth=1,
-            relief="solid"
-        )
-        self.text_input.pack(side="left", fill="x", expand=True)
-
-        text_scrollbar = ttk.Scrollbar(text_container, command=self.text_input.yview)
-        text_scrollbar.pack(side="right", fill="y")
-        self.text_input.config(yscrollcommand=text_scrollbar.set)
-
-        # Help text
-        help_label = ttk.Label(
-            text_frame,
-            text="Enter text that will be converted to speech and used as voiceover for the generated video",
-            font=GUI_FONTS["small"],
-            foreground="#7f8c8d"
-        )
-        help_label.pack(anchor="w", pady=(5, 0))
-
-    def setup_image_selection_section(self, parent):
-        """Set up image selection section"""
-        image_frame = ttk.LabelFrame(parent, text="🖼️ Image Selection", padding=8)
-        image_frame.pack(fill="x", pady=(0, 15))
-
-        # Button and help text
-        button_frame = ttk.Frame(image_frame)
-        button_frame.pack(fill="x", pady=(0, 5))
-
-        select_button = self.main_gui.ui_factory.create_icon_button(
-            button_frame, "Choose Images", self.select_images, icon="📁", width=20
-        )
-        select_button.pack(side="left", padx=(0, 10))
-
-        # Selection controls
-        select_all_button = self.main_gui.ui_factory.create_secondary_button(
-            button_frame, "Select All", lambda: self.select_all_images(True), width=12
-        )
-        select_all_button.pack(side="left", padx=(0, 5))
-
-        deselect_all_button = self.main_gui.ui_factory.create_secondary_button(
-            button_frame, "Deselect All", lambda: self.select_all_images(False), width=12
-        )
-        deselect_all_button.pack(side="left", padx=(0, 5))
-
-        clear_button = self.main_gui.ui_factory.create_icon_button(
-            button_frame, "Clear", self.clear_images, icon="🧹", width=12
-        )
-        clear_button.pack(side="left")
-
-        help_label = ttk.Label(
-            image_frame,
-            text="Select images that will be used to create the video slideshow",
-            font=GUI_FONTS["small"],
-            foreground="#7f8c8d"
-        )
-        help_label.pack(anchor="w", pady=(5, 0))
 
     def setup_action_buttons(self, parent):
         """Set up action buttons with better styling"""
@@ -366,6 +305,12 @@ class ImageTab:
 
     def add_image_entry(self, folder_path=None, prompt=None):
         """Add a new image entry to the list"""
+        # Check entry limit
+        if len(self.image_entries) >= self.MAX_ENTRIES:
+            if not self._is_batch_loading:
+                self.main_gui.log(f"⚠️ Maximum entries ({self.MAX_ENTRIES}) reached. Remove some entries first.")
+            return None
+
         from ui.components.image_entry import ImageEntry
 
         # Hide empty state when adding first entry
@@ -389,15 +334,21 @@ class ImageTab:
         # Store the entry
         self.image_entries[entry_id] = image_entry
 
-        # Update scroll region
-        self.scrollable_frame.update_idletasks()
-        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        # Only update scroll region if not batch loading (performance optimization)
+        if not self._is_batch_loading:
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+            self.main_gui.log(f"Added image folder entry #{entry_id}")
 
-        self.main_gui.log(f"Added image folder entry #{entry_id}")
         return entry_id
 
     def add_image_entry_with_images(self, image_files):
         """Add a new image entry with specific image files (not folder-based)"""
+        # Check entry limit
+        if len(self.image_entries) >= self.MAX_ENTRIES:
+            self.main_gui.log(f"⚠️ Maximum entries ({self.MAX_ENTRIES}) reached. Remove some entries first.")
+            return None
+
         from ui.components.image_entry import ImageEntry
 
         # Hide empty state when adding first entry
@@ -420,9 +371,10 @@ class ImageTab:
         # Store the entry
         self.image_entries[entry_id] = image_entry
 
-        # Update scroll region
-        self.scrollable_frame.update_idletasks()
-        self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+        # Only update scroll region if not batch loading
+        if not self._is_batch_loading:
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
 
         self.main_gui.log(f"Added image entry #{entry_id} with {len(image_files)} selected images")
         return entry_id
@@ -724,40 +676,53 @@ class ImageTab:
         """Load folder data as individual entries with update/add logic"""
         self.current_mode = "individual"
 
+        # Enable batch loading mode to prevent excessive UI updates
+        self._is_batch_loading = True
+        
         updated_count = 0
         new_count = 0
+        skipped_count = 0
 
-        for item in folder_data:
-            folder_path = item.get('folder_path')
-            prompt = item.get('prompt', '')
+        try:
+            for item in folder_data:
+                folder_path = item.get('folder_path')
+                prompt = item.get('prompt', '')
 
-            if not folder_path:
-                continue
+                if not folder_path:
+                    continue
 
-            # Check if this folder already exists in current entries
-            existing_entry_id = self._find_existing_folder_entry(folder_path)
+                # Check entry limit
+                if len(self.image_entries) >= self.MAX_ENTRIES:
+                    skipped_count = len(folder_data) - (updated_count + new_count)
+                    break
 
-            if existing_entry_id is not None:
-                # Update existing entry for the same folder
-                existing_entry = self.image_entries[existing_entry_id]
-                existing_entry.set_data(folder_path, prompt)
-                updated_count += 1
-                self.main_gui.log(f"Updated existing entry #{existing_entry_id} with folder: {os.path.basename(folder_path)}")
-            else:
-                # Create new entry for different folder
-                entry_id = self.add_image_entry(folder_path, prompt)
-                if entry_id:
-                    new_count += 1
-                    self.main_gui.log(f"Added new entry #{entry_id} with folder: {os.path.basename(folder_path)}")
+                # Check if this folder already exists in current entries
+                existing_entry_id = self._find_existing_folder_entry(folder_path)
 
-        # Log summary
+                if existing_entry_id is not None:
+                    # Update existing entry for the same folder
+                    existing_entry = self.image_entries[existing_entry_id]
+                    existing_entry.set_data(folder_path, prompt)
+                    updated_count += 1
+                else:
+                    # Create new entry for different folder
+                    entry_id = self.add_image_entry(folder_path, prompt)
+                    if entry_id:
+                        new_count += 1
+        finally:
+            # Disable batch loading mode
+            self._is_batch_loading = False
+            
+            # Single UI update at the end
+            self.scrollable_frame.update_idletasks()
+            self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all"))
+
+        # Log summary (consolidated - not per entry)
         total_processed = updated_count + new_count
-        if updated_count > 0 and new_count > 0:
-            self.main_gui.log(f"Processed {total_processed} folders: {updated_count} updated, {new_count} new")
-        elif updated_count > 0:
-            self.main_gui.log(f"Updated {updated_count} existing folders")
-        elif new_count > 0:
-            self.main_gui.log(f"Added {new_count} new folders")
+        if skipped_count > 0:
+            self.main_gui.log(f"⚠️ Loaded {total_processed} folders, {skipped_count} skipped (max {self.MAX_ENTRIES} entries)")
+        elif total_processed > 0:
+            self.main_gui.log(f"Loaded {total_processed} folders ({new_count} new, {updated_count} updated)")
 
         # Ensure we have at least one entry if none exist
         if not self.image_entries:
