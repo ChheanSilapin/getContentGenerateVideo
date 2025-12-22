@@ -112,3 +112,5 @@ memory-bank/
 !app_icon.ico
 !Content_Type_Prompts.md
 !requirements.txt
+
+user_settings.json
