@@ -162,14 +162,15 @@ def create_video_content_dropdown(parent, load_folder_command, select_multiple_c
     return dropdown
 
 
-def create_image_content_dropdown(parent, load_folder_command, select_multiple_command, width=20):
+def create_image_content_dropdown(parent, load_folder_command, select_multiple_command, import_url_command=None, width=20):
     """
-    Convenience function to create an enhanced image content dropdown with two options
+    Convenience function to create an enhanced image content dropdown with multiple options
 
     Args:
         parent: Parent widget
         load_folder_command: Command for "Load from Folder" option
         select_multiple_command: Command for "Select Multiple Images" option
+        import_url_command: Command for "Import from URL" option (optional)
         width: Button width
 
     Returns:
@@ -180,7 +181,12 @@ def create_image_content_dropdown(parent, load_folder_command, select_multiple_c
     # Add enhanced menu items for image tab
     dropdown.add_menu_item("Add Folder", load_folder_command, "📁")
     dropdown.add_menu_item("Add Files", select_multiple_command, "🎞")
+    
+    # Add Import from URL option if command provided
+    if import_url_command:
+        dropdown.add_menu_item("Import from URL", import_url_command, "🌐")
 
     # Create and return the dropdown
     dropdown.create_dropdown()
     return dropdown
+

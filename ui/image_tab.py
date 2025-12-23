@@ -222,6 +222,7 @@ class ImageTab:
             entries_header,
             load_folder_command=self.load_images_from_folder,
             select_multiple_command=self.select_multiple_images,
+            import_url_command=self.import_from_url,
             width=20
         )
         self.content_dropdown.pack(side="right", padx=(0, 4))
@@ -559,6 +560,91 @@ class ImageTab:
             self.main_gui.log(f"Error selecting images: {e}")
             from utils.error_helpers import show_error_with_log
             show_error_with_log(self.main_gui, "Error", "Failed to select images", e)
+
+    def import_from_url(self):
+        """Import content from a WordPress post URL"""
+        from tkinter import simpledialog, messagebox
+        import threading
+        
+        # Ask for URL
+        url = simpledialog.askstring(
+            "Import from URL",
+            "Enter WordPress post URL:",
+            parent=self.parent_frame
+        )
+        
+        if not url or not url.strip():
+            return
+        
+        url = url.strip()
+        self.main_gui.log(f"Importing content from: {url}")
+        
+        # Run scraping in background thread
+        def scrape_thread():
+            try:
+                from utils.wordpress_scraper import scrape_wordpress_post
+                import tempfile
+                import os
+                
+                # Create temp directory for images
+                output_dir = tempfile.mkdtemp(prefix="wp_import_")
+                
+                # Scrape the post
+                result = scrape_wordpress_post(url, output_dir)
+                
+                if not result['success']:
+                    self.parent_frame.after(0, lambda: messagebox.showerror(
+                        "Import Failed", 
+                        f"Failed to import content:\n{result['error']}"
+                    ))
+                    return
+                
+                # Log results
+                self.parent_frame.after(0, lambda: self.main_gui.log(
+                    f"Scraped: {result['title']} - {len(result['images'])} images"
+                ))
+                
+                # Create entry on main thread
+                def create_entry():
+                    if result['images']:
+                        # Create entry with scraped images
+                        entry_id = self.add_image_entry_with_images(result['images'])
+                        
+                        if entry_id and entry_id in self.image_entries:
+                            entry = self.image_entries[entry_id]
+                            
+                            # Set the text content as prompt
+                            if result['text']:
+                                entry.prompt_text_widget.delete('1.0', 'end')
+                                entry.prompt_text_widget.insert('1.0', result['text'])
+                            
+                            # Set custom filename from title
+                            if result['title']:
+                                # Clean title for filename
+                                clean_title = "".join(c for c in result['title'] if c.isalnum() or c in ' -_')[:50]
+                                entry.custom_filename.set(clean_title)
+                                entry.filename_entry.delete(0, 'end')
+                                entry.filename_entry.insert(0, clean_title)
+                                entry.filename_entry.config(foreground="black")
+                            
+                            self.main_gui.log(f"Created entry #{entry_id} from URL import")
+                    else:
+                        messagebox.showwarning(
+                            "No Images Found",
+                            "No images were found in the article.\nPlease try a different URL."
+                        )
+                
+                self.parent_frame.after(0, create_entry)
+                
+            except Exception as e:
+                self.parent_frame.after(0, lambda: messagebox.showerror(
+                    "Import Error",
+                    f"Error importing from URL:\n{str(e)}"
+                ))
+        
+        # Start background thread
+        thread = threading.Thread(target=scrape_thread, daemon=True)
+        thread.start()
 
     def clear_all_entries(self):
         """Clear all image entries (both individual and grouped)"""

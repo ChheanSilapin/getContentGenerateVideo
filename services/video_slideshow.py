@@ -226,42 +226,62 @@ def _create_content_aware_slideshow_ffmpeg(processed_images, content_timings, au
             clip_output = os.path.join(temp_dir, f"clip_{i:03d}.mp4")
             temp_clips.append(clip_output)
 
+            fps = 24
+            total_frames = int(timing['duration'] * fps)
+            
             # Build video filters
             filters = []
 
-            # Scale and fit
-            filters.append(f'scale={target_width}:{target_height}:force_original_aspect_ratio=decrease')
-            filters.append(f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black')
+            # For smooth zoom: upscale image first, then zoompan, then scale to output
+            # This prevents the shake/jitter that occurs with low-res zoompan
+            if use_effects and zoom_effect and timing['duration'] > 0.5:
+                # Step 1: Upscale to 4K resolution for smooth zooming
+                upscale_width = 3840
+                upscale_height = 2160
+                filters.append(f'scale={upscale_width}:{upscale_height}:flags=lanczos')
+                
+                # Step 2: Apply smooth zoompan (slow zoom-in from 1.0x to 1.05x)
+                zoom_speed = 0.0005  # Very slow zoom
+                filters.append(
+                    f"zoompan=z='min(1+on*{zoom_speed},1.05)':"
+                    f"x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':"
+                    f"d={total_frames}:s={upscale_width}x{upscale_height}:fps={fps}"
+                )
+                
+                # Step 3: Scale back to output size
+                filters.append(f'scale={target_width}:{target_height}')
+            else:
+                # No zoom - just scale and pad
+                filters.append(f'scale={target_width}:{target_height}:force_original_aspect_ratio=decrease')
+                filters.append(f'pad={target_width}:{target_height}:(ow-iw)/2:(oh-ih)/2:black')
 
-            # Add zoom effect if requested
-            if use_effects and zoom_effect:
-                filters.append('scale=iw*1.05:ih*1.05,crop=iw/1.05:ih/1.05')
+            # Fade in/out for smooth transitions between images
+            if use_effects and fade_effect:
+                fade_frames = min(6, max(2, int(total_frames * 0.08)))
+                filters.append(f'fade=in:0:{fade_frames}')
+                if total_frames > fade_frames * 3:
+                    filters.append(f'fade=out:{total_frames - fade_frames}:{fade_frames}')
 
-            # Add fade effect if requested and duration is long enough
-            if use_effects and fade_effect and timing['duration'] > 1.5:
-                fade_duration = min(0.3, timing['duration'] * 0.15)
-                filters.append(f'fade=in:0:{int(fade_duration*24)}')
-                filters.append(f'fade=out:{int((timing["duration"]-fade_duration)*24)}:{int(fade_duration*24)}')
+            filters.append('format=yuv420p')
 
-            # Create individual clip with specific duration
             clip_cmd = [
                 ffmpeg_path,
                 '-loop', '1',
                 '-i', img_path,
-                '-t', str(timing['duration']),  # Custom duration for this image
+                '-t', f'{timing["duration"]:.3f}',
                 '-vf', ','.join(filters),
-                '-r', '24',  # Standard frame rate
-                '-pix_fmt', 'yuv420p',
+                '-r', str(fps),
                 '-c:v', 'libx264',
                 '-preset', 'medium',
                 '-crf', '23',
-                '-y',  # Overwrite output
+                '-y',
                 clip_output
             ]
 
-            print(f"📸 Creating clip {i+1}: {timing['duration']:.2f}s - {timing['content'][:50]}...")
+            effect_type = "zoom+fade" if (use_effects and zoom_effect) else "fade"
+            print(f"📸 Creating clip {i+1}/{len(processed_images)}: {timing['duration']:.2f}s ({effect_type})")
 
-            result = subprocess.run(clip_cmd, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(clip_cmd, capture_output=True, text=True, timeout=300)
             if result.returncode != 0:
                 print(f"❌ Failed to create clip {i+1}: {result.stderr}")
                 return False
@@ -277,17 +297,20 @@ def _create_content_aware_slideshow_ffmpeg(processed_images, content_timings, au
 
 
         # Concatenate all clips and add audio
+        # Note: Video clips are already timed to match audio duration exactly
+        # So we DON'T use -shortest which could cause black frames
         final_cmd = [
             ffmpeg_path,
             '-f', 'concat',
             '-safe', '0',
             '-i', concat_file,
             '-i', audio_file,
+            '-map', '0:v',  # Use video from concatenated clips
+            '-map', '1:a',  # Use audio from audio file
             '-c:v', 'copy',  # Copy video (already encoded)
             '-c:a', 'aac',
-            '-shortest',  # Match shortest stream (video or audio)
             '-avoid_negative_ts', 'make_zero',
-            '-y',  # Overwrite output
+            '-y',
             output_file
         ]
 
